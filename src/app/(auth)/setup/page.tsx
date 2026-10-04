@@ -165,20 +165,20 @@ export default function SetupPage() {
   if (checking) {
     return (
       <div className="flex items-center justify-center py-20">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-owly-primary border-t-transparent" />
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-helplus-primary border-t-transparent" />
       </div>
     );
   }
 
   return (
-    <div className="bg-owly-surface rounded-2xl shadow-lg border border-owly-border overflow-hidden">
+    <div className="bg-helplus-surface rounded-2xl shadow-lg border border-helplus-border overflow-hidden">
       {/* Header */}
-      <div className="bg-owly-primary-50 border-b border-owly-border px-8 pt-6 pb-4">
+      <div className="bg-helplus-primary-50 border-b border-helplus-border px-8 pt-6 pb-4">
         <div className="flex items-center gap-3 mb-5">
-          <Image src="/owly.png" alt="Owly" width={40} height={40} />
+          <Image src="/helplus.svg" alt="Help+" width={40} height={40} />
           <div>
-            <h1 className="text-lg font-bold text-owly-text">Set Up Owly</h1>
-            <p className="text-xs text-owly-text-light">
+            <h1 className="text-lg font-bold text-helplus-text">Set Up Help+</h1>
+            <p className="text-xs text-helplus-text-light">
               Step {step + 1} of {STEPS.length}
             </p>
           </div>
@@ -193,8 +193,8 @@ export default function SetupPage() {
               style={{
                 backgroundColor:
                   i <= step
-                    ? "var(--owly-primary)"
-                    : "var(--owly-border)",
+                    ? "var(--helplus-primary)"
+                    : "var(--helplus-border)",
               }}
             />
           ))}
@@ -203,14 +203,14 @@ export default function SetupPage() {
 
       {/* Body */}
       <div className="px-8 py-6">
-        <h2 className="text-xl font-bold text-owly-text mb-1">
+        <h2 className="text-xl font-bold text-helplus-text mb-1">
           {STEPS[step]}
         </h2>
 
         {/* Step 0: Admin Account */}
         {step === 0 && (
           <>
-            <p className="text-sm text-owly-text-light mb-6">
+            <p className="text-sm text-helplus-text-light mb-6">
               Create your administrator account to get started.
             </p>
             <div className="space-y-4">
@@ -255,8 +255,8 @@ export default function SetupPage() {
         {/* Step 1: Business Profile */}
         {step === 1 && (
           <>
-            <p className="text-sm text-owly-text-light mb-6">
-              Tell us about your business so Owly can represent you.
+            <p className="text-sm text-helplus-text-light mb-6">
+              Tell us about your business so Help+ can represent you.
             </p>
             <div className="space-y-4">
               <Field
@@ -269,7 +269,7 @@ export default function SetupPage() {
               <div>
                 <label
                   htmlFor="businessDesc"
-                  className="block text-sm font-medium text-owly-text mb-1.5"
+                  className="block text-sm font-medium text-helplus-text mb-1.5"
                 >
                   Description
                 </label>
@@ -279,7 +279,7 @@ export default function SetupPage() {
                   value={businessDesc}
                   onChange={(e) => setBusinessDesc(e.target.value)}
                   placeholder="Briefly describe what your business does"
-                  className="w-full rounded-lg border border-owly-border bg-owly-bg px-3.5 py-2.5 text-sm text-owly-text placeholder:text-owly-text-light focus:outline-none focus:ring-2 focus:ring-owly-primary focus:border-transparent transition-shadow resize-none"
+                  className="w-full rounded-lg border border-helplus-border bg-helplus-bg px-3.5 py-2.5 text-sm text-helplus-text placeholder:text-helplus-text-light focus:outline-none focus:ring-2 focus:ring-helplus-primary focus:border-transparent transition-shadow resize-none"
                 />
               </div>
               <Field
@@ -290,7 +290,7 @@ export default function SetupPage() {
                 placeholder="The first message customers see"
               />
               <div>
-                <label className="block text-sm font-medium text-owly-text mb-2">
+                <label className="block text-sm font-medium text-helplus-text mb-2">
                   Response Tone
                 </label>
                 <div className="grid grid-cols-2 gap-2">
@@ -301,14 +301,14 @@ export default function SetupPage() {
                       onClick={() => setTone(t.value)}
                       className={`rounded-lg border px-3 py-2.5 text-left transition-colors ${
                         tone === t.value
-                          ? "border-owly-primary bg-owly-primary-50 ring-1 ring-owly-primary"
-                          : "border-owly-border bg-owly-bg hover:border-owly-primary-light"
+                          ? "border-helplus-primary bg-helplus-primary-50 ring-1 ring-helplus-primary"
+                          : "border-helplus-border bg-helplus-bg hover:border-helplus-primary-light"
                       }`}
                     >
-                      <div className="text-sm font-medium text-owly-text">
+                      <div className="text-sm font-medium text-helplus-text">
                         {t.label}
                       </div>
-                      <div className="text-xs text-owly-text-light">
+                      <div className="text-xs text-helplus-text-light">
                         {t.desc}
                       </div>
                     </button>
@@ -322,14 +322,14 @@ export default function SetupPage() {
         {/* Step 2: AI Configuration */}
         {step === 2 && (
           <>
-            <p className="text-sm text-owly-text-light mb-6">
+            <p className="text-sm text-helplus-text-light mb-6">
               Configure the AI model that powers your support agent.
             </p>
             <div className="space-y-4">
               <div>
                 <label
                   htmlFor="aiProvider"
-                  className="block text-sm font-medium text-owly-text mb-1.5"
+                  className="block text-sm font-medium text-helplus-text mb-1.5"
                 >
                   AI Provider
                 </label>
@@ -344,7 +344,7 @@ export default function SetupPage() {
                       [];
                     setAiModel(models[0] || "");
                   }}
-                  className="w-full rounded-lg border border-owly-border bg-owly-bg px-3.5 py-2.5 text-sm text-owly-text focus:outline-none focus:ring-2 focus:ring-owly-primary focus:border-transparent transition-shadow"
+                  className="w-full rounded-lg border border-helplus-border bg-helplus-bg px-3.5 py-2.5 text-sm text-helplus-text focus:outline-none focus:ring-2 focus:ring-helplus-primary focus:border-transparent transition-shadow"
                 >
                   {PROVIDER_OPTIONS.map((p) => (
                     <option key={p.value} value={p.value}>
@@ -357,7 +357,7 @@ export default function SetupPage() {
               <div>
                 <label
                   htmlFor="aiModel"
-                  className="block text-sm font-medium text-owly-text mb-1.5"
+                  className="block text-sm font-medium text-helplus-text mb-1.5"
                 >
                   Model
                 </label>
@@ -365,7 +365,7 @@ export default function SetupPage() {
                   id="aiModel"
                   value={aiModel}
                   onChange={(e) => setAiModel(e.target.value)}
-                  className="w-full rounded-lg border border-owly-border bg-owly-bg px-3.5 py-2.5 text-sm text-owly-text focus:outline-none focus:ring-2 focus:ring-owly-primary focus:border-transparent transition-shadow"
+                  className="w-full rounded-lg border border-helplus-border bg-helplus-bg px-3.5 py-2.5 text-sm text-helplus-text focus:outline-none focus:ring-2 focus:ring-helplus-primary focus:border-transparent transition-shadow"
                 >
                   {currentModels().map((m) => (
                     <option key={m} value={m}>
@@ -378,11 +378,11 @@ export default function SetupPage() {
               <div>
                 <label
                   htmlFor="aiApiKey"
-                  className="block text-sm font-medium text-owly-text mb-1.5"
+                  className="block text-sm font-medium text-helplus-text mb-1.5"
                 >
                   API Key
                   {aiProvider === "ollama" && (
-                    <span className="ml-1 font-normal text-owly-text-light">
+                    <span className="ml-1 font-normal text-helplus-text-light">
                       (not required for local models)
                     </span>
                   )}
@@ -398,12 +398,12 @@ export default function SetupPage() {
                         ? "Optional"
                         : "Enter your API key"
                     }
-                    className="w-full rounded-lg border border-owly-border bg-owly-bg px-3.5 py-2.5 pr-16 text-sm text-owly-text placeholder:text-owly-text-light focus:outline-none focus:ring-2 focus:ring-owly-primary focus:border-transparent transition-shadow"
+                    className="w-full rounded-lg border border-helplus-border bg-helplus-bg px-3.5 py-2.5 pr-16 text-sm text-helplus-text placeholder:text-helplus-text-light focus:outline-none focus:ring-2 focus:ring-helplus-primary focus:border-transparent transition-shadow"
                   />
                   <button
                     type="button"
                     onClick={() => setShowApiKey(!showApiKey)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded px-2 py-1 text-xs font-medium text-owly-primary hover:bg-owly-primary-50 transition-colors"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded px-2 py-1 text-xs font-medium text-helplus-primary hover:bg-helplus-primary-50 transition-colors"
                   >
                     {showApiKey ? "Hide" : "Show"}
                   </button>
@@ -416,8 +416,8 @@ export default function SetupPage() {
         {/* Step 3: Complete */}
         {step === 3 && (
           <>
-            <p className="text-sm text-owly-text-light mb-6">
-              Your Owly instance is ready to go.
+            <p className="text-sm text-helplus-text-light mb-6">
+              Your Help+ instance is ready to go.
             </p>
             <div className="space-y-3 mb-6">
               <SummaryRow
@@ -441,20 +441,20 @@ export default function SetupPage() {
 
         {/* Error */}
         {error && (
-          <div className="mt-4 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-owly-danger">
+          <div className="mt-4 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-helplus-danger">
             {error}
           </div>
         )}
       </div>
 
       {/* Footer Buttons */}
-      <div className="border-t border-owly-border px-8 py-4 flex items-center justify-between">
+      <div className="border-t border-helplus-border px-8 py-4 flex items-center justify-between">
         {step > 0 && step < 3 ? (
           <button
             type="button"
             onClick={handleBack}
             disabled={loading}
-            className="rounded-lg border border-owly-border bg-white px-4 py-2 text-sm font-medium text-owly-text hover:bg-owly-bg disabled:opacity-60 transition-colors"
+            className="rounded-lg border border-helplus-border bg-white px-4 py-2 text-sm font-medium text-helplus-text hover:bg-helplus-bg disabled:opacity-60 transition-colors"
           >
             Back
           </button>
@@ -467,7 +467,7 @@ export default function SetupPage() {
             type="button"
             onClick={handleNext}
             disabled={loading}
-            className="rounded-lg bg-owly-primary px-5 py-2 text-sm font-semibold text-white hover:bg-owly-primary-dark focus:outline-none focus:ring-2 focus:ring-owly-primary focus:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+            className="rounded-lg bg-helplus-primary px-5 py-2 text-sm font-semibold text-white hover:bg-helplus-primary-dark focus:outline-none focus:ring-2 focus:ring-helplus-primary focus:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
           >
             {loading ? (
               <span className="flex items-center gap-2">
@@ -484,7 +484,7 @@ export default function SetupPage() {
           <button
             type="button"
             onClick={() => router.replace("/")}
-            className="rounded-lg bg-owly-primary px-5 py-2 text-sm font-semibold text-white hover:bg-owly-primary-dark focus:outline-none focus:ring-2 focus:ring-owly-primary focus:ring-offset-2 transition-colors"
+            className="rounded-lg bg-helplus-primary px-5 py-2 text-sm font-semibold text-white hover:bg-helplus-primary-dark focus:outline-none focus:ring-2 focus:ring-helplus-primary focus:ring-offset-2 transition-colors"
           >
             Go to Dashboard
           </button>
@@ -517,7 +517,7 @@ function Field({
     <div>
       <label
         htmlFor={id}
-        className="block text-sm font-medium text-owly-text mb-1.5"
+        className="block text-sm font-medium text-helplus-text mb-1.5"
       >
         {label}
       </label>
@@ -528,7 +528,7 @@ function Field({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full rounded-lg border border-owly-border bg-owly-bg px-3.5 py-2.5 text-sm text-owly-text placeholder:text-owly-text-light focus:outline-none focus:ring-2 focus:ring-owly-primary focus:border-transparent transition-shadow"
+        className="w-full rounded-lg border border-helplus-border bg-helplus-bg px-3.5 py-2.5 text-sm text-helplus-text placeholder:text-helplus-text-light focus:outline-none focus:ring-2 focus:ring-helplus-primary focus:border-transparent transition-shadow"
       />
     </div>
   );
@@ -544,12 +544,12 @@ function SummaryRow({
   detail: string;
 }) {
   return (
-    <div className="flex items-start gap-3 rounded-lg border border-owly-border bg-owly-bg px-4 py-3">
+    <div className="flex items-start gap-3 rounded-lg border border-helplus-border bg-helplus-bg px-4 py-3">
       <div
         className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
           done
-            ? "bg-owly-success text-white"
-            : "bg-owly-border text-owly-text-light"
+            ? "bg-helplus-success text-white"
+            : "bg-helplus-border text-helplus-text-light"
         }`}
       >
         {done ? (
@@ -571,8 +571,8 @@ function SummaryRow({
         )}
       </div>
       <div>
-        <div className="text-sm font-medium text-owly-text">{label}</div>
-        <div className="text-xs text-owly-text-light">{detail}</div>
+        <div className="text-sm font-medium text-helplus-text">{label}</div>
+        <div className="text-xs text-helplus-text-light">{detail}</div>
       </div>
     </div>
   );

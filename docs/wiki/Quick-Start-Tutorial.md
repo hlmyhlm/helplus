@@ -1,6 +1,6 @@
 # Quick Start Tutorial
 
-This tutorial walks you through getting Owly up and running with your first AI-powered customer conversation in approximately 5 minutes. By the end, you will have a working AI agent that answers questions based on your knowledge base.
+This tutorial walks you through getting Help+ up and running with your first AI-powered customer conversation in approximately 5 minutes. By the end, you will have a working AI agent that answers questions based on your knowledge base.
 
 ---
 
@@ -11,13 +11,13 @@ This tutorial walks you through getting Owly up and running with your first AI-p
 
 ---
 
-## Step 1: Install and Run Owly
+## Step 1: Install and Run Help+
 
 Clone the repository, install dependencies, and start the development server:
 
 ```bash
-git clone https://github.com/hsperus/owly.git
-cd owly
+git clone https://github.com/hsperus/helplus.git
+cd helplus
 cp .env.example .env
 ```
 
@@ -206,7 +206,7 @@ Send a test message through your connected channel and confirm that:
 
 ## What to Do Next
 
-Now that your basic setup is complete, consider these next steps to get the most out of Owly:
+Now that your basic setup is complete, consider these next steps to get the most out of Help+:
 
 | Task | Guide |
 |------|-------|

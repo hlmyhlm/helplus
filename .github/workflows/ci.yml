@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 env:
-  DATABASE_URL: postgresql://postgres:postgres@localhost:5432/owly_test?schema=public
+  DATABASE_URL: postgresql://postgres:postgres@localhost:5432/helplus_test?schema=public
   JWT_SECRET: ci-test-secret-key-do-not-use-in-production
 
 jobs:
@@ -20,7 +20,7 @@ jobs:
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: owly_test
+          POSTGRES_DB: helplus_test
         ports:
           - 5432:5432
         options: >-

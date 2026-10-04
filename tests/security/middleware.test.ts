@@ -95,7 +95,7 @@ describe("Middleware", () => {
       // A proper 3-part JWT structure
       const fakeToken = "eyJhbGciOiJIUzI1NiJ9.eyJ0ZXN0IjoxfQ.signature";
       const request = createMiddlewareRequest("/api/conversations", {
-        cookies: { "owly-token": fakeToken },
+        cookies: { "helplus-token": fakeToken },
       });
       const response = middleware(request);
 
@@ -105,7 +105,7 @@ describe("Middleware", () => {
     it("should reject malformed token (not 3 parts)", async () => {
       const { middleware } = await import("@/middleware");
       const request = createMiddlewareRequest("/api/conversations", {
-        cookies: { "owly-token": "not-a-jwt" },
+        cookies: { "helplus-token": "not-a-jwt" },
       });
       const response = middleware(request);
 

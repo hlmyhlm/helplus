@@ -88,21 +88,21 @@ export function Sidebar() {
   return (
     <aside
       className={cn(
-        "flex flex-col bg-owly-sidebar text-white transition-all duration-300",
+        "flex flex-col bg-helplus-sidebar text-white transition-all duration-300",
         collapsed ? "w-16" : "w-60"
       )}
     >
       <div className="flex items-center gap-3 px-4 py-4 border-b border-white/10">
         <Image
-          src="/owly.png"
-          alt="Owly"
+          src="/helplus.svg"
+          alt="Help+"
           width={32}
           height={32}
           className="rounded-lg flex-shrink-0"
         />
         {!collapsed && (
           <div className="overflow-hidden">
-            <h1 className="text-base font-bold tracking-tight">Owly</h1>
+            <h1 className="text-base font-bold tracking-tight">Help+</h1>
             <p className="text-[10px] text-white/50">AI Customer Support</p>
           </div>
         )}
@@ -132,8 +132,8 @@ export function Sidebar() {
                     className={cn(
                       "flex items-center gap-2.5 px-3 py-1.5 rounded-md text-[13px] font-medium transition-colors",
                       isActive
-                        ? "bg-owly-sidebar-active text-white"
-                        : "text-white/65 hover:bg-owly-sidebar-hover hover:text-white"
+                        ? "bg-helplus-sidebar-active text-white"
+                        : "text-white/65 hover:bg-helplus-sidebar-hover hover:text-white"
                     )}
                     title={collapsed ? item.name : undefined}
                   >
@@ -150,7 +150,7 @@ export function Sidebar() {
       <div className="px-2 py-2 border-t border-white/10">
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="flex items-center justify-center w-full py-1.5 rounded-md text-white/40 hover:text-white hover:bg-owly-sidebar-hover transition-colors"
+          className="flex items-center justify-center w-full py-1.5 rounded-md text-white/40 hover:text-white hover:bg-helplus-sidebar-hover transition-colors"
         >
           {collapsed ? (
             <ChevronRight className="h-4 w-4" />

@@ -14,7 +14,6 @@ RUN npm run build
 # ---- Runner stage ----
 FROM node:22-slim AS runner
 
-LABEL org.opencontainers.image.source="https://github.com/Hesper-Labs/owly"
 LABEL org.opencontainers.image.description="AI-powered customer support agent"
 
 RUN apt-get update && apt-get install -y \

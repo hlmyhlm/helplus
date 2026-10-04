@@ -1,9 +1,9 @@
-# Owly Helm Chart - Default Values
+# Help+ Helm Chart - Default Values
 
 replicaCount: 1
 
 image:
-  repository: ghcr.io/hesper-labs/owly
+  repository: helplus
   pullPolicy: IfNotPresent
   tag: ""  # Defaults to Chart.AppVersion
 
@@ -45,14 +45,14 @@ ingress:
     # cert-manager.io/cluster-issuer: letsencrypt-prod
     # nginx.ingress.kubernetes.io/proxy-body-size: "10m"
   hosts:
-    - host: owly.example.com
+    - host: helplus.example.com
       paths:
         - path: /
           pathType: Prefix
   tls: []
-    # - secretName: owly-tls
+    # - secretName: helplus-tls
     #   hosts:
-    #     - owly.example.com
+    #     - helplus.example.com
 
 # -- Resources
 resources:
@@ -93,7 +93,7 @@ database:
   url: ""
   host: "postgresql"
   port: 5432
-  name: "owly"
+  name: "helplus"
   user: "postgres"
   password: "postgres"
   sslMode: "prefer"

@@ -2,7 +2,7 @@ import { vi } from "vitest";
 
 // Set test environment variables
 process.env.JWT_SECRET = "test-secret-key-for-testing-only";
-process.env.DATABASE_URL = "postgresql://test:test@localhost:5432/owly_test";
+process.env.DATABASE_URL = "postgresql://test:test@localhost:5432/helplus_test";
 process.env.NODE_ENV = "test";
 
 // Mock Prisma globally

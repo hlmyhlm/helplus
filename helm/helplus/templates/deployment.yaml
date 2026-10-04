@@ -1,16 +1,16 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "owly.fullname" . }}
+  name: {{ include "helplus.fullname" . }}
   labels:
-    {{- include "owly.labels" . | nindent 4 }}
+    {{- include "helplus.labels" . | nindent 4 }}
 spec:
   {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
   {{- end }}
   selector:
     matchLabels:
-      {{- include "owly.selectorLabels" . | nindent 6 }}
+      {{- include "helplus.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       annotations:
@@ -22,13 +22,13 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
       labels:
-        {{- include "owly.selectorLabels" . | nindent 8 }}
+        {{- include "helplus.selectorLabels" . | nindent 8 }}
     spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      serviceAccountName: {{ include "owly.serviceAccountName" . }}
+      serviceAccountName: {{ include "helplus.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       {{- if .Values.migration.enabled }}
@@ -39,9 +39,9 @@ spec:
           command: ["npx", "prisma", "migrate", "deploy"]
           envFrom:
             - configMapRef:
-                name: {{ include "owly.fullname" . }}
+                name: {{ include "helplus.fullname" . }}
             - secretRef:
-                name: {{ include "owly.secretName" . }}
+                name: {{ include "helplus.secretName" . }}
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
       {{- end }}
@@ -56,9 +56,9 @@ spec:
               protocol: TCP
           envFrom:
             - configMapRef:
-                name: {{ include "owly.fullname" . }}
+                name: {{ include "helplus.fullname" . }}
             - secretRef:
-                name: {{ include "owly.secretName" . }}
+                name: {{ include "helplus.secretName" . }}
           {{- if .Values.probes.startup.enabled }}
           startupProbe:
             httpGet:
@@ -97,7 +97,7 @@ spec:
       volumes:
         - name: whatsapp-auth
           persistentVolumeClaim:
-            claimName: {{ include "owly.fullname" . }}-whatsapp-auth
+            claimName: {{ include "helplus.fullname" . }}-whatsapp-auth
       {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:

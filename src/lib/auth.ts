@@ -14,7 +14,7 @@ function getJwtSecret(): string {
 }
 
 const JWT_SECRET = getJwtSecret();
-const TOKEN_NAME = "owly-token";
+const TOKEN_NAME = "helplus-token";
 const TOKEN_EXPIRY = "7d";
 
 export async function hashPassword(password: string): Promise<string> {

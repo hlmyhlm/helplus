@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import { prisma } from "@/lib/prisma";
-import { owlyTools, executeToolCall } from "./tools";
+import { helplusTools, executeToolCall } from "./tools";
 import { emitNewMessage } from "@/lib/realtime";
 import { analyzeSentiment, detectIntent, estimateConfidence, requiresHumanApproval } from "./guardrails";
 import type {
@@ -33,7 +33,7 @@ function buildSystemPrompt(context: ConversationContext): string {
           .join("\n\n---\n\n")
       : "No specific knowledge base entries available. Answer based on general knowledge about the business.";
 
-  return `You are Owly, the AI customer support assistant for ${context.businessName}.
+  return `You are Help+, the AI customer support assistant for ${context.businessName}.
 
 ${context.businessDesc ? `About the business: ${context.businessDesc}` : ""}
 
@@ -223,7 +223,7 @@ async function callAI(
     response = await openai.chat.completions.create({
       model: config.model,
       messages: messages as OpenAI.ChatCompletionMessageParam[],
-      tools: owlyTools as OpenAI.ChatCompletionTool[],
+      tools: helplusTools as OpenAI.ChatCompletionTool[],
       max_tokens: config.maxTokens,
       temperature: config.temperature,
     });

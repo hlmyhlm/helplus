@@ -2,7 +2,7 @@ import { ToolDefinition } from "./types";
 import { prisma } from "@/lib/prisma";
 import nodemailer from "nodemailer";
 
-export const owlyTools: ToolDefinition[] = [
+export const helplusTools: ToolDefinition[] = [
   {
     type: "function",
     function: {
