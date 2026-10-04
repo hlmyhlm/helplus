@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import { unwrapList } from "@/lib/api-client";
 import {
   CheckCircle,
   Circle,
@@ -52,9 +53,9 @@ export function OnboardingChecklist() {
 
       const auth = authRes.ok ? await authRes.json() : {};
       const settings = settingsRes.ok ? await settingsRes.json() : {};
-      const entries = entriesRes.ok ? await entriesRes.json() : [];
+      const entries = unwrapList(entriesRes.ok ? await entriesRes.json() : []);
       const channels = channelsRes.ok ? await channelsRes.json() : [];
-      const team = teamRes.ok ? await teamRes.json() : [];
+      const team = unwrapList(teamRes.ok ? await teamRes.json() : []);
 
       const connectedChannels = Array.isArray(channels)
         ? channels.filter((c: { isActive: boolean }) => c.isActive)

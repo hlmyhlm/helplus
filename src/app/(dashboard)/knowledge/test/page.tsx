@@ -2,6 +2,7 @@
 
 import { Header } from "@/components/layout/header";
 import { cn } from "@/lib/utils";
+import { unwrapList } from "@/lib/api-client";
 import {
   Send,
   Loader2,
@@ -71,8 +72,10 @@ export default function KnowledgeTestPage() {
         fetch("/api/knowledge/entries"),
       ]);
 
-      const categories = categoriesRes.ok ? await categoriesRes.json() : [];
-      const entries = entriesRes.ok ? await entriesRes.json() : [];
+      const categories = unwrapList(categoriesRes.ok ? await categoriesRes.json() : []);
+      const entries = unwrapList<{ isActive: boolean; updatedAt: string }>(
+        entriesRes.ok ? await entriesRes.json() : []
+      );
 
       const activeEntries = entries.filter((e: { isActive: boolean }) => e.isActive);
       const lastUpdated =

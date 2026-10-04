@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { cn, formatRelativeTime } from "@/lib/utils";
+import { unwrapList, listMeta } from "@/lib/api-client";
 
 interface ActivityData {
   id: string;
@@ -91,7 +92,14 @@ export default function ActivityPage() {
       const res = await fetch(`/api/activity?${params.toString()}`);
       if (res.ok) {
         const json = await res.json();
-        setData(json);
+        const meta = listMeta(json);
+        setData({
+          activities: unwrapList(json),
+          total: meta?.total ?? 0,
+          page: meta?.page ?? 1,
+          limit: meta?.limit ?? 20,
+          totalPages: meta?.totalPages ?? 1,
+        });
       }
     } catch (error) {
       console.error("Failed to fetch activities:", error);

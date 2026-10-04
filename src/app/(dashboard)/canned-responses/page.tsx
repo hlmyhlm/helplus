@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
+import { unwrapList } from "@/lib/api-client";
 
 interface CannedResponseData {
   id: string;
@@ -54,7 +55,7 @@ export default function CannedResponsesPage() {
       const res = await fetch(`/api/canned-responses?${params.toString()}`);
       if (res.ok) {
         const data = await res.json();
-        setResponses(data);
+        setResponses(unwrapList(data));
       }
     } catch (error) {
       console.error("Failed to fetch canned responses:", error);

@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
+import { unwrapList } from "@/lib/api-client";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -429,7 +430,7 @@ export default function WebhooksPage() {
     try {
       const res = await fetch("/api/webhooks");
       const data = await res.json();
-      setWebhooks(data);
+      setWebhooks(unwrapList(data));
     } catch {
       // silently fail
     } finally {

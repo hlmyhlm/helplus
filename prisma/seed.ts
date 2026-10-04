@@ -2,6 +2,13 @@ import { PrismaClient } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import bcrypt from "bcryptjs";
 
+// pick up .env when run by hand; in docker the vars are already set
+try {
+  (process as { loadEnvFile?: () => void }).loadEnvFile?.();
+} catch {
+  // no .env file, that's fine
+}
+
 const connectionString = process.env.DATABASE_URL || "postgresql://postgres:postgres@localhost:5432/helplus?schema=public";
 const adapter = new PrismaPg({ connectionString });
 const prisma = new PrismaClient({ adapter });

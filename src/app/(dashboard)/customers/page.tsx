@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { cn, formatDate, getStatusColor, getChannelLabel } from "@/lib/utils";
+import { unwrapList } from "@/lib/api-client";
 
 // ---------- Types ----------
 
@@ -164,7 +165,7 @@ export default function CustomersPage() {
         const res = await fetch(`/api/customers?${params.toString()}`);
         if (res.ok) {
           const data = await res.json();
-          setCustomers(data.customers);
+          setCustomers(unwrapList(data));
           setPagination(data.pagination);
         }
       } catch (error) {
