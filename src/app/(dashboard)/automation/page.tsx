@@ -623,7 +623,7 @@ export default function AutomationPage() {
                   </label>
                   <button
                     onClick={addCondition}
-                    className="text-xs text-helplus-link hover:text-helplus-primary-dark font-medium transition-colors"
+                    className="text-xs text-helplus-link font-medium transition-colors"
                   >
                     + Add Condition
                   </button>
@@ -690,7 +690,7 @@ export default function AutomationPage() {
                   </label>
                   <button
                     onClick={addAction}
-                    className="text-xs text-helplus-link hover:text-helplus-primary-dark font-medium transition-colors"
+                    className="text-xs text-helplus-link font-medium transition-colors"
                   >
                     + Add Action
                   </button>

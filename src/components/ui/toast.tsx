@@ -50,7 +50,7 @@ const styleMap: Record<ToastType, string> = {
   warning:
     "border-helplus-warning/30 bg-amber-50 text-amber-900",
   info:
-    "border-helplus-primary/30 bg-helplus-primary-50 text-helplus-primary-dark",
+    "border-helplus-primary/30 bg-helplus-primary-50 text-helplus-link",
 };
 
 const iconColorMap: Record<ToastType, string> = {

@@ -202,7 +202,7 @@ export function OnboardingChecklist() {
                 {item.completed ? (
                   <CheckCircle className="h-5 w-5 text-helplus-success" />
                 ) : (
-                  <Circle className="h-5 w-5 text-helplus-border" />
+                  <Circle className="h-5 w-5 text-helplus-text-light" />
                 )}
               </div>
 

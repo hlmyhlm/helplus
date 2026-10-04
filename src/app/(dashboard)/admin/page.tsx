@@ -49,7 +49,7 @@ interface ApiKeyItem {
 // ---------------------------------------------------------------------------
 
 const roleBadgeStyles: Record<string, string> = {
-  admin: "bg-helplus-primary-50 text-helplus-primary-dark border border-helplus-primary-100",
+  admin: "bg-helplus-primary-50 text-helplus-link border border-helplus-primary-100",
   editor: "bg-amber-50 text-amber-700 border border-amber-200",
   viewer: "bg-gray-100 text-gray-600 border border-gray-200",
 };

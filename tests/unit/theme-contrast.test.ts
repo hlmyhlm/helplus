@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "fs";
+import { readFileSync, readdirSync, statSync } from "fs";
 import path from "path";
 
 const css = readFileSync(path.resolve(__dirname, "../../src/app/globals.css"), "utf8");
@@ -34,6 +34,7 @@ const PAIRS: [string, string][] = [
   ["link", "bg"],
   ["link", "surface"],
   ["link", "primary-50"],
+  ["link", "primary-100"],
   ["#FFFFFF", "primary"],
   ["danger", "surface"],
   ["success", "surface"],
@@ -52,3 +53,49 @@ for (const [name, selector] of [["light", ":root"], ["dark", ".dark"]] as const)
     });
   });
 }
+
+// Guard: every text-helplus-* class in src must use a token that is
+// actually contrast-tested above. Anything else (e.g. text-helplus-primary-dark,
+// text-helplus-border) risks failing 4.5:1 in one of the themes since it has
+// no PAIRS coverage.
+const ALLOWED_TEXT_TOKENS = new Set([
+  "text",
+  "text-light",
+  "link",
+  "danger",
+  "success",
+  "warning",
+]);
+
+function collectSourceFiles(dir: string, out: string[] = []): string[] {
+  for (const entry of readdirSync(dir)) {
+    if (entry === "generated") continue;
+    const full = path.join(dir, entry);
+    const stat = statSync(full);
+    if (stat.isDirectory()) {
+      collectSourceFiles(full, out);
+    } else if (/\.(tsx|ts)$/.test(entry)) {
+      out.push(full);
+    }
+  }
+  return out;
+}
+
+describe("text-helplus-* token usage", () => {
+  const srcDir = path.resolve(__dirname, "../../src");
+  const files = collectSourceFiles(srcDir);
+
+  it("only uses contrast-tested tokens as a text colour", () => {
+    const offenders: string[] = [];
+    for (const file of files) {
+      const content = readFileSync(file, "utf8");
+      for (const m of content.matchAll(/text-helplus-([a-z0-9-]+)/g)) {
+        const token = m[1];
+        if (!ALLOWED_TEXT_TOKENS.has(token)) {
+          offenders.push(`${path.relative(srcDir, file)}: text-helplus-${token}`);
+        }
+      }
+    }
+    expect(offenders, offenders.join("\n")).toEqual([]);
+  });
+});

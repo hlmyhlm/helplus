@@ -15,7 +15,7 @@ const variantStyles: Record<BadgeVariant, string> = {
   success: "bg-green-50 text-green-700 border border-green-200",
   warning: "bg-amber-50 text-amber-700 border border-amber-200",
   danger: "bg-red-50 text-red-700 border border-red-200",
-  info: "bg-helplus-primary-50 text-helplus-primary-dark border border-helplus-primary-100",
+  info: "bg-helplus-primary-50 text-helplus-link border border-helplus-primary-100",
 };
 
 const sizeStyles: Record<BadgeSize, string> = {

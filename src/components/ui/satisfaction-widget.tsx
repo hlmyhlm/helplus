@@ -53,7 +53,7 @@ export function SatisfactionWidget({
               "h-3.5 w-3.5 cursor-pointer transition-colors",
               value <= (hovering || rating)
                 ? "text-yellow-400 fill-yellow-400"
-                : "text-helplus-border"
+                : "text-helplus-text-light"
             )}
             onMouseEnter={() => !submitted && setHovering(value)}
             onMouseLeave={() => setHovering(0)}
@@ -79,7 +79,7 @@ export function SatisfactionWidget({
                   "h-5 w-5",
                   value <= rating
                     ? "text-yellow-400 fill-yellow-400"
-                    : "text-helplus-border"
+                    : "text-helplus-text-light"
                 )}
               />
             ))}
@@ -108,7 +108,7 @@ export function SatisfactionWidget({
                     "h-7 w-7 transition-all",
                     value <= (hovering || rating)
                       ? "text-yellow-400 fill-yellow-400 scale-110"
-                      : "text-helplus-border group-hover:text-yellow-300"
+                      : "text-helplus-text-light group-hover:text-yellow-300"
                   )}
                 />
               </button>

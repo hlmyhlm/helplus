@@ -275,7 +275,7 @@ function WebhookModal({
             </div>
             <button
               onClick={addHeaderPair}
-              className="mt-2 text-sm text-helplus-link hover:text-helplus-primary-dark font-medium transition-colors"
+              className="mt-2 text-sm text-helplus-link font-medium transition-colors"
             >
               + Add Header
             </button>

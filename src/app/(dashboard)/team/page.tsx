@@ -369,7 +369,7 @@ function getRoleBadge(role: string) {
   const map: Record<string, string> = {
     admin: "bg-purple-100 text-purple-700",
     manager: "bg-blue-100 text-blue-700",
-    lead: "bg-helplus-primary-100 text-helplus-primary-dark",
+    lead: "bg-helplus-primary-100 text-helplus-link",
     member: "bg-gray-100 text-gray-700",
   };
   return map[role] || map.member;
