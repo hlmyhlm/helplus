@@ -1,5 +1,5 @@
 import type { Settings } from "@/generated/prisma/client";
-import { toProviderKind, type ProviderConfig } from "./provider";
+import { toProviderKind, resolveBaseUrl, type ProviderConfig } from "./provider";
 
 type ChatFields = Pick<Settings, "aiProvider" | "aiModel" | "aiApiKey" | "aiBaseUrl">;
 type EmbedFields = ChatFields & Pick<Settings, "embedProvider" | "embedModel" | "embedApiKey" | "embedBaseUrl">;
@@ -10,8 +10,11 @@ export function chatConfig(s: ChatFields): ProviderConfig {
 
 export function embedConfig(s: EmbedFields): ProviderConfig {
   const kind = toProviderKind(s.embedProvider);
-  // same provider as chat and no separate key: reuse the chat key
-  const apiKey = s.embedApiKey || (kind === toProviderKind(s.aiProvider) ? s.aiApiKey : "");
+  const chat = chatConfig(s);
+  const embedBaseUrl = resolveBaseUrl({ kind, model: s.embedModel, apiKey: "", baseUrl: s.embedBaseUrl });
+  // only hand the chat key to a provider that resolves to the same server
+  const sameServer = kind === chat.kind && embedBaseUrl === resolveBaseUrl(chat);
+  const apiKey = s.embedApiKey || (sameServer ? chat.apiKey : "");
   return { kind, model: s.embedModel, apiKey, baseUrl: s.embedBaseUrl };
 }
 

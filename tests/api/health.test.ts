@@ -62,4 +62,24 @@ describe("GET /api/health", () => {
 
     vi.unstubAllGlobals();
   });
+
+  it("should report ai as not_configured for a custom provider with no base url, without making a request", async () => {
+    (mockPrisma.$queryRaw as ReturnType<typeof vi.fn>).mockResolvedValue([{ "?column?": 1 }]);
+    (mockPrisma.settings as Record<string, ReturnType<typeof vi.fn>>).findUnique.mockResolvedValue({
+      aiApiKey: "key",
+      aiProvider: "custom",
+      aiBaseUrl: "",
+    });
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { GET } = await import("@/app/api/health/route");
+    const response = await GET();
+    const data = await parseJsonResponse(response);
+
+    expect(data.services.ai).toBe("not_configured");
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    vi.unstubAllGlobals();
+  });
 });

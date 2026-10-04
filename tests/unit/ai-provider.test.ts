@@ -94,6 +94,30 @@ describe("config", () => {
     expect(cfg.apiKey).toBe("");
   });
 
+  it("does not reuse the chat key for a different custom server", () => {
+    const cfg = embedConfig({
+      ...fixtures.settings,
+      aiProvider: "custom",
+      aiBaseUrl: "http://a.local/v1",
+      embedProvider: "custom",
+      embedBaseUrl: "http://b.local/v1",
+      embedApiKey: "",
+    });
+    expect(cfg.apiKey).toBe("");
+  });
+
+  it("reuses the chat key for the same custom server", () => {
+    const cfg = embedConfig({
+      ...fixtures.settings,
+      aiProvider: "custom",
+      aiBaseUrl: "http://a.local/v1",
+      embedProvider: "custom",
+      embedBaseUrl: "http://a.local/v1",
+      embedApiKey: "",
+    });
+    expect(cfg.apiKey).toBe(fixtures.settings.aiApiKey);
+  });
+
   it("treats local providers as configured without a key", () => {
     expect(isConfigured({ kind: "ollama", model: "m", apiKey: "" })).toBe(true);
     expect(isConfigured({ kind: "openai", model: "m", apiKey: "" })).toBe(false);
