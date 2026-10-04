@@ -8,7 +8,7 @@ describe("GET /api/health", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     // Mock settings for OpenAI check
-    (mockPrisma.settings as Record<string, ReturnType<typeof vi.fn>>).findFirst.mockResolvedValue({ aiApiKey: "" });
+    (mockPrisma.settings as Record<string, ReturnType<typeof vi.fn>>).findUnique.mockResolvedValue({ aiApiKey: "" });
   });
 
   it("should return ok status when database is connected", async () => {
@@ -40,12 +40,26 @@ describe("GET /api/health", () => {
 
   it("should report openai as not_configured when no API key", async () => {
     (mockPrisma.$queryRaw as ReturnType<typeof vi.fn>).mockResolvedValue([{ "?column?": 1 }]);
-    (mockPrisma.settings as Record<string, ReturnType<typeof vi.fn>>).findFirst.mockResolvedValue({ aiApiKey: "" });
+    (mockPrisma.settings as Record<string, ReturnType<typeof vi.fn>>).findUnique.mockResolvedValue({ aiApiKey: "" });
 
     const { GET } = await import("@/app/api/health/route");
     const response = await GET();
     const data = await parseJsonResponse(response);
 
     expect(data.services.openai).toBe("not_configured");
+  });
+
+  it("should report openai as reachable when the API responds ok", async () => {
+    (mockPrisma.$queryRaw as ReturnType<typeof vi.fn>).mockResolvedValue([{ "?column?": 1 }]);
+    (mockPrisma.settings as Record<string, ReturnType<typeof vi.fn>>).findUnique.mockResolvedValue({ aiApiKey: "sk-test" });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true }));
+
+    const { GET } = await import("@/app/api/health/route");
+    const response = await GET();
+    const data = await parseJsonResponse(response);
+
+    expect(data.services.openai).toBe("reachable");
+
+    vi.unstubAllGlobals();
   });
 });
