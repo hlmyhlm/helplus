@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSettings } from "@/lib/settings";
-import OpenAI from "openai";
+import { chatCompletion } from "@/lib/ai/provider";
+import { chatConfig, isConfigured } from "@/lib/ai/config";
 import { logger } from "@/lib/logger";
 import { requireAuth, isAuthenticated } from "@/lib/route-auth";
 
@@ -23,7 +24,8 @@ export async function POST(request: NextRequest) {
     // Load settings for AI configuration
     const settings = await getSettings();
 
-    if (!settings?.aiApiKey) {
+    const ai = chatConfig(settings);
+    if (!isConfigured(ai)) {
       return NextResponse.json(
         { error: "AI API key is not configured. Please configure it in Settings." },
         { status: 400 }
@@ -70,19 +72,17 @@ Your answer here...
 ---SOURCES---
 [1, 3, 5]`;
 
-    const openai = new OpenAI({
-      apiKey: settings.aiApiKey,
-    });
-
-    const completion = await openai.chat.completions.create({
-      model: settings.aiModel || "gpt-4o-mini",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: question.trim() },
-      ],
-      max_tokens: settings.maxTokens || 2048,
-      temperature: settings.temperature ?? 0.7,
-    });
+    const completion = await chatCompletion(
+      { ...ai, model: ai.model || "gpt-4o-mini" },
+      {
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: question.trim() },
+        ],
+        maxTokens: settings.maxTokens || 2048,
+        temperature: settings.temperature ?? 0.7,
+      }
+    );
 
     const responseText = completion.choices[0]?.message?.content || "";
 

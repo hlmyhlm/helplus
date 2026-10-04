@@ -31,6 +31,11 @@ interface SettingsData {
   aiProvider: string;
   aiModel: string;
   aiApiKey: string;
+  aiBaseUrl: string;
+  embedProvider: string;
+  embedModel: string;
+  embedApiKey: string;
+  embedBaseUrl: string;
   maxTokens: number;
   temperature: number;
   elevenLabsKey: string;
@@ -82,7 +87,18 @@ const tabs: TabDef[] = [
 // Which fields belong to each section (used for partial saves)
 const sectionFields: Record<SectionKey, (keyof SettingsData)[]> = {
   general: ["businessName", "businessDesc", "welcomeMessage", "tone", "language"],
-  ai: ["aiProvider", "aiModel", "aiApiKey", "maxTokens", "temperature"],
+  ai: [
+    "aiProvider",
+    "aiModel",
+    "aiBaseUrl",
+    "aiApiKey",
+    "maxTokens",
+    "temperature",
+    "embedProvider",
+    "embedModel",
+    "embedBaseUrl",
+    "embedApiKey",
+  ],
   voice: ["elevenLabsKey", "elevenLabsVoice"],
   phone: ["twilioSid", "twilioToken", "twilioPhone"],
   email: [
@@ -420,6 +436,19 @@ function GeneralSection({
   );
 }
 
+const AI_PRESETS: Record<string, { model: string; baseUrl: string }> = {
+  openai: { model: "gpt-4o-mini", baseUrl: "" },
+  deepseek: { model: "deepseek-chat", baseUrl: "https://api.deepseek.com" },
+  ollama: { model: "llama3.1", baseUrl: "http://localhost:11434/v1" },
+  custom: { model: "", baseUrl: "" },
+};
+
+const EMBED_PRESETS: Record<string, { model: string; baseUrl: string }> = {
+  openai: { model: "text-embedding-3-small", baseUrl: "" },
+  ollama: { model: "nomic-embed-text", baseUrl: "http://localhost:11434/v1" },
+  custom: { model: "", baseUrl: "" },
+};
+
 function AISection({
   data,
   update,
@@ -427,62 +456,40 @@ function AISection({
   data: SettingsData;
   update: (field: keyof SettingsData, value: string | number) => void;
 }) {
-  const modelOptions: Record<string, { value: string; label: string }[]> = {
-    openai: [
-      { value: "gpt-4o", label: "GPT-4o" },
-      { value: "gpt-4o-mini", label: "GPT-4o Mini" },
-      { value: "gpt-4-turbo", label: "GPT-4 Turbo" },
-    ],
-    claude: [
-      { value: "claude-sonnet-4-20250514", label: "Claude Sonnet 4" },
-      { value: "claude-3-5-sonnet-20241022", label: "Claude 3.5 Sonnet" },
-      { value: "claude-3-haiku-20240307", label: "Claude 3 Haiku" },
-    ],
-    ollama: [
-      { value: "llama3", label: "Llama 3" },
-      { value: "mistral", label: "Mistral" },
-      { value: "codellama", label: "Code Llama" },
-    ],
-  };
+  const local = (p: string) => p === "ollama" || p === "custom";
 
   return (
     <div className="space-y-5">
-      <FormField label="AI Provider" description="Select which AI provider to use for generating responses.">
+      <FormField label="AI provider" description="DeepSeek and local servers use the same OpenAI-style API.">
         <SelectInput
           value={data.aiProvider}
           onChange={(v) => {
             update("aiProvider", v);
-            const models = modelOptions[v];
-            if (models && models.length > 0) {
-              update("aiModel", models[0].value);
-            }
+            update("aiModel", AI_PRESETS[v]?.model ?? "");
+            update("aiBaseUrl", AI_PRESETS[v]?.baseUrl ?? "");
           }}
           options={[
-            { value: "openai", label: "OpenAI" },
-            { value: "claude", label: "Claude (Anthropic)" },
-            { value: "ollama", label: "Ollama (Local)" },
+            { value: "openai", label: "OpenAI (ChatGPT)" },
+            { value: "deepseek", label: "DeepSeek" },
+            { value: "ollama", label: "Ollama (local)" },
+            { value: "custom", label: "Other OpenAI-compatible server" },
           ]}
         />
       </FormField>
-      <FormField label="Model" description="The specific model to use for AI responses.">
-        <SelectInput
-          value={data.aiModel}
-          onChange={(v) => update("aiModel", v)}
-          options={modelOptions[data.aiProvider] || []}
-        />
+      <FormField label="Model" description="Exact model name, e.g. gpt-4o-mini, deepseek-chat, llama3.1.">
+        <TextInput value={data.aiModel} onChange={(v) => update("aiModel", v)} placeholder="Model name" />
       </FormField>
-      <FormField label="API Key" description="Your provider API key. Not required for Ollama.">
+      <FormField label="Server URL" description="Leave empty for OpenAI.">
+        <TextInput value={data.aiBaseUrl} onChange={(v) => update("aiBaseUrl", v)} placeholder="https://..." />
+      </FormField>
+      <FormField label="API key" description={local(data.aiProvider) ? "Usually not needed for local servers." : "Your provider API key."}>
         <PasswordInput
           value={data.aiApiKey}
           onChange={(v) => update("aiApiKey", v)}
-          placeholder={
-            data.aiProvider === "ollama"
-              ? "Not required for local models"
-              : "Enter your API key"
-          }
+          placeholder={local(data.aiProvider) ? "Optional" : "Enter your API key"}
         />
       </FormField>
-      <FormField label="Max Tokens" description="Maximum number of tokens per AI response.">
+      <FormField label="Max tokens" description="Longest answer the AI may write.">
         <SliderInput
           value={data.maxTokens}
           onChange={(v) => update("maxTokens", v)}
@@ -492,7 +499,7 @@ function AISection({
           displayValue={data.maxTokens.toLocaleString()}
         />
       </FormField>
-      <FormField label="Temperature" description="Controls randomness. Lower values make responses more focused, higher values more creative.">
+      <FormField label="Temperature" description="Lower is more focused, higher is more creative.">
         <SliderInput
           value={data.temperature}
           onChange={(v) => update("temperature", v)}
@@ -502,6 +509,39 @@ function AISection({
           displayValue={data.temperature.toFixed(1)}
         />
       </FormField>
+
+      <div className="pt-5 border-t border-helplus-border space-y-5">
+        <div>
+          <h4 className="text-sm font-semibold text-helplus-text">Similar-ticket search</h4>
+          <p className="text-xs text-helplus-text-light mt-1">
+            Needs an embeddings model. Not every provider offers one, so this can use a different provider.
+          </p>
+        </div>
+        <FormField label="Embeddings provider">
+          <SelectInput
+            value={data.embedProvider}
+            onChange={(v) => {
+              update("embedProvider", v);
+              update("embedModel", EMBED_PRESETS[v]?.model ?? "");
+              update("embedBaseUrl", EMBED_PRESETS[v]?.baseUrl ?? "");
+            }}
+            options={[
+              { value: "openai", label: "OpenAI" },
+              { value: "ollama", label: "Ollama (local)" },
+              { value: "custom", label: "Other OpenAI-compatible server" },
+            ]}
+          />
+        </FormField>
+        <FormField label="Embeddings model">
+          <TextInput value={data.embedModel} onChange={(v) => update("embedModel", v)} placeholder="Model name" />
+        </FormField>
+        <FormField label="Server URL" description="Leave empty for OpenAI.">
+          <TextInput value={data.embedBaseUrl} onChange={(v) => update("embedBaseUrl", v)} placeholder="https://..." />
+        </FormField>
+        <FormField label="API key" description="Leave empty to reuse the key above when it's the same provider.">
+          <PasswordInput value={data.embedApiKey} onChange={(v) => update("embedApiKey", v)} placeholder="Optional" />
+        </FormField>
+      </div>
     </div>
   );
 }
@@ -741,6 +781,11 @@ const defaultSettings: SettingsData = {
   aiProvider: "openai",
   aiModel: "gpt-4o-mini",
   aiApiKey: "",
+  aiBaseUrl: "",
+  embedProvider: "openai",
+  embedModel: "text-embedding-3-small",
+  embedApiKey: "",
+  embedBaseUrl: "",
   maxTokens: 2048,
   temperature: 0.7,
   elevenLabsKey: "",

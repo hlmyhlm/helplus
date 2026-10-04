@@ -1,4 +1,6 @@
-import OpenAI from "openai";
+import type OpenAI from "openai";
+import { chatCompletion } from "./provider";
+import { chatConfig, isConfigured } from "./config";
 import { prisma } from "@/lib/prisma";
 import { getSettings } from "@/lib/settings";
 import { helplusTools, executeToolCall } from "./tools";
@@ -84,6 +86,7 @@ async function getAIConfig(): Promise<AIConfig & ConversationContext> {
     provider: settings.aiProvider,
     model: settings.aiModel,
     apiKey: settings.aiApiKey,
+    baseUrl: settings.aiBaseUrl,
     maxTokens: settings.maxTokens,
     temperature: settings.temperature,
     businessName: settings.businessName,
@@ -98,13 +101,22 @@ async function getAIConfig(): Promise<AIConfig & ConversationContext> {
   };
 }
 
+function providerFor(config: AIConfig) {
+  return chatConfig({
+    aiProvider: config.provider,
+    aiModel: config.model,
+    aiApiKey: config.apiKey,
+    aiBaseUrl: config.baseUrl,
+  });
+}
+
 export async function chat(
   conversationId: string,
   userMessage: string
 ): Promise<string> {
   const config = await getAIConfig();
 
-  if (!config.apiKey) {
+  if (!isConfigured(providerFor(config))) {
     return "AI is not configured. Please add your API key in Settings > AI Configuration.";
   }
 
@@ -214,15 +226,12 @@ async function callAI(
     return "I apologize, but I'm having trouble processing your request. Let me connect you with a team member.";
   }
 
-  const openai = new OpenAI({ apiKey: config.apiKey });
-
   let response;
   try {
-    response = await openai.chat.completions.create({
-      model: config.model,
+    response = await chatCompletion(providerFor(config), {
       messages: messages as OpenAI.ChatCompletionMessageParam[],
       tools: helplusTools as OpenAI.ChatCompletionTool[],
-      max_tokens: config.maxTokens,
+      maxTokens: config.maxTokens,
       temperature: config.temperature,
     });
   } catch {

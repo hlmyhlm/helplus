@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSettings } from "@/lib/settings";
+import { resolveBaseUrl } from "@/lib/ai/provider";
+import { chatConfig, isConfigured } from "@/lib/ai/config";
 
 const startTime = Date.now();
 
@@ -15,24 +17,24 @@ export async function GET() {
     checks.database = "error";
   }
 
-  // OpenAI reachability check
+  // AI provider reachability
   try {
-    const settings = await getSettings();
-    if (settings?.aiApiKey) {
+    const ai = chatConfig(await getSettings());
+    if (isConfigured(ai)) {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 3000);
-      const res = await fetch("https://api.openai.com/v1/models", {
-        method: "HEAD",
-        headers: { Authorization: `Bearer ${settings.aiApiKey}` },
+      const base = resolveBaseUrl(ai) ?? "https://api.openai.com/v1";
+      const res = await fetch(`${base.replace(/\/$/, "")}/models`, {
+        headers: ai.apiKey ? { Authorization: `Bearer ${ai.apiKey}` } : {},
         signal: controller.signal,
       });
       clearTimeout(timeout);
-      checks.openai = res.ok ? "reachable" : "error";
+      checks.ai = res.ok ? "reachable" : "error";
     } else {
-      checks.openai = "not_configured";
+      checks.ai = "not_configured";
     }
   } catch {
-    checks.openai = "unreachable";
+    checks.ai = "unreachable";
   }
 
   // Uptime

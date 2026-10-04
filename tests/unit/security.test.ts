@@ -96,6 +96,7 @@ describe("Security Utilities", () => {
         elevenLabsKey: "el-key",
         whatsappApiKey: "wa-key",
         telegramBotToken: "tg-token",
+        embedApiKey: "emb-key",
       };
 
       const masked = maskSettingsSecrets(settings);
