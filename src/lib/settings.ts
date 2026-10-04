@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import type { Prisma, Settings } from "@/generated/prisma/client";
 import { SECRET_FIELDS } from "@/lib/security";
 import { decryptSecret, encryptSecret } from "@/lib/secrets";
+import { resolveBaseUrl, toProviderKind } from "@/lib/ai/provider";
 
 const MASK = "***";
 
@@ -31,8 +32,38 @@ export function prepareSettingsUpdate(input: Record<string, unknown>): Record<st
   return out;
 }
 
+type Endpoint = { provider: string; baseUrl: string | undefined };
+
+function endpoint(provider: string, baseUrl: string): Endpoint {
+  return { provider, baseUrl: resolveBaseUrl({ kind: toProviderKind(provider), model: "", apiKey: "", baseUrl }) };
+}
+
+function hasNewKey(value: unknown): boolean {
+  return typeof value === "string" && value !== "" && value !== MASK;
+}
+
+// a stored key belongs to one provider and server; don't send it anywhere else
+function dropStaleKeys(current: Settings | null, input: Record<string, unknown>): Record<string, unknown> {
+  if (!current) return input;
+  const out = { ...input };
+  const pick = (field: keyof Settings) => (typeof input[field] === "string" ? (input[field] as string) : (current[field] as string));
+  const pairs = [
+    { key: "aiApiKey", provider: "aiProvider", url: "aiBaseUrl" },
+    { key: "embedApiKey", provider: "embedProvider", url: "embedBaseUrl" },
+  ] as const;
+  for (const { key, provider, url } of pairs) {
+    const before = endpoint(current[provider], current[url]);
+    const after = endpoint(pick(provider), pick(url));
+    const moved = before.provider !== after.provider || before.baseUrl !== after.baseUrl;
+    if (moved && !hasNewKey(input[key])) out[key] = "";
+  }
+  return out;
+}
+
 export async function saveSettings(input: Prisma.SettingsUpdateInput): Promise<Settings> {
-  const data = prepareSettingsUpdate(input as Record<string, unknown>) as Prisma.SettingsUpdateInput;
+  const current = await prisma.settings.findUnique({ where: { id: "default" } });
+  const checked = dropStaleKeys(current ?? null, input as Record<string, unknown>);
+  const data = prepareSettingsUpdate(checked) as Prisma.SettingsUpdateInput;
   const row = await prisma.settings.upsert({
     where: { id: "default" },
     update: data,

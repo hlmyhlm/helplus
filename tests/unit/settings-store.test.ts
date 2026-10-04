@@ -60,3 +60,62 @@ describe("saveSettings", () => {
     expect(s.aiApiKey).toBe("sk-new");
   });
 });
+
+describe("saveSettings key reset on provider change", () => {
+  const echo = async ({ update }: { update: Record<string, unknown> }) => ({ ...fixtures.settings, ...update });
+
+  beforeEach(() => {
+    mockPrisma.settings.findUnique.mockResolvedValue({
+      ...fixtures.settings,
+      aiApiKey: encryptSecret("sk-old"),
+      embedApiKey: encryptSecret("emb-old"),
+    });
+    mockPrisma.settings.upsert.mockImplementation(echo);
+  });
+
+  const written = () => mockPrisma.settings.upsert.mock.calls[0][0].update;
+
+  it("clears the chat key when the provider changes without a new key", async () => {
+    await saveSettings({ aiProvider: "deepseek", aiApiKey: "***" });
+    expect(written().aiApiKey).toBe("");
+  });
+
+  it("clears the chat key when the provider changes and no key is sent", async () => {
+    await saveSettings({ aiProvider: "deepseek" });
+    expect(written().aiApiKey).toBe("");
+  });
+
+  it("keeps a new key sent with the provider change", async () => {
+    const s = await saveSettings({ aiProvider: "deepseek", aiApiKey: "sk-deep" });
+    expect(isEncrypted(written().aiApiKey)).toBe(true);
+    expect(s.aiApiKey).toBe("sk-deep");
+  });
+
+  it("clears the chat key when the server URL changes", async () => {
+    await saveSettings({ aiBaseUrl: "https://other.example.com/v1", aiApiKey: "***" });
+    expect(written().aiApiKey).toBe("");
+  });
+
+  it("keeps the stored key when provider and URL stay the same", async () => {
+    await saveSettings({ aiProvider: "openai", aiBaseUrl: "", aiApiKey: "***", businessName: "Y" });
+    expect(written()).not.toHaveProperty("aiApiKey");
+    expect(written()).not.toHaveProperty("embedApiKey");
+  });
+
+  it("clears the embed key when the embed provider changes", async () => {
+    await saveSettings({ embedProvider: "ollama", embedApiKey: "***" });
+    expect(written().embedApiKey).toBe("");
+    expect(written()).not.toHaveProperty("aiApiKey");
+  });
+
+  it("clears the embed key when the embed URL changes", async () => {
+    await saveSettings({ embedBaseUrl: "https://emb.example.com/v1" });
+    expect(written().embedApiKey).toBe("");
+  });
+
+  it("keeps a new embed key sent with the change", async () => {
+    const s = await saveSettings({ embedProvider: "custom", embedBaseUrl: "http://x/v1", embedApiKey: "emb-new" });
+    expect(isEncrypted(written().embedApiKey)).toBe(true);
+    expect(s.embedApiKey).toBe("emb-new");
+  });
+});

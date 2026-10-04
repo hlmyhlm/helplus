@@ -467,6 +467,7 @@ function AISection({
             update("aiProvider", v);
             update("aiModel", AI_PRESETS[v]?.model ?? "");
             update("aiBaseUrl", AI_PRESETS[v]?.baseUrl ?? "");
+            update("aiApiKey", "");
           }}
           options={[
             { value: "openai", label: "OpenAI (ChatGPT)" },
@@ -524,6 +525,7 @@ function AISection({
               update("embedProvider", v);
               update("embedModel", EMBED_PRESETS[v]?.model ?? "");
               update("embedBaseUrl", EMBED_PRESETS[v]?.baseUrl ?? "");
+              update("embedApiKey", "");
             }}
             options={[
               { value: "openai", label: "OpenAI" },
