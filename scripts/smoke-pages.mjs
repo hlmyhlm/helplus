@@ -10,7 +10,7 @@ const PAGES = [
   "/", "/conversations", "/customers", "/tickets", "/knowledge",
   "/knowledge/test", "/canned-responses", "/automation", "/business-hours",
   "/team", "/sla", "/channels", "/webhooks", "/analytics", "/activity",
-  "/admin", "/api-docs", "/settings",
+  "/admin", "/api-docs", "/settings", "/more",
   ...(process.env.SMOKE_EXTRA ? process.env.SMOKE_EXTRA.split(",") : []),
 ];
 
