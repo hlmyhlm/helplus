@@ -4,6 +4,7 @@ import { vi } from "vitest";
 process.env.JWT_SECRET = "test-secret-key-for-testing-only";
 process.env.DATABASE_URL = "postgresql://test:test@localhost:5432/helplus_test";
 process.env.NODE_ENV = "test";
+process.env.HELPLUS_SECRET_KEY = "a1".repeat(32);
 
 // Mock Prisma globally
 vi.mock("@/lib/prisma", () => ({
