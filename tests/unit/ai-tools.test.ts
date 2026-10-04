@@ -129,7 +129,7 @@ describe("AI Tools", () => {
 
   describe("send_internal_email", () => {
     it("should send email when SMTP is configured", async () => {
-      mockPrisma.settings.findUnique.mockResolvedValue({
+      mockPrisma.settings.upsert.mockResolvedValue({
         smtpHost: "smtp.test.com",
         smtpPort: 587,
         smtpUser: "user@test.com",
@@ -149,7 +149,7 @@ describe("AI Tools", () => {
     });
 
     it("should return failure when SMTP not configured", async () => {
-      mockPrisma.settings.findUnique.mockResolvedValue({ smtpHost: null });
+      mockPrisma.settings.upsert.mockResolvedValue({ smtpHost: null });
 
       const result = JSON.parse(
         await executeToolCall("send_internal_email", {

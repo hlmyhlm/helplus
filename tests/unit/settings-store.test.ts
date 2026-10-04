@@ -14,7 +14,7 @@ beforeEach(() => {
 
 describe("getSettings", () => {
   it("decrypts secrets", async () => {
-    mockPrisma.settings.findUnique.mockResolvedValue({
+    mockPrisma.settings.upsert.mockResolvedValue({
       ...fixtures.settings,
       aiApiKey: encryptSecret("sk-real"),
     });
@@ -23,11 +23,49 @@ describe("getSettings", () => {
     expect(s.businessName).toBe("Test Business");
   });
 
-  it("creates the default row when missing", async () => {
-    mockPrisma.settings.findUnique.mockResolvedValue(null);
-    mockPrisma.settings.create.mockResolvedValue({ ...fixtures.settings });
+  it("creates the default row in one upsert", async () => {
+    mockPrisma.settings.upsert.mockResolvedValue({ ...fixtures.settings });
     await getSettings();
-    expect(mockPrisma.settings.create).toHaveBeenCalledWith({ data: { id: "default" } });
+    expect(mockPrisma.settings.upsert).toHaveBeenCalledWith({
+      where: { id: "default" },
+      update: {},
+      create: { id: "default" },
+    });
+    expect(mockPrisma.settings.create).not.toHaveBeenCalled();
+  });
+
+  it("blanks a secret it can't decrypt and names only the field", async () => {
+    const enc = encryptSecret("sk-real");
+    const raw = Buffer.from(enc.slice("enc:v1:".length), "base64");
+    raw[raw.length - 1] ^= 1;
+    mockPrisma.settings.upsert.mockResolvedValue({
+      ...fixtures.settings,
+      aiApiKey: "enc:v1:" + raw.toString("base64"),
+      smtpPass: encryptSecret("hunter2"),
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const s = await getSettings();
+    expect(s.aiApiKey).toBe("");
+    expect(s.smtpPass).toBe("hunter2");
+    const logged = warn.mock.calls.flat().join(" ");
+    expect(logged).toContain("aiApiKey");
+    expect(logged).not.toContain("enc:v1:");
+    warn.mockRestore();
+  });
+
+  it("blanks secrets when the key is missing", async () => {
+    mockPrisma.settings.upsert.mockResolvedValue({ ...fixtures.settings, aiApiKey: encryptSecret("sk-real") });
+    const saved = process.env.HELPLUS_SECRET_KEY;
+    delete process.env.HELPLUS_SECRET_KEY;
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const s = await getSettings();
+      expect(s.aiApiKey).toBe("");
+      expect(s.businessName).toBe("Test Business");
+    } finally {
+      process.env.HELPLUS_SECRET_KEY = saved;
+      warn.mockRestore();
+    }
   });
 });
 
@@ -35,6 +73,12 @@ describe("prepareSettingsUpdate", () => {
   it("drops masked secrets so the stored value survives", () => {
     const out = prepareSettingsUpdate({ aiApiKey: "***", businessName: "X" });
     expect(out).toEqual({ businessName: "X" });
+  });
+
+  it("encrypts a pasted value that looks encrypted", () => {
+    const out = prepareSettingsUpdate({ aiApiKey: "enc:v1:abc" });
+    expect(out.aiApiKey).not.toBe("enc:v1:abc");
+    expect(isEncrypted(out.aiApiKey as string)).toBe(true);
   });
 
   it("encrypts new secrets and leaves other fields alone", () => {

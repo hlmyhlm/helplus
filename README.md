@@ -22,6 +22,8 @@ npx tsx --env-file=.env prisma/seed.ts
 npm run dev
 ```
 
+Set `HELPLUS_SECRET_KEY` in `.env` to 64 hex characters (the command is in `.env.example`). After upgrading from a version without it, run `npx tsx --env-file=.env scripts/encrypt-secrets.ts` once.
+
 Open http://localhost:3000 and log in with `admin` / `admin123`.
 Change that password before anyone else can reach the app.
 

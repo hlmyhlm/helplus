@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { encryptSecret, decryptSecret, isEncrypted } from "@/lib/secrets";
+import { encryptSecret, decryptSecret, isEncrypted, assertSecretKey, SecretKeyError } from "@/lib/secrets";
 
 const KEY = "a1".repeat(32);
 
@@ -24,9 +24,11 @@ describe("secrets", () => {
     expect(decryptSecret("")).toBe("");
   });
 
-  it("does not encrypt twice", () => {
-    const enc = encryptSecret("x");
-    expect(encryptSecret(enc)).toBe(enc);
+  it("encrypts input that only looks encrypted", () => {
+    const pasted = "enc:v1:not-really";
+    const enc = encryptSecret(pasted);
+    expect(enc).not.toBe(pasted);
+    expect(decryptSecret(enc)).toBe(pasted);
   });
 
   it("returns old plain-text values as they are", () => {
@@ -43,5 +45,12 @@ describe("secrets", () => {
   it("throws without a valid key", () => {
     process.env.HELPLUS_SECRET_KEY = "short";
     expect(() => encryptSecret("x")).toThrow(/HELPLUS_SECRET_KEY/);
+    expect(() => encryptSecret("x")).toThrow(SecretKeyError);
+  });
+
+  it("assertSecretKey passes with a valid key and throws without one", () => {
+    expect(() => assertSecretKey()).not.toThrow();
+    delete process.env.HELPLUS_SECRET_KEY;
+    expect(() => assertSecretKey()).toThrow(SecretKeyError);
   });
 });

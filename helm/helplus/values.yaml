@@ -110,6 +110,8 @@ secrets:
   existingSecret: ""
   # Only used when existingSecret is empty:
   jwtSecret: ""
+  # 64 hex chars, encrypts saved API keys and passwords. Required in production
+  helplusSecretKey: ""
   openaiApiKey: ""
   twilioAccountSid: ""
   twilioAuthToken: ""

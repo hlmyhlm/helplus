@@ -23,7 +23,7 @@ describe("AI Engine", () => {
     mockOpenAICreateFn.mockReset();
 
     // Default settings
-    mockPrisma.settings.findUnique.mockResolvedValue({
+    mockPrisma.settings.upsert.mockResolvedValue({
       id: "default",
       businessName: "Test Biz",
       businessDesc: "A test business",
@@ -63,7 +63,7 @@ describe("AI Engine", () => {
   });
 
   it("should return fallback when AI API key is not configured", async () => {
-    mockPrisma.settings.findUnique.mockResolvedValue({
+    mockPrisma.settings.upsert.mockResolvedValue({
       id: "default",
       aiApiKey: "",
       aiProvider: "openai",

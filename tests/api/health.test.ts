@@ -8,7 +8,7 @@ describe("GET /api/health", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     // Mock settings for AI provider check
-    (mockPrisma.settings as Record<string, ReturnType<typeof vi.fn>>).findUnique.mockResolvedValue({ aiApiKey: "" });
+    (mockPrisma.settings as Record<string, ReturnType<typeof vi.fn>>).upsert.mockResolvedValue({ aiApiKey: "" });
   });
 
   it("should return ok status when database is connected", async () => {
@@ -40,7 +40,7 @@ describe("GET /api/health", () => {
 
   it("should report ai as not_configured when no API key", async () => {
     (mockPrisma.$queryRaw as ReturnType<typeof vi.fn>).mockResolvedValue([{ "?column?": 1 }]);
-    (mockPrisma.settings as Record<string, ReturnType<typeof vi.fn>>).findUnique.mockResolvedValue({ aiApiKey: "" });
+    (mockPrisma.settings as Record<string, ReturnType<typeof vi.fn>>).upsert.mockResolvedValue({ aiApiKey: "" });
 
     const { GET } = await import("@/app/api/health/route");
     const response = await GET();
@@ -51,7 +51,7 @@ describe("GET /api/health", () => {
 
   it("should report ai as reachable when the API responds ok", async () => {
     (mockPrisma.$queryRaw as ReturnType<typeof vi.fn>).mockResolvedValue([{ "?column?": 1 }]);
-    (mockPrisma.settings as Record<string, ReturnType<typeof vi.fn>>).findUnique.mockResolvedValue({ aiApiKey: "sk-test" });
+    (mockPrisma.settings as Record<string, ReturnType<typeof vi.fn>>).upsert.mockResolvedValue({ aiApiKey: "sk-test" });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true }));
 
     const { GET } = await import("@/app/api/health/route");
@@ -65,7 +65,7 @@ describe("GET /api/health", () => {
 
   it("should report ai as not_configured for a custom provider with no base url, without making a request", async () => {
     (mockPrisma.$queryRaw as ReturnType<typeof vi.fn>).mockResolvedValue([{ "?column?": 1 }]);
-    (mockPrisma.settings as Record<string, ReturnType<typeof vi.fn>>).findUnique.mockResolvedValue({
+    (mockPrisma.settings as Record<string, ReturnType<typeof vi.fn>>).upsert.mockResolvedValue({
       aiApiKey: "key",
       aiProvider: "custom",
       aiBaseUrl: "",

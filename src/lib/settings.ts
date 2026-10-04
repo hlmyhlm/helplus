@@ -3,21 +3,34 @@ import type { Prisma, Settings } from "@/generated/prisma/client";
 import { SECRET_FIELDS } from "@/lib/security";
 import { decryptSecret, encryptSecret } from "@/lib/secrets";
 import { resolveBaseUrl, toProviderKind } from "@/lib/ai/provider";
+import { logger } from "@/lib/logger";
 
 const MASK = "***";
 
+export type SettingsInput = Partial<
+  Record<Exclude<keyof Settings, "id" | "createdAt" | "updatedAt">, string | number | boolean>
+>;
+
+// a bad or rotated key shouldn't lock admins out; they can re-enter the secret
 function decryptRow(row: Settings): Settings {
   const out = { ...row };
   for (const field of SECRET_FIELDS) {
-    out[field] = decryptSecret(out[field] ?? "");
+    try {
+      out[field] = decryptSecret(out[field] ?? "");
+    } catch {
+      logger.warn(`could not decrypt settings.${field}, treating it as empty`);
+      out[field] = "";
+    }
   }
   return out;
 }
 
 export async function getSettings(): Promise<Settings> {
-  const row =
-    (await prisma.settings.findUnique({ where: { id: "default" } })) ??
-    (await prisma.settings.create({ data: { id: "default" } }));
+  const row = await prisma.settings.upsert({
+    where: { id: "default" },
+    update: {},
+    create: { id: "default" },
+  });
   return decryptRow(row);
 }
 
@@ -60,9 +73,9 @@ function dropStaleKeys(current: Settings | null, input: Record<string, unknown>)
   return out;
 }
 
-export async function saveSettings(input: Prisma.SettingsUpdateInput): Promise<Settings> {
+export async function saveSettings(input: SettingsInput): Promise<Settings> {
   const current = await prisma.settings.findUnique({ where: { id: "default" } });
-  const checked = dropStaleKeys(current ?? null, input as Record<string, unknown>);
+  const checked = dropStaleKeys(current ?? null, input);
   const data = prepareSettingsUpdate(checked) as Prisma.SettingsUpdateInput;
   const row = await prisma.settings.upsert({
     where: { id: "default" },

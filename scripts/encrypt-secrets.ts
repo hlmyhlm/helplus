@@ -5,9 +5,10 @@ import { SECRET_FIELDS } from "../src/lib/security";
 
 async function main() {
   const settings = await getSettings();
-  const secrets = Object.fromEntries(SECRET_FIELDS.map((f) => [f, settings[f]]));
+  // skip empty ones, which includes any value that failed to decrypt
+  const secrets = Object.fromEntries(SECRET_FIELDS.filter((f) => settings[f]).map((f) => [f, settings[f]]));
   await saveSettings(secrets);
-  console.log(`encrypted ${SECRET_FIELDS.length} fields`);
+  console.log(`encrypted ${Object.keys(secrets).length} fields`);
 }
 
 main()

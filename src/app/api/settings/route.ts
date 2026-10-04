@@ -4,6 +4,7 @@ import { maskSettingsSecrets } from "@/lib/security";
 import { updateSettingsSchema, validateBody } from "@/lib/validations";
 import { logger } from "@/lib/logger";
 import { requireAuth, isAuthenticated } from "@/lib/route-auth";
+import { SecretKeyError } from "@/lib/secrets";
 
 export async function GET(request: NextRequest) {
   const auth = await requireAuth(request, "settings:read");
@@ -40,6 +41,12 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json(maskSettingsSecrets(await saveSettings(validation.data)));
   } catch (error) {
     logger.error("Failed to update settings:", error);
+    if (error instanceof SecretKeyError) {
+      return NextResponse.json(
+        { error: "Server encryption key is missing or invalid. Set HELPLUS_SECRET_KEY." },
+        { status: 500 }
+      );
+    }
     return NextResponse.json(
       { error: "Failed to update settings" },
       { status: 500 }
