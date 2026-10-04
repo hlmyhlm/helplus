@@ -12,6 +12,7 @@ export function Sidebar() {
   return (
     <aside className="hidden md:flex w-56 flex-shrink-0 flex-col bg-helplus-sidebar text-white">
       <div className="flex items-center gap-2.5 h-16 px-5">
+        {/* alt empty, the name is shown as text right next to it */}
         <Image src="/helplus.svg" alt="" width={24} height={24} />
         <span className="text-[17px] font-semibold tracking-tight text-white">
           Help+
