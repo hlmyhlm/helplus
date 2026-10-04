@@ -20,14 +20,10 @@ export async function GET() {
   // AI provider reachability
   try {
     const ai = chatConfig(await getSettings());
-    const resolvedBase = resolveBaseUrl(ai);
-    // a custom server with no url to call is not configured, not unreachable
-    if (ai.kind === "custom" && !resolvedBase) {
-      checks.ai = "not_configured";
-    } else if (isConfigured(ai)) {
+    if (isConfigured(ai)) {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 3000);
-      const base = resolvedBase ?? "https://api.openai.com/v1";
+      const base = resolveBaseUrl(ai) ?? "https://api.openai.com/v1";
       const res = await fetch(`${base.replace(/\/$/, "")}/models`, {
         headers: ai.apiKey ? { Authorization: `Bearer ${ai.apiKey}` } : {},
         signal: controller.signal,

@@ -5,12 +5,14 @@ import { moreNav, sectionGroups } from "@/components/layout/nav-items";
 
 export default function MorePage() {
   const settings = sectionGroups.find((g) => g.name === "Settings")!;
+  // settings has its own list below
+  const pages = moreNav.filter((i) => i.name !== "Settings").map((i) => ({ name: i.name, href: i.href }));
 
   return (
     <>
       <Header title="More" />
       <div className="flex-1 overflow-y-auto p-4 space-y-6">
-        <LinkList title="Pages" items={moreNav.map((i) => ({ name: i.name, href: i.href }))} />
+        <LinkList title="Pages" items={pages} />
         <LinkList title="Settings" items={settings.items} />
       </div>
     </>

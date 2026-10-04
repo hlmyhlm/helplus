@@ -33,6 +33,7 @@ describe("AI Engine", () => {
       aiProvider: "openai",
       aiModel: "gpt-4",
       aiApiKey: "sk-test",
+      aiBaseUrl: "",
       maxTokens: 1000,
       temperature: 0.7,
     });
@@ -66,6 +67,7 @@ describe("AI Engine", () => {
     mockPrisma.settings.upsert.mockResolvedValue({
       id: "default",
       aiApiKey: "",
+      aiBaseUrl: "",
       aiProvider: "openai",
       aiModel: "gpt-4",
       maxTokens: 1000,
@@ -113,6 +115,28 @@ describe("AI Engine", () => {
         temperature: 0.7,
       })
     );
+  });
+
+  it("hides an IC number from the AI provider", async () => {
+    const text = "My IC is 900101-14-5678, please check";
+    mockPrisma.conversation.findUnique.mockResolvedValue({
+      id: "conv-1",
+      channel: "whatsapp",
+      customerName: "John",
+      customerContact: "+1555",
+      status: "active",
+      messages: [{ role: "customer", content: text, createdAt: new Date() }],
+    });
+    mockOpenAICreateFn.mockResolvedValue({
+      choices: [{ finish_reason: "stop", message: { content: "Thanks" } }],
+    });
+
+    const { chat } = await import("@/lib/ai/engine");
+    await chat("conv-1", text);
+
+    const sent = JSON.stringify(mockOpenAICreateFn.mock.calls[0][0].messages);
+    expect(sent).toContain("My IC is [IC HIDDEN], please check");
+    expect(sent).not.toContain("900101");
   });
 
   it("should save user and assistant messages", async () => {

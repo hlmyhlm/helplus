@@ -124,9 +124,11 @@ Your answer here...
       totalEntries: entries.length,
     });
   } catch (error) {
+    // provider errors can echo keys or internal urls, so keep them in the log
     logger.error("Failed to test knowledge base:", error);
-    const message =
-      error instanceof Error ? error.message : "Failed to test knowledge base";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json(
+      { error: "Couldn't get an answer. Check the AI settings and try again." },
+      { status: 500 }
+    );
   }
 }

@@ -39,6 +39,9 @@ const PAIRS: [string, string][] = [
   ["danger", "surface"],
   ["success", "surface"],
   ["warning", "surface"],
+  ["danger", "bg"],
+  ["success", "bg"],
+  ["warning", "bg"],
 ];
 
 for (const [name, selector] of [["light", ":root"], ["dark", ".dark"]] as const) {
@@ -95,6 +98,25 @@ describe("text-helplus-* token usage", () => {
           offenders.push(`${path.relative(srcDir, file)}: text-helplus-${token}`);
         }
       }
+    }
+    expect(offenders, offenders.join("\n")).toEqual([]);
+  });
+
+  // text-helplus-x/60 fades a tested colour below 4.5:1. Exempt: placeholders,
+  // decorative icon components (<Icon className=... />) and disabled controls,
+  // which WCAG doesn't hold to the text ratio.
+  it("doesn't fade text colours with an opacity suffix", () => {
+    const offenders: string[] = [];
+    for (const file of files) {
+      const lines = readFileSync(file, "utf8").split("\n");
+      lines.forEach((line, i) => {
+        for (const m of line.matchAll(/(\S*?)text-helplus-[a-z0-9-]+\/\d+/g)) {
+          if (m[1].endsWith("placeholder:")) continue;
+          if (/<[A-Z]\w*\s+className=.*\/>/.test(line)) continue;
+          if (line.includes("cursor-not-allowed")) continue;
+          offenders.push(`${path.relative(srcDir, file)}:${i + 1}: ${m[0]}`);
+        }
+      });
     }
     expect(offenders, offenders.join("\n")).toEqual([]);
   });

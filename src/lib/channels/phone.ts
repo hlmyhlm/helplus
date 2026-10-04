@@ -1,4 +1,3 @@
-import OpenAI from "openai";
 import { prisma } from "@/lib/prisma";
 import { getSettings } from "@/lib/settings";
 import { chat, createNewConversation } from "@/lib/ai/engine";
@@ -10,7 +9,6 @@ interface PhoneConfig {
   twilioPhone: string;
   elevenLabsKey: string;
   elevenLabsVoice: string;
-  aiApiKey: string;
 }
 
 async function getPhoneConfig(): Promise<PhoneConfig | null> {
@@ -23,25 +21,7 @@ async function getPhoneConfig(): Promise<PhoneConfig | null> {
     twilioPhone: settings.twilioPhone,
     elevenLabsKey: settings.elevenLabsKey,
     elevenLabsVoice: settings.elevenLabsVoice,
-    aiApiKey: settings.aiApiKey,
   };
-}
-
-// Speech-to-Text using OpenAI Whisper
-export async function transcribeAudio(
-  audioBuffer: Buffer,
-  apiKey: string
-): Promise<string> {
-  const openai = new OpenAI({ apiKey });
-
-  const file = new File([new Uint8Array(audioBuffer)], "audio.wav", { type: "audio/wav" });
-
-  const transcription = await openai.audio.transcriptions.create({
-    file,
-    model: "whisper-1",
-  });
-
-  return transcription.text;
 }
 
 // Text-to-Speech using ElevenLabs

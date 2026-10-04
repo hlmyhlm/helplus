@@ -303,7 +303,7 @@ function WhatsAppCard({
                   ) : (
                     <div className="text-center">
                       <QrCode className="h-10 w-10 text-helplus-text-light/40 mx-auto mb-1" />
-                      <p className="text-xs text-helplus-text-light/60">
+                      <p className="text-xs text-helplus-text-light">
                         QR Code
                       </p>
                     </div>

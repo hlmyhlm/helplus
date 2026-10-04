@@ -20,7 +20,7 @@ export function SectionTabs() {
           className={cn(
             "whitespace-nowrap inline-flex items-center h-10 px-3 text-sm border-b-2 -mb-px",
             i.href === current
-              ? "border-helplus-primary text-helplus-text font-medium"
+              ? "border-helplus-link text-helplus-text font-medium"
               : "border-transparent text-helplus-text-light hover:text-helplus-text"
           )}
         >

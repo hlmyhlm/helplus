@@ -17,6 +17,10 @@ describe("maskIC", () => {
     expect(maskIC("IC:900101145678.").text).toBe(`IC:${IC_PLACEHOLDER}.`);
   });
 
+  it("hides an IC between letters", () => {
+    expect(maskIC("x900101145678x").text).toBe(`x${IC_PLACEHOLDER}x`);
+  });
+
   it("hides every IC in the text", () => {
     const out = maskIC("900101-14-5678 dan 851231-10-1234");
     expect(out.text).toBe(`${IC_PLACEHOLDER} dan ${IC_PLACEHOLDER}`);

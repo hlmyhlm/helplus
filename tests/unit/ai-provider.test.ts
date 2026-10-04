@@ -122,4 +122,9 @@ describe("config", () => {
     expect(isConfigured({ kind: "ollama", model: "m", apiKey: "" })).toBe(true);
     expect(isConfigured({ kind: "openai", model: "m", apiKey: "" })).toBe(false);
   });
+
+  it("needs a server url before a custom provider counts as configured", () => {
+    expect(isConfigured({ kind: "custom", model: "m", apiKey: "k", baseUrl: "" })).toBe(false);
+    expect(isConfigured({ kind: "custom", model: "m", apiKey: "", baseUrl: "http://llm.local/v1" })).toBe(true);
+  });
 });

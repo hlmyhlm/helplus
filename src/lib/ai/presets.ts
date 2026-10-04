@@ -26,3 +26,10 @@ export function findPreset(list: ProviderPreset[], value: string): ProviderPrese
 export function isLocalProvider(value: string): boolean {
   return value === "ollama" || value === "custom";
 }
+
+// client-side check for the onboarding checklist. keys arrive masked as "***"
+export function aiLooksConfigured(s: { aiProvider?: string; aiApiKey?: string; aiBaseUrl?: string }): boolean {
+  if (s.aiProvider === "ollama") return true;
+  if (s.aiProvider === "custom") return Boolean(s.aiBaseUrl?.trim());
+  return Boolean(s.aiApiKey);
+}

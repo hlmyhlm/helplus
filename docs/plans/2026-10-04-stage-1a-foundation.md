@@ -2224,7 +2224,7 @@ git commit -m "new app shell, bottom tabs on phone"
 - No page crashes with `.map is not a function`.
 - `prisma.settings` is only touched in `src/lib/settings.ts`; secrets in the database start with `enc:v1:`.
 - Saving the settings page without retyping a key keeps the key.
-- Every AI call goes through `src/lib/ai/provider.ts` (except Whisper in the phone channel).
+- Every AI call goes through `src/lib/ai/provider.ts` (the unused Whisper helper in the phone channel was removed).
 - The app is indigo, uses Plex, and is usable on a phone at the shell level.
 
 Next: plan 1B (companies, roles, per-company settings) builds on `getSettings()` and `provider.ts` from here.

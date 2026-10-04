@@ -2,6 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import { unwrapList } from "@/lib/api-client";
+import { aiLooksConfigured } from "@/lib/ai/presets";
 import {
   CheckCircle,
   Circle,
@@ -84,9 +85,9 @@ export function OnboardingChecklist() {
         {
           id: "ai",
           title: "AI configured",
-          description: "Connect your AI provider with an API key",
+          description: "Connect an AI provider or a local server",
           href: "/settings",
-          completed: !!settings.aiApiKey && settings.aiApiKey.length > 0,
+          completed: aiLooksConfigured(settings),
           icon: Bot,
         },
         {

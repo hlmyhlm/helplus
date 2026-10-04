@@ -19,5 +19,7 @@ export function embedConfig(s: EmbedFields): ProviderConfig {
 }
 
 export function isConfigured(cfg: ProviderConfig): boolean {
-  return cfg.kind === "ollama" || cfg.kind === "custom" || cfg.apiKey.length > 0;
+  // a custom server is only usable once it has a url
+  if (cfg.kind === "custom") return Boolean(resolveBaseUrl(cfg));
+  return cfg.kind === "ollama" || cfg.apiKey.length > 0;
 }
