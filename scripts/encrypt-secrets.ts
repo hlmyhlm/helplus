@@ -3,8 +3,16 @@
 import { getSettings, saveSettings } from "../src/lib/settings";
 import { SECRET_FIELDS } from "../src/lib/security";
 
-const settings = await getSettings();
-const secrets = Object.fromEntries(SECRET_FIELDS.map((f) => [f, settings[f]]));
-await saveSettings(secrets);
-console.log(`encrypted ${SECRET_FIELDS.length} fields`);
-process.exit(0);
+async function main() {
+  const settings = await getSettings();
+  const secrets = Object.fromEntries(SECRET_FIELDS.map((f) => [f, settings[f]]));
+  await saveSettings(secrets);
+  console.log(`encrypted ${SECRET_FIELDS.length} fields`);
+}
+
+main()
+  .then(() => process.exit(0))
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });
