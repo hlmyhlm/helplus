@@ -275,7 +275,7 @@ function WebhookModal({
             </div>
             <button
               onClick={addHeaderPair}
-              className="mt-2 text-sm text-helplus-primary hover:text-helplus-primary-dark font-medium transition-colors"
+              className="mt-2 text-sm text-helplus-link hover:text-helplus-primary-dark font-medium transition-colors"
             >
               + Add Header
             </button>
@@ -497,7 +497,7 @@ export default function WebhooksPage() {
           <div className="border border-helplus-border rounded-xl bg-helplus-surface p-5 transition-theme">
             <div className="flex items-start gap-3">
               <div className="p-2 bg-helplus-primary-50 rounded-lg flex-shrink-0">
-                <Info className="h-4 w-4 text-helplus-primary" />
+                <Info className="h-4 w-4 text-helplus-link" />
               </div>
               <div className="text-sm text-helplus-text-light leading-relaxed space-y-2">
                 <p className="font-medium text-helplus-text">Webhook Payload Format</p>
@@ -524,7 +524,7 @@ export default function WebhooksPage() {
           {/* Loading state */}
           {loading && (
             <div className="flex items-center justify-center py-16">
-              <Loader2 className="h-6 w-6 animate-spin text-helplus-primary" />
+              <Loader2 className="h-6 w-6 animate-spin text-helplus-link" />
             </div>
           )}
 
@@ -532,7 +532,7 @@ export default function WebhooksPage() {
           {!loading && webhooks.length === 0 && (
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <div className="p-4 bg-helplus-primary-50 rounded-full mb-4">
-                <Webhook className="h-8 w-8 text-helplus-primary" />
+                <Webhook className="h-8 w-8 text-helplus-link" />
               </div>
               <h3 className="text-lg font-semibold text-helplus-text mb-1">
                 No webhooks configured
@@ -609,7 +609,7 @@ export default function WebhooksPage() {
                       <button
                         onClick={() => handleTest(wh)}
                         disabled={testingId === wh.id}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-helplus-primary bg-helplus-primary-50 rounded-lg hover:bg-helplus-primary-100 transition-colors disabled:opacity-50"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-helplus-link bg-helplus-primary-50 rounded-lg hover:bg-helplus-primary-100 transition-colors disabled:opacity-50"
                         title="Send test payload"
                       >
                         {testingId === wh.id ? (

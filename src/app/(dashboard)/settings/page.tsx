@@ -880,7 +880,7 @@ export default function SettingsPage() {
       <>
         <Header title="Settings" description="Configure your Help+ instance" />
         <div className="flex-1 flex items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin text-helplus-primary" />
+          <Loader2 className="h-8 w-8 animate-spin text-helplus-link" />
         </div>
       </>
     );
@@ -903,7 +903,7 @@ export default function SettingsPage() {
                   className={cn(
                     "flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap",
                     isActive
-                      ? "bg-helplus-surface text-helplus-primary shadow-sm"
+                      ? "bg-helplus-surface text-helplus-link shadow-sm"
                       : "text-helplus-text-light hover:text-helplus-text hover:bg-helplus-surface/50"
                   )}
                 >

@@ -435,7 +435,7 @@ export default function AdminPage() {
                       <tr key={user.id} className="hover:bg-helplus-bg/50 transition-colors">
                         <td className="px-5 py-3">
                           <div className="flex items-center gap-3">
-                            <div className="flex items-center justify-center w-8 h-8 rounded-full bg-helplus-primary-50 text-helplus-primary text-sm font-semibold">
+                            <div className="flex items-center justify-center w-8 h-8 rounded-full bg-helplus-primary-50 text-helplus-link text-sm font-semibold">
                               {user.name.charAt(0).toUpperCase()}
                             </div>
                             <span className="text-sm font-medium text-helplus-text">
@@ -456,7 +456,7 @@ export default function AdminPage() {
                           <div className="flex items-center justify-end gap-1">
                             <button
                               onClick={() => openUserModal(user)}
-                              className="p-1.5 text-helplus-text-light hover:text-helplus-primary hover:bg-helplus-primary-50 rounded transition-colors"
+                              className="p-1.5 text-helplus-text-light hover:text-helplus-link hover:bg-helplus-primary-50 rounded transition-colors"
                               title="Edit user"
                             >
                               <Pencil className="h-3.5 w-3.5" />
@@ -579,7 +579,7 @@ export default function AdminPage() {
                               className={cn(
                                 "p-1.5 rounded transition-colors",
                                 apiKey.isActive
-                                  ? "text-helplus-primary hover:bg-helplus-primary-50"
+                                  ? "text-helplus-link hover:bg-helplus-primary-50"
                                   : "text-helplus-text-light hover:bg-gray-100"
                               )}
                               title={apiKey.isActive ? "Deactivate" : "Activate"}

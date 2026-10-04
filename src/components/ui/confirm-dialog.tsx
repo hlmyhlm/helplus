@@ -92,7 +92,7 @@ export function ConfirmDialog({
               "shrink-0 flex items-center justify-center rounded-full p-2",
               destructive
                 ? "bg-red-50 text-helplus-danger"
-                : "bg-helplus-primary-50 text-helplus-primary"
+                : "bg-helplus-primary-50 text-helplus-link"
             )}
           >
             {icon || <DefaultIcon className="h-5 w-5" />}

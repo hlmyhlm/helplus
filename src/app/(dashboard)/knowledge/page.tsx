@@ -331,7 +331,7 @@ export default function KnowledgeBasePage() {
                 </p>
                 <button
                   onClick={() => openCategoryModal()}
-                  className="mt-4 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-helplus-primary border border-helplus-primary/30 hover:bg-helplus-primary-50 rounded-lg transition-colors"
+                  className="mt-4 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-helplus-link border border-helplus-primary/30 hover:bg-helplus-primary-50 rounded-lg transition-colors"
                 >
                   <Plus className="h-3.5 w-3.5" />
                   Create Category
@@ -372,7 +372,7 @@ export default function KnowledgeBasePage() {
                           e.stopPropagation();
                           openCategoryModal(cat);
                         }}
-                        className="p-1 text-helplus-text-light hover:text-helplus-primary rounded transition-colors"
+                        className="p-1 text-helplus-text-light hover:text-helplus-link rounded transition-colors"
                         title="Edit category"
                       >
                         <Pencil className="h-3.5 w-3.5" />
@@ -389,7 +389,7 @@ export default function KnowledgeBasePage() {
                       </button>
                     </div>
                     {selectedCategoryId === cat.id && (
-                      <ChevronRight className="h-4 w-4 text-helplus-primary flex-shrink-0" />
+                      <ChevronRight className="h-4 w-4 text-helplus-link flex-shrink-0" />
                     )}
                   </div>
                 ))}
@@ -455,7 +455,7 @@ export default function KnowledgeBasePage() {
                     </p>
                     <button
                       onClick={() => openEntryModal()}
-                      className="mt-4 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-helplus-primary border border-helplus-primary/30 hover:bg-helplus-primary-50 rounded-lg transition-colors"
+                      className="mt-4 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-helplus-link border border-helplus-primary/30 hover:bg-helplus-primary-50 rounded-lg transition-colors"
                     >
                       <Plus className="h-3.5 w-3.5" />
                       Add First Entry
@@ -512,7 +512,7 @@ export default function KnowledgeBasePage() {
                                 className={cn(
                                   "p-1.5 rounded transition-colors",
                                   entry.isActive
-                                    ? "text-helplus-primary hover:bg-helplus-primary-50"
+                                    ? "text-helplus-link hover:bg-helplus-primary-50"
                                     : "text-helplus-text-light hover:bg-gray-100"
                                 )}
                                 title={entry.isActive ? "Deactivate" : "Activate"}
@@ -525,7 +525,7 @@ export default function KnowledgeBasePage() {
                               </button>
                               <button
                                 onClick={() => openEntryModal(entry)}
-                                className="p-1.5 text-helplus-text-light hover:text-helplus-primary hover:bg-helplus-primary-50 rounded transition-colors"
+                                className="p-1.5 text-helplus-text-light hover:text-helplus-link hover:bg-helplus-primary-50 rounded transition-colors"
                                 title="Edit entry"
                               >
                                 <Pencil className="h-3.5 w-3.5" />

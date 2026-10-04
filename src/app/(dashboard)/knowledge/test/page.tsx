@@ -228,7 +228,7 @@ export default function KnowledgeTestPage() {
               <div className="flex-1 flex items-center justify-center min-h-[400px]">
                 <div className="text-center max-w-md">
                   <div className="mx-auto w-16 h-16 rounded-2xl bg-helplus-primary-50 flex items-center justify-center mb-4">
-                    <Bot className="h-8 w-8 text-helplus-primary" />
+                    <Bot className="h-8 w-8 text-helplus-link" />
                   </div>
                   <h3 className="text-lg font-semibold text-helplus-text mb-2">
                     Test Your Knowledge Base
@@ -252,7 +252,7 @@ export default function KnowledgeTestPage() {
               >
                 {message.role === "assistant" && (
                   <div className="flex-shrink-0 w-8 h-8 rounded-full bg-helplus-primary-50 flex items-center justify-center">
-                    <Bot className="h-4 w-4 text-helplus-primary" />
+                    <Bot className="h-4 w-4 text-helplus-link" />
                   </div>
                 )}
 
@@ -345,7 +345,7 @@ export default function KnowledgeTestPage() {
             {loading && (
               <div className="flex gap-3 justify-start">
                 <div className="flex-shrink-0 w-8 h-8 rounded-full bg-helplus-primary-50 flex items-center justify-center">
-                  <Bot className="h-4 w-4 text-helplus-primary" />
+                  <Bot className="h-4 w-4 text-helplus-link" />
                 </div>
                 <div className="bg-helplus-surface border border-helplus-border rounded-xl rounded-bl-sm px-4 py-3">
                   <div className="flex items-center gap-2 text-sm text-helplus-text-light">
@@ -403,7 +403,7 @@ export default function KnowledgeTestPage() {
             <div className="p-5 space-y-4">
               <div className="flex items-center gap-3 p-3 bg-helplus-bg rounded-lg">
                 <div className="p-2 rounded-lg bg-helplus-primary-50">
-                  <Layers className="h-4 w-4 text-helplus-primary" />
+                  <Layers className="h-4 w-4 text-helplus-link" />
                 </div>
                 <div>
                   <p className="text-lg font-semibold text-helplus-text">

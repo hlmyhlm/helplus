@@ -421,7 +421,7 @@ export default function CustomersPage() {
             ) : customers.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-64 px-6 text-center">
                 <div className="p-4 rounded-full bg-helplus-primary-50 mb-4">
-                  <Contact className="h-8 w-8 text-helplus-primary" />
+                  <Contact className="h-8 w-8 text-helplus-link" />
                 </div>
                 <p className="font-medium text-helplus-text">
                   No customers found
@@ -476,7 +476,7 @@ export default function CustomersPage() {
                       <td className="px-6 py-3">
                         <div className="flex items-center gap-3">
                           <div className="w-8 h-8 rounded-full bg-helplus-primary-100 flex items-center justify-center flex-shrink-0">
-                            <span className="text-sm font-medium text-helplus-primary">
+                            <span className="text-sm font-medium text-helplus-link">
                               {customer.name.charAt(0).toUpperCase()}
                             </span>
                           </div>
@@ -567,7 +567,7 @@ export default function CustomersPage() {
                     "p-2 rounded-lg transition-colors",
                     pagination.page <= 1
                       ? "text-helplus-text-light/40 cursor-not-allowed"
-                      : "text-helplus-text-light hover:bg-helplus-primary-50 hover:text-helplus-primary"
+                      : "text-helplus-text-light hover:bg-helplus-primary-50 hover:text-helplus-link"
                   )}
                 >
                   <ChevronLeft className="h-4 w-4" />
@@ -595,7 +595,7 @@ export default function CustomersPage() {
                           "w-8 h-8 text-sm rounded-lg transition-colors",
                           pageNum === pagination.page
                             ? "bg-helplus-primary text-white"
-                            : "text-helplus-text-light hover:bg-helplus-primary-50 hover:text-helplus-primary"
+                            : "text-helplus-text-light hover:bg-helplus-primary-50 hover:text-helplus-link"
                         )}
                       >
                         {pageNum}
@@ -610,7 +610,7 @@ export default function CustomersPage() {
                     "p-2 rounded-lg transition-colors",
                     pagination.page >= pagination.totalPages
                       ? "text-helplus-text-light/40 cursor-not-allowed"
-                      : "text-helplus-text-light hover:bg-helplus-primary-50 hover:text-helplus-primary"
+                      : "text-helplus-text-light hover:bg-helplus-primary-50 hover:text-helplus-link"
                   )}
                 >
                   <ChevronRight className="h-4 w-4" />
@@ -632,7 +632,7 @@ export default function CustomersPage() {
                 <ChevronLeft className="h-5 w-5 text-helplus-text" />
               </button>
               <div className="w-10 h-10 rounded-full bg-helplus-primary-100 flex items-center justify-center flex-shrink-0">
-                <span className="text-lg font-semibold text-helplus-primary">
+                <span className="text-lg font-semibold text-helplus-link">
                   {selectedCustomer.name.charAt(0).toUpperCase()}
                 </span>
               </div>
@@ -692,7 +692,7 @@ export default function CustomersPage() {
                   <>
                     <button
                       onClick={() => setEditMode(true)}
-                      className="p-1.5 text-helplus-text-light hover:text-helplus-primary hover:bg-helplus-primary-50 rounded-lg transition-colors"
+                      className="p-1.5 text-helplus-text-light hover:text-helplus-link hover:bg-helplus-primary-50 rounded-lg transition-colors"
                       title="Edit customer"
                     >
                       <Edit3 className="h-4 w-4" />
@@ -875,7 +875,7 @@ export default function CustomersPage() {
                     className={cn(
                       "flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors",
                       detailTab === "notes"
-                        ? "text-helplus-primary border-b-2 border-helplus-primary"
+                        ? "text-helplus-link border-b-2 border-helplus-primary"
                         : "text-helplus-text-light hover:text-helplus-text"
                     )}
                   >
@@ -887,7 +887,7 @@ export default function CustomersPage() {
                     className={cn(
                       "flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors",
                       detailTab === "conversations"
-                        ? "text-helplus-primary border-b-2 border-helplus-primary"
+                        ? "text-helplus-link border-b-2 border-helplus-primary"
                         : "text-helplus-text-light hover:text-helplus-text"
                     )}
                   >
@@ -985,7 +985,7 @@ export default function CustomersPage() {
                                   className={cn(
                                     "p-2 rounded-lg flex-shrink-0",
                                     channelColors[conv.channel] ||
-                                      "text-helplus-primary bg-helplus-primary-50"
+                                      "text-helplus-link bg-helplus-primary-50"
                                   )}
                                 >
                                   <ChannelIcon className="h-4 w-4" />

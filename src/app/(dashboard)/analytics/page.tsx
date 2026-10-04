@@ -190,7 +190,7 @@ export default function AnalyticsPage() {
             title="Total Conversations"
             value={data.totalConversations.toLocaleString()}
             icon={MessageSquare}
-            iconColor="bg-helplus-primary-50 text-helplus-primary"
+            iconColor="bg-helplus-primary-50 text-helplus-link"
           />
           <StatCard
             title="Avg Response Time"
@@ -311,7 +311,7 @@ export default function AnalyticsPage() {
                       {tp.member}
                     </td>
                     <td className="py-3 text-right text-helplus-text">
-                      <span className="inline-flex items-center justify-center min-w-[28px] px-2 py-0.5 rounded-full bg-helplus-primary-50 text-helplus-primary text-xs font-semibold">
+                      <span className="inline-flex items-center justify-center min-w-[28px] px-2 py-0.5 rounded-full bg-helplus-primary-50 text-helplus-link text-xs font-semibold">
                         {tp.ticketsResolved}
                       </span>
                     </td>

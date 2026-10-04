@@ -158,7 +158,7 @@ export default function ActivityPage() {
           ) : activities.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
               <div className="p-4 rounded-full bg-helplus-primary-50 mb-4">
-                <ScrollText className="h-8 w-8 text-helplus-primary" />
+                <ScrollText className="h-8 w-8 text-helplus-link" />
               </div>
               <p className="font-medium text-helplus-text">No activity found</p>
               <p className="text-sm text-helplus-text-light mt-1">

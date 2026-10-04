@@ -209,7 +209,7 @@ export default function CannedResponsesPage() {
           <div className="bg-helplus-surface rounded-xl border border-helplus-border">
             <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
               <div className="p-4 rounded-full bg-helplus-primary-50 mb-4">
-                <Zap className="h-8 w-8 text-helplus-primary" />
+                <Zap className="h-8 w-8 text-helplus-link" />
               </div>
               <p className="font-medium text-helplus-text">
                 {searchQuery ? "No matching responses" : "No canned responses yet"}
@@ -261,7 +261,7 @@ export default function CannedResponsesPage() {
                 </div>
 
                 <div className="flex items-center gap-2 mb-3">
-                  <span className="px-2 py-0.5 rounded text-xs font-medium bg-helplus-primary-50 text-helplus-primary">
+                  <span className="px-2 py-0.5 rounded text-xs font-medium bg-helplus-primary-50 text-helplus-link">
                     {response.category}
                   </span>
                   {response.shortcut && (

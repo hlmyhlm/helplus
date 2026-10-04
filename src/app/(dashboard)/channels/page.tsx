@@ -867,7 +867,7 @@ export default function ChannelsPage() {
       <div className="flex-1 overflow-auto p-6">
         {loading ? (
           <div className="flex items-center justify-center py-20">
-            <Loader2 className="h-8 w-8 animate-spin text-helplus-primary" />
+            <Loader2 className="h-8 w-8 animate-spin text-helplus-link" />
           </div>
         ) : fetchError ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">

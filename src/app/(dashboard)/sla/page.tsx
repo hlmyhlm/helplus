@@ -177,7 +177,7 @@ export default function SLAPage() {
       <div className="flex-1 overflow-auto p-6 space-y-4">
         {/* Info Section */}
         <div className="bg-helplus-primary-50 rounded-xl border border-helplus-primary/20 p-4 flex items-start gap-3">
-          <Info className="h-5 w-5 text-helplus-primary flex-shrink-0 mt-0.5" />
+          <Info className="h-5 w-5 text-helplus-link flex-shrink-0 mt-0.5" />
           <div>
             <p className="text-sm font-medium text-helplus-text">
               What are SLA Rules?
@@ -199,7 +199,7 @@ export default function SLAPage() {
           <div className="bg-helplus-surface rounded-xl border border-helplus-border">
             <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
               <div className="p-4 rounded-full bg-helplus-primary-50 mb-4">
-                <Timer className="h-8 w-8 text-helplus-primary" />
+                <Timer className="h-8 w-8 text-helplus-link" />
               </div>
               <p className="font-medium text-helplus-text">No SLA rules yet</p>
               <p className="text-sm text-helplus-text-light mt-1">
@@ -252,7 +252,7 @@ export default function SLAPage() {
                 </div>
 
                 <div className="flex items-center gap-2 mb-3">
-                  <span className="px-2 py-0.5 rounded text-xs font-medium bg-helplus-primary-50 text-helplus-primary">
+                  <span className="px-2 py-0.5 rounded text-xs font-medium bg-helplus-primary-50 text-helplus-link">
                     {channelOptions.find((c) => c.value === rule.channel)?.label || rule.channel}
                   </span>
                   <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-700">

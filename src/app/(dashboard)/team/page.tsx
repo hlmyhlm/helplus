@@ -580,7 +580,7 @@ export default function TeamPage() {
                 className={cn(
                   "flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-colors",
                   activeTab === tab.key
-                    ? "bg-helplus-surface text-helplus-primary shadow-sm"
+                    ? "bg-helplus-surface text-helplus-link shadow-sm"
                     : "text-helplus-text-light hover:text-helplus-text"
                 )}
               >
@@ -640,7 +640,7 @@ export default function TeamPage() {
         {/* Loading state */}
         {loading && (
           <div className="flex items-center justify-center py-20">
-            <Loader2 className="h-8 w-8 animate-spin text-helplus-primary" />
+            <Loader2 className="h-8 w-8 animate-spin text-helplus-link" />
           </div>
         )}
 
@@ -679,7 +679,7 @@ export default function TeamPage() {
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex items-center gap-3">
-                        <div className="p-2.5 rounded-lg bg-helplus-primary-50 text-helplus-primary">
+                        <div className="p-2.5 rounded-lg bg-helplus-primary-50 text-helplus-link">
                           <Building2 className="h-5 w-5" />
                         </div>
                         <div>
@@ -697,7 +697,7 @@ export default function TeamPage() {
                           onClick={() =>
                             setDeptModal({ open: true, editing: dept })
                           }
-                          className="p-1.5 text-helplus-text-light hover:text-helplus-primary hover:bg-helplus-primary-50 rounded-lg transition-colors"
+                          className="p-1.5 text-helplus-text-light hover:text-helplus-link hover:bg-helplus-primary-50 rounded-lg transition-colors"
                           title="Edit department"
                         >
                           <Edit2 className="h-4 w-4" />
@@ -805,7 +805,7 @@ export default function TeamPage() {
                         >
                           <td className="px-5 py-3.5">
                             <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-full bg-helplus-primary-100 text-helplus-primary flex items-center justify-center text-xs font-semibold flex-shrink-0">
+                              <div className="w-8 h-8 rounded-full bg-helplus-primary-100 text-helplus-link flex items-center justify-center text-xs font-semibold flex-shrink-0">
                                 {member.name
                                   .split(" ")
                                   .map((n) => n[0])
@@ -891,7 +891,7 @@ export default function TeamPage() {
                                     editing: member,
                                   })
                                 }
-                                className="p-1.5 text-helplus-text-light hover:text-helplus-primary hover:bg-helplus-primary-50 rounded-lg transition-colors"
+                                className="p-1.5 text-helplus-text-light hover:text-helplus-link hover:bg-helplus-primary-50 rounded-lg transition-colors"
                                 title="Edit member"
                               >
                                 <Edit2 className="h-4 w-4" />

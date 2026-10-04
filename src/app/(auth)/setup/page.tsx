@@ -403,7 +403,7 @@ export default function SetupPage() {
                   <button
                     type="button"
                     onClick={() => setShowApiKey(!showApiKey)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded px-2 py-1 text-xs font-medium text-helplus-primary hover:bg-helplus-primary-50 transition-colors"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded px-2 py-1 text-xs font-medium text-helplus-link hover:bg-helplus-primary-50 transition-colors"
                   >
                     {showApiKey ? "Hide" : "Show"}
                   </button>

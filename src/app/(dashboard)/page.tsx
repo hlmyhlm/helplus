@@ -129,7 +129,7 @@ export default async function DashboardPage() {
                       className="px-5 py-3.5 hover:bg-helplus-primary-50/50 transition-colors cursor-pointer"
                     >
                       <div className="flex items-start gap-3">
-                        <div className="p-2 rounded-lg bg-helplus-primary-50 text-helplus-primary mt-0.5">
+                        <div className="p-2 rounded-lg bg-helplus-primary-50 text-helplus-link mt-0.5">
                           <ChannelIcon className="h-4 w-4" />
                         </div>
                         <div className="flex-1 min-w-0">

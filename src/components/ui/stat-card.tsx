@@ -16,7 +16,7 @@ export function StatCard({
   change,
   changeType = "neutral",
   icon: Icon,
-  iconColor = "bg-helplus-primary-50 text-helplus-primary",
+  iconColor = "bg-helplus-primary-50 text-helplus-link",
 }: StatCardProps) {
   return (
     <div className="bg-helplus-surface rounded-xl border border-helplus-border p-5 hover:shadow-md transition-shadow">

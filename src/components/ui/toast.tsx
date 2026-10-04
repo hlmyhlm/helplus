@@ -57,7 +57,7 @@ const iconColorMap: Record<ToastType, string> = {
   success: "text-helplus-success",
   error: "text-helplus-danger",
   warning: "text-helplus-warning",
-  info: "text-helplus-primary",
+  info: "text-helplus-link",
 };
 
 let toastCounter = 0;

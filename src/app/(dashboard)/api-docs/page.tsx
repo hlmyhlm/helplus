@@ -583,11 +583,11 @@ function TryItPanel({ endpoint }: { endpoint: Endpoint }) {
         className="flex items-center gap-2 w-full px-4 py-3 text-sm font-medium text-helplus-text bg-helplus-primary-50 hover:bg-helplus-primary-100 transition-colors text-left"
       >
         {open ? (
-          <ChevronDown className="h-4 w-4 text-helplus-primary" />
+          <ChevronDown className="h-4 w-4 text-helplus-link" />
         ) : (
-          <ChevronRight className="h-4 w-4 text-helplus-primary" />
+          <ChevronRight className="h-4 w-4 text-helplus-link" />
         )}
-        <Send className="h-4 w-4 text-helplus-primary" />
+        <Send className="h-4 w-4 text-helplus-link" />
         Try it
       </button>
 
@@ -830,7 +830,7 @@ export default function ApiDocsPage() {
             <div className="border border-helplus-border rounded-xl bg-helplus-surface p-6 transition-theme">
               <div className="flex items-center gap-3 mb-4">
                 <div className="p-2 bg-helplus-primary-50 rounded-lg">
-                  <Key className="h-5 w-5 text-helplus-primary" />
+                  <Key className="h-5 w-5 text-helplus-link" />
                 </div>
                 <div>
                   <h3 className="text-lg font-semibold text-helplus-text">
@@ -869,7 +869,7 @@ export default function ApiDocsPage() {
             {/* Section Header */}
             <div className="flex items-center gap-3">
               <div className="p-2 bg-helplus-primary-50 rounded-lg">
-                <currentSection.icon className="h-5 w-5 text-helplus-primary" />
+                <currentSection.icon className="h-5 w-5 text-helplus-link" />
               </div>
               <div>
                 <h3 className="text-lg font-semibold text-helplus-text">

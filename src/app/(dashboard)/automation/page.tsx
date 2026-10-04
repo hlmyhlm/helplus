@@ -352,7 +352,7 @@ export default function AutomationPage() {
         ) : rules.length === 0 ? (
           <div className="bg-helplus-surface border border-helplus-border rounded-xl p-12 text-center">
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-helplus-primary-50 mb-4">
-              <Workflow className="h-8 w-8 text-helplus-primary" />
+              <Workflow className="h-8 w-8 text-helplus-link" />
             </div>
             <h3 className="text-lg font-semibold text-helplus-text mb-2">
               No automation rules yet
@@ -478,7 +478,7 @@ export default function AutomationPage() {
                   <div className="flex items-center gap-2 pt-3 border-t border-helplus-border">
                     <button
                       onClick={() => openEditModal(rule)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-helplus-text-light hover:text-helplus-primary hover:bg-helplus-primary-50 rounded-lg transition-colors"
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-helplus-text-light hover:text-helplus-link hover:bg-helplus-primary-50 rounded-lg transition-colors"
                     >
                       <Pencil className="h-3.5 w-3.5" />
                       Edit
@@ -604,7 +604,7 @@ export default function AutomationPage() {
                       className={cn(
                         "flex flex-col items-center gap-1.5 p-3 rounded-lg border text-xs font-medium transition-all",
                         form.type === rt.value
-                          ? "border-helplus-primary bg-helplus-primary-50 text-helplus-primary"
+                          ? "border-helplus-primary bg-helplus-primary-50 text-helplus-link"
                           : "border-helplus-border text-helplus-text-light hover:border-helplus-primary/30"
                       )}
                     >
@@ -623,7 +623,7 @@ export default function AutomationPage() {
                   </label>
                   <button
                     onClick={addCondition}
-                    className="text-xs text-helplus-primary hover:text-helplus-primary-dark font-medium transition-colors"
+                    className="text-xs text-helplus-link hover:text-helplus-primary-dark font-medium transition-colors"
                   >
                     + Add Condition
                   </button>
@@ -690,7 +690,7 @@ export default function AutomationPage() {
                   </label>
                   <button
                     onClick={addAction}
-                    className="text-xs text-helplus-primary hover:text-helplus-primary-dark font-medium transition-colors"
+                    className="text-xs text-helplus-link hover:text-helplus-primary-dark font-medium transition-colors"
                   >
                     + Add Action
                   </button>

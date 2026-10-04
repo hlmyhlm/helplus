@@ -227,7 +227,7 @@ export function OnboardingChecklist() {
               </div>
 
               {!item.completed && (
-                <ChevronRight className="h-4 w-4 text-helplus-text-light group-hover:text-helplus-primary transition-colors flex-shrink-0" />
+                <ChevronRight className="h-4 w-4 text-helplus-text-light group-hover:text-helplus-link transition-colors flex-shrink-0" />
               )}
             </Link>
           );

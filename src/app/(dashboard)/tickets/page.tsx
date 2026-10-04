@@ -330,7 +330,7 @@ export default function TicketsPage() {
           ) : tickets.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
               <div className="p-4 rounded-full bg-helplus-primary-50 mb-4">
-                <Ticket className="h-8 w-8 text-helplus-primary" />
+                <Ticket className="h-8 w-8 text-helplus-link" />
               </div>
               <p className="font-medium text-helplus-text">No tickets found</p>
               <p className="text-sm text-helplus-text-light mt-1">
@@ -575,7 +575,7 @@ export default function TicketsPage() {
                     Linked Conversation
                   </label>
                   <div className="flex items-center gap-3 px-3 py-2.5 border border-helplus-border rounded-lg bg-helplus-bg">
-                    <MessageSquare className="h-4 w-4 text-helplus-primary flex-shrink-0" />
+                    <MessageSquare className="h-4 w-4 text-helplus-link flex-shrink-0" />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-helplus-text truncate">
                         {selectedTicket.conversation.customerName}
@@ -589,7 +589,7 @@ export default function TicketsPage() {
                       href={`/conversations`}
                       className="p-1 hover:bg-helplus-primary-50 rounded transition-colors"
                     >
-                      <ExternalLink className="h-3.5 w-3.5 text-helplus-primary" />
+                      <ExternalLink className="h-3.5 w-3.5 text-helplus-link" />
                     </a>
                   </div>
                 </div>

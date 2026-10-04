@@ -1,42 +1,47 @@
 @import "tailwindcss";
 
 :root {
-  --helplus-primary: #4A7C9B;
-  --helplus-primary-dark: #2D5A7B;
-  --helplus-primary-light: #A8D0E6;
-  --helplus-primary-50: #EDF5FA;
-  --helplus-primary-100: #D6E8F2;
-  --helplus-accent: #C4956A;
-  --helplus-accent-light: #E0C4A8;
-  --helplus-bg: #F8FAFC;
+  --helplus-primary: #3B3FA6;
+  --helplus-primary-dark: #2F3388;
+  --helplus-primary-light: #C7C9FF;
+  --helplus-primary-50: #EEEEFB;
+  --helplus-primary-100: #E0E1F7;
+  --helplus-accent: #5B5FD6;
+  --helplus-accent-light: #E0E1F7;
+  --helplus-link: #3B3FA6;
+  --helplus-bg: #F6F6F3;
   --helplus-surface: #FFFFFF;
-  --helplus-text: #1E293B;
-  --helplus-text-light: #64748B;
-  --helplus-border: #E2E8F0;
-  --helplus-sidebar: #1E293B;
-  --helplus-sidebar-hover: #334155;
-  --helplus-sidebar-active: #4A7C9B;
-  --helplus-success: #22C55E;
-  --helplus-warning: #F59E0B;
-  --helplus-danger: #EF4444;
+  --helplus-text: #16181F;
+  --helplus-text-light: #5B6070;
+  --helplus-border: #E4E3DE;
+  --helplus-sidebar: #16181F;
+  --helplus-sidebar-hover: #23262F;
+  --helplus-sidebar-active: #23262F;
+  --helplus-success: #067647;
+  --helplus-warning: #B54708;
+  --helplus-danger: #B42318;
 }
 
 .dark {
-  --helplus-primary: #5A9CBB;
-  --helplus-primary-dark: #4A8CAB;
-  --helplus-primary-light: #3A6C8B;
-  --helplus-primary-50: #1A2A3A;
-  --helplus-primary-100: #1E3448;
-  --helplus-accent: #D4A57A;
-  --helplus-accent-light: #4A3A2A;
-  --helplus-bg: #0F172A;
-  --helplus-surface: #1E293B;
-  --helplus-text: #F1F5F9;
-  --helplus-text-light: #94A3B8;
-  --helplus-border: #334155;
-  --helplus-sidebar: #0F172A;
-  --helplus-sidebar-hover: #1E293B;
-  --helplus-sidebar-active: #4A7C9B;
+  --helplus-primary: #4B4FC4;
+  --helplus-primary-dark: #3B3FA6;
+  --helplus-primary-light: #A5A8FF;
+  --helplus-primary-50: #1E2040;
+  --helplus-primary-100: #272A55;
+  --helplus-accent: #A5A8FF;
+  --helplus-accent-light: #272A55;
+  --helplus-link: #A5A8FF;
+  --helplus-bg: #0F1015;
+  --helplus-surface: #16181F;
+  --helplus-text: #ECECF1;
+  --helplus-text-light: #A9ACBA;
+  --helplus-border: #2A2D36;
+  --helplus-sidebar: #0B0C10;
+  --helplus-sidebar-hover: #1C1E26;
+  --helplus-sidebar-active: #1C1E26;
+  --helplus-success: #47CD89;
+  --helplus-warning: #FDB022;
+  --helplus-danger: #F97066;
 }
 
 @theme inline {
@@ -58,8 +63,9 @@
   --color-helplus-success: var(--helplus-success);
   --color-helplus-warning: var(--helplus-warning);
   --color-helplus-danger: var(--helplus-danger);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-helplus-link: var(--helplus-link);
+  --font-sans: var(--font-plex-sans);
+  --font-mono: var(--font-plex-mono);
 }
 
 body {

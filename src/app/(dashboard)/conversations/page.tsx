@@ -276,7 +276,7 @@ export default function ConversationsPage() {
             ) : conversations.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-64 px-6 text-center">
                 <div className="p-4 rounded-full bg-helplus-primary-50 mb-4">
-                  <Inbox className="h-8 w-8 text-helplus-primary" />
+                  <Inbox className="h-8 w-8 text-helplus-link" />
                 </div>
                 <p className="font-medium text-helplus-text">
                   No conversations found
@@ -307,7 +307,7 @@ export default function ConversationsPage() {
                           className={cn(
                             "p-2 rounded-lg mt-0.5 flex-shrink-0",
                             channelColors[conv.channel] ||
-                              "text-helplus-primary bg-helplus-primary-50"
+                              "text-helplus-link bg-helplus-primary-50"
                           )}
                         >
                           <ChannelIcon className="h-4 w-4" />
@@ -335,7 +335,7 @@ export default function ConversationsPage() {
                           {lastMessage && (
                             <p className="text-sm text-helplus-text-light mt-1 truncate">
                               {lastMessage.role === "admin" && (
-                                <span className="text-helplus-primary font-medium">
+                                <span className="text-helplus-link font-medium">
                                   You:{" "}
                                 </span>
                               )}
@@ -354,7 +354,7 @@ export default function ConversationsPage() {
                             {conv.tags.slice(0, 2).map((ct) => (
                               <span
                                 key={ct.id}
-                                className="px-1.5 py-0.5 rounded text-xs font-medium bg-helplus-primary-50 text-helplus-primary"
+                                className="px-1.5 py-0.5 rounded text-xs font-medium bg-helplus-primary-50 text-helplus-link"
                               >
                                 {ct.tag.name}
                               </span>
@@ -412,7 +412,7 @@ export default function ConversationsPage() {
                   className={cn(
                     "p-2 rounded-lg flex-shrink-0",
                     channelColors[selectedConversation.channel] ||
-                      "text-helplus-primary bg-helplus-primary-50"
+                      "text-helplus-link bg-helplus-primary-50"
                   )}
                 >
                   {(() => {
