@@ -131,7 +131,7 @@ export default function TicketsPage() {
 
   const fetchDepartments = useCallback(async () => {
     try {
-      const res = await fetch("/api/team/departments");
+      const res = await fetch("/api/team/departments?limit=100");
       if (res.ok) {
         const data = await res.json();
         setDepartments(unwrapList(data));

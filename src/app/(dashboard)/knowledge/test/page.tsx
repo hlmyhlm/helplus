@@ -68,8 +68,8 @@ export default function KnowledgeTestPage() {
   const fetchStats = useCallback(async () => {
     try {
       const [categoriesRes, entriesRes] = await Promise.all([
-        fetch("/api/knowledge/categories"),
-        fetch("/api/knowledge/entries"),
+        fetch("/api/knowledge/categories?limit=100"),
+        fetch("/api/knowledge/entries?limit=100"),
       ]);
 
       const categories = unwrapList(categoriesRes.ok ? await categoriesRes.json() : []);

@@ -119,7 +119,7 @@ export default function KnowledgeBasePage() {
   const fetchCategories = useCallback(async () => {
     setLoadingCategories(true);
     try {
-      const res = await fetch("/api/knowledge/categories");
+      const res = await fetch("/api/knowledge/categories?limit=100");
       if (res.ok) {
         const data = await res.json();
         setCategories(unwrapList(data));
@@ -134,7 +134,7 @@ export default function KnowledgeBasePage() {
   const fetchEntries = useCallback(async (categoryId: string) => {
     setLoadingEntries(true);
     try {
-      const res = await fetch(`/api/knowledge/entries?categoryId=${categoryId}`);
+      const res = await fetch(`/api/knowledge/entries?categoryId=${categoryId}&limit=100`);
       if (res.ok) {
         const data = await res.json();
         setEntries(unwrapList(data));

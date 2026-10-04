@@ -410,7 +410,7 @@ export default function TeamPage() {
 
   const fetchDepartments = useCallback(async () => {
     try {
-      const res = await fetch("/api/team/departments");
+      const res = await fetch("/api/team/departments?limit=100");
       if (res.ok) {
         const data = await res.json();
         setDepartments(unwrapList(data));
@@ -423,8 +423,8 @@ export default function TeamPage() {
   const fetchMembers = useCallback(async () => {
     try {
       const url = filterDept
-        ? `/api/team/members?departmentId=${filterDept}`
-        : "/api/team/members";
+        ? `/api/team/members?departmentId=${filterDept}&limit=100`
+        : "/api/team/members?limit=100";
       const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();

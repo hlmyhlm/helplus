@@ -46,9 +46,9 @@ export function OnboardingChecklist() {
         await Promise.all([
           fetch("/api/auth"),
           fetch("/api/settings"),
-          fetch("/api/knowledge/entries"),
+          fetch("/api/knowledge/entries?limit=100"),
           fetch("/api/channels"),
-          fetch("/api/team/members"),
+          fetch("/api/team/members?limit=100"),
         ]);
 
       const auth = authRes.ok ? await authRes.json() : {};

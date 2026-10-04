@@ -131,7 +131,7 @@ export default function AdminPage() {
   const fetchUsers = useCallback(async () => {
     setLoadingUsers(true);
     try {
-      const res = await fetch("/api/admin/users");
+      const res = await fetch("/api/admin/users?limit=100");
       if (res.ok) {
         const data = await res.json();
         setUsers(unwrapList(data));
@@ -146,7 +146,7 @@ export default function AdminPage() {
   const fetchApiKeys = useCallback(async () => {
     setLoadingKeys(true);
     try {
-      const res = await fetch("/api/admin/api-keys");
+      const res = await fetch("/api/admin/api-keys?limit=100");
       if (res.ok) {
         const data = await res.json();
         setApiKeys(unwrapList(data));

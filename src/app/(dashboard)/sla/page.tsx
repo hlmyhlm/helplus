@@ -71,7 +71,7 @@ export default function SLAPage() {
 
   const fetchRules = useCallback(async () => {
     try {
-      const res = await fetch("/api/sla");
+      const res = await fetch("/api/sla?limit=100");
       if (res.ok) {
         const data = await res.json();
         setRules(unwrapList(data));

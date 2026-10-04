@@ -99,6 +99,7 @@ export default function AutomationPage() {
     try {
       const params = new URLSearchParams();
       if (typeFilter !== "all") params.set("type", typeFilter);
+      params.set("limit", "100");
       const res = await fetch(`/api/automation?${params.toString()}`);
       if (res.ok) {
         const data = await res.json();

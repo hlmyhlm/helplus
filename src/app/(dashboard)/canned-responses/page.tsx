@@ -51,6 +51,7 @@ export default function CannedResponsesPage() {
     try {
       const params = new URLSearchParams();
       if (categoryFilter !== "all") params.set("category", categoryFilter);
+      params.set("limit", "100");
 
       const res = await fetch(`/api/canned-responses?${params.toString()}`);
       if (res.ok) {

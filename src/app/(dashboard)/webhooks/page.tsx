@@ -428,7 +428,7 @@ export default function WebhooksPage() {
 
   const fetchWebhooks = useCallback(async () => {
     try {
-      const res = await fetch("/api/webhooks");
+      const res = await fetch("/api/webhooks?limit=100");
       const data = await res.json();
       setWebhooks(unwrapList(data));
     } catch {
