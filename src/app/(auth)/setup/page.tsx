@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import { AI_PROVIDERS, findPreset, isLocalProvider } from "@/lib/ai/presets";
 
 const STEPS = [
   "Create Admin Account",
@@ -16,12 +17,6 @@ const TONE_OPTIONS = [
   { value: "professional", label: "Professional", desc: "Polished and business-like" },
   { value: "formal", label: "Formal", desc: "Courteous and proper" },
   { value: "technical", label: "Technical", desc: "Precise and detailed" },
-];
-
-const PROVIDER_OPTIONS = [
-  { value: "openai", label: "OpenAI", models: ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"] },
-  { value: "claude", label: "Claude (Anthropic)", models: ["claude-sonnet-4-20250514", "claude-3-5-haiku-20241022", "claude-3-opus-20240229"] },
-  { value: "ollama", label: "Ollama (Local)", models: ["llama3", "mistral", "codellama", "phi3"] },
 ];
 
 export default function SetupPage() {
@@ -46,6 +41,7 @@ export default function SetupPage() {
   // Step 3 - AI Configuration
   const [aiProvider, setAiProvider] = useState("openai");
   const [aiModel, setAiModel] = useState("gpt-4o-mini");
+  const [aiBaseUrl, setAiBaseUrl] = useState("");
   const [aiApiKey, setAiApiKey] = useState("");
   const [showApiKey, setShowApiKey] = useState(false);
 
@@ -68,10 +64,6 @@ export default function SetupPage() {
     }
     checkSetup();
   }, [router]);
-
-  function currentModels() {
-    return PROVIDER_OPTIONS.find((p) => p.value === aiProvider)?.models || [];
-  }
 
   async function handleNext() {
     setError("");
@@ -130,9 +122,15 @@ export default function SetupPage() {
         setCompletedSteps((prev) => [...prev, 1]);
         setStep(2);
       } else if (step === 2) {
+        if (aiProvider === "custom" && !aiBaseUrl.trim()) {
+          setError("Enter the server URL.");
+          setLoading(false);
+          return;
+        }
         const body: Record<string, string> = {
           aiProvider,
-          aiModel,
+          aiModel: aiModel.trim(),
+          aiBaseUrl: isLocalProvider(aiProvider) ? aiBaseUrl.trim() : findPreset(AI_PROVIDERS, aiProvider)?.baseUrl ?? "",
         };
         if (aiApiKey.trim()) body.aiApiKey = aiApiKey.trim();
 
@@ -337,16 +335,15 @@ export default function SetupPage() {
                   id="aiProvider"
                   value={aiProvider}
                   onChange={(e) => {
-                    const prov = e.target.value;
-                    setAiProvider(prov);
-                    const models =
-                      PROVIDER_OPTIONS.find((p) => p.value === prov)?.models ||
-                      [];
-                    setAiModel(models[0] || "");
+                    const preset = findPreset(AI_PROVIDERS, e.target.value);
+                    setAiProvider(e.target.value);
+                    setAiModel(preset?.model ?? "");
+                    setAiBaseUrl(preset?.baseUrl ?? "");
+                    setAiApiKey("");
                   }}
                   className="w-full rounded-lg border border-helplus-border bg-helplus-bg px-3.5 py-2.5 text-sm text-helplus-text focus:outline-none focus:ring-2 focus:ring-helplus-primary focus:border-transparent transition-shadow"
                 >
-                  {PROVIDER_OPTIONS.map((p) => (
+                  {AI_PROVIDERS.map((p) => (
                     <option key={p.value} value={p.value}>
                       {p.label}
                     </option>
@@ -361,19 +358,24 @@ export default function SetupPage() {
                 >
                   Model
                 </label>
-                <select
+                <input
                   id="aiModel"
                   value={aiModel}
                   onChange={(e) => setAiModel(e.target.value)}
-                  className="w-full rounded-lg border border-helplus-border bg-helplus-bg px-3.5 py-2.5 text-sm text-helplus-text focus:outline-none focus:ring-2 focus:ring-helplus-primary focus:border-transparent transition-shadow"
-                >
-                  {currentModels().map((m) => (
-                    <option key={m} value={m}>
-                      {m}
-                    </option>
-                  ))}
-                </select>
+                  placeholder="e.g. gpt-4o-mini, deepseek-chat, llama3.1"
+                  className="w-full rounded-lg border border-helplus-border bg-helplus-bg px-3.5 py-2.5 text-sm text-helplus-text placeholder:text-helplus-text-light focus:outline-none focus:ring-2 focus:ring-helplus-primary focus:border-transparent transition-shadow"
+                />
               </div>
+
+              {isLocalProvider(aiProvider) && (
+                <Field
+                  id="aiBaseUrl"
+                  label="Server URL"
+                  value={aiBaseUrl}
+                  onChange={setAiBaseUrl}
+                  placeholder="https://..."
+                />
+              )}
 
               <div>
                 <label
@@ -381,9 +383,9 @@ export default function SetupPage() {
                   className="block text-sm font-medium text-helplus-text mb-1.5"
                 >
                   API Key
-                  {aiProvider === "ollama" && (
+                  {isLocalProvider(aiProvider) && (
                     <span className="ml-1 font-normal text-helplus-text-light">
-                      (not required for local models)
+                      (usually not needed for local servers)
                     </span>
                   )}
                 </label>
@@ -394,7 +396,7 @@ export default function SetupPage() {
                     value={aiApiKey}
                     onChange={(e) => setAiApiKey(e.target.value)}
                     placeholder={
-                      aiProvider === "ollama"
+                      isLocalProvider(aiProvider)
                         ? "Optional"
                         : "Enter your API key"
                     }
@@ -433,7 +435,7 @@ export default function SetupPage() {
               <SummaryRow
                 done={completedSteps.includes(2)}
                 label="AI provider configured"
-                detail={`${PROVIDER_OPTIONS.find((p) => p.value === aiProvider)?.label} / ${aiModel}`}
+                detail={`${findPreset(AI_PROVIDERS, aiProvider)?.label} / ${aiModel}`}
               />
             </div>
           </>

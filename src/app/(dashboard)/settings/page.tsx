@@ -2,6 +2,7 @@
 
 import { Header } from "@/components/layout/header";
 import { cn } from "@/lib/utils";
+import { AI_PROVIDERS, EMBED_PROVIDERS, findPreset, isLocalProvider } from "@/lib/ai/presets";
 import {
   Settings as SettingsIcon,
   Bot,
@@ -436,19 +437,6 @@ function GeneralSection({
   );
 }
 
-const AI_PRESETS: Record<string, { model: string; baseUrl: string }> = {
-  openai: { model: "gpt-4o-mini", baseUrl: "" },
-  deepseek: { model: "deepseek-chat", baseUrl: "https://api.deepseek.com" },
-  ollama: { model: "llama3.1", baseUrl: "http://localhost:11434/v1" },
-  custom: { model: "", baseUrl: "" },
-};
-
-const EMBED_PRESETS: Record<string, { model: string; baseUrl: string }> = {
-  openai: { model: "text-embedding-3-small", baseUrl: "" },
-  ollama: { model: "nomic-embed-text", baseUrl: "http://localhost:11434/v1" },
-  custom: { model: "", baseUrl: "" },
-};
-
 function AISection({
   data,
   update,
@@ -456,8 +444,6 @@ function AISection({
   data: SettingsData;
   update: (field: keyof SettingsData, value: string | number) => void;
 }) {
-  const local = (p: string) => p === "ollama" || p === "custom";
-
   return (
     <div className="space-y-5">
       <FormField label="AI provider" description="DeepSeek and local servers use the same OpenAI-style API.">
@@ -465,16 +451,11 @@ function AISection({
           value={data.aiProvider}
           onChange={(v) => {
             update("aiProvider", v);
-            update("aiModel", AI_PRESETS[v]?.model ?? "");
-            update("aiBaseUrl", AI_PRESETS[v]?.baseUrl ?? "");
+            update("aiModel", findPreset(AI_PROVIDERS, v)?.model ?? "");
+            update("aiBaseUrl", findPreset(AI_PROVIDERS, v)?.baseUrl ?? "");
             update("aiApiKey", "");
           }}
-          options={[
-            { value: "openai", label: "OpenAI (ChatGPT)" },
-            { value: "deepseek", label: "DeepSeek" },
-            { value: "ollama", label: "Ollama (local)" },
-            { value: "custom", label: "Other OpenAI-compatible server" },
-          ]}
+          options={AI_PROVIDERS.map(({ value, label }) => ({ value, label }))}
         />
       </FormField>
       <FormField label="Model" description="Exact model name, e.g. gpt-4o-mini, deepseek-chat, llama3.1.">
@@ -483,11 +464,11 @@ function AISection({
       <FormField label="Server URL" description="Leave empty for OpenAI.">
         <TextInput value={data.aiBaseUrl} onChange={(v) => update("aiBaseUrl", v)} placeholder="https://..." />
       </FormField>
-      <FormField label="API key" description={local(data.aiProvider) ? "Usually not needed for local servers." : "Your provider API key."}>
+      <FormField label="API key" description={isLocalProvider(data.aiProvider) ? "Usually not needed for local servers." : "Your provider API key."}>
         <PasswordInput
           value={data.aiApiKey}
           onChange={(v) => update("aiApiKey", v)}
-          placeholder={local(data.aiProvider) ? "Optional" : "Enter your API key"}
+          placeholder={isLocalProvider(data.aiProvider) ? "Optional" : "Enter your API key"}
         />
       </FormField>
       <FormField label="Max tokens" description="Longest answer the AI may write.">
@@ -523,15 +504,11 @@ function AISection({
             value={data.embedProvider}
             onChange={(v) => {
               update("embedProvider", v);
-              update("embedModel", EMBED_PRESETS[v]?.model ?? "");
-              update("embedBaseUrl", EMBED_PRESETS[v]?.baseUrl ?? "");
+              update("embedModel", findPreset(EMBED_PROVIDERS, v)?.model ?? "");
+              update("embedBaseUrl", findPreset(EMBED_PROVIDERS, v)?.baseUrl ?? "");
               update("embedApiKey", "");
             }}
-            options={[
-              { value: "openai", label: "OpenAI" },
-              { value: "ollama", label: "Ollama (local)" },
-              { value: "custom", label: "Other OpenAI-compatible server" },
-            ]}
+            options={EMBED_PROVIDERS.map(({ value, label }) => ({ value, label }))}
           />
         </FormField>
         <FormField label="Embeddings model">
