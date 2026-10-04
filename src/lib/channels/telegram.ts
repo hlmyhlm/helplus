@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { getSettings } from "@/lib/settings";
 import { chat, createNewConversation } from "@/lib/ai/engine";
 import { resolveCustomer } from "@/lib/customer-resolver";
 import { logger } from "@/lib/logger";
@@ -23,10 +24,8 @@ interface TelegramUpdate {
 }
 
 async function getTelegramToken(): Promise<string> {
-  const settings = await prisma.settings.findFirst({
-    select: { telegramBotToken: true },
-  });
-  return settings?.telegramBotToken || "";
+  const settings = await getSettings();
+  return settings.telegramBotToken || "";
 }
 
 /**

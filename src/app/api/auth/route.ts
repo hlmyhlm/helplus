@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { saveSettings } from "@/lib/settings";
 import {
   hashPassword,
   verifyPassword,
@@ -42,11 +43,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Ensure default settings exist
-    await prisma.settings.upsert({
-      where: { id: "default" },
-      update: {},
-      create: { id: "default" },
-    });
+    await saveSettings({});
 
     // Ensure channels exist
     for (const type of ["whatsapp", "email", "phone"]) {

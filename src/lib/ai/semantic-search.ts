@@ -9,6 +9,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
+import { getSettings } from "@/lib/settings";
 import { logger } from "@/lib/logger";
 import { cacheGet, cacheSet } from "@/lib/cache";
 
@@ -100,9 +101,7 @@ export async function searchKnowledgeBase(
   if (entries.length === 0) return [];
 
   // Try to get API key for embeddings
-  const settings = await prisma.settings.findFirst({
-    select: { aiApiKey: true },
-  });
+  const settings = await getSettings();
 
   let results: SearchResult[];
 

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { getSettings } from "@/lib/settings";
 import { chat, createNewConversation } from "@/lib/ai/engine";
 import { resolveCustomer } from "@/lib/customer-resolver";
 import { logger } from "@/lib/logger";
@@ -10,7 +11,7 @@ interface SmsConfig {
 }
 
 async function getSmsConfig(): Promise<SmsConfig | null> {
-  const settings = await prisma.settings.findFirst();
+  const settings = await getSettings();
   if (!settings?.twilioSid || !settings?.twilioToken || !settings?.twilioPhone) return null;
 
   return {

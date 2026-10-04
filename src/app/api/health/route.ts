@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getSettings } from "@/lib/settings";
 
 const startTime = Date.now();
 
@@ -16,9 +17,7 @@ export async function GET() {
 
   // OpenAI reachability check
   try {
-    const settings = await prisma.settings.findFirst({
-      select: { aiApiKey: true },
-    });
+    const settings = await getSettings();
     if (settings?.aiApiKey) {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 3000);

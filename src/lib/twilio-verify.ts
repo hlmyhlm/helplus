@@ -37,9 +37,7 @@ export function validateTwilioSignature(
  */
 export async function getTwilioAuthToken(): Promise<string> {
   // Dynamic import to avoid circular deps
-  const { prisma } = await import("@/lib/prisma");
-  const settings = await prisma.settings.findFirst({
-    select: { twilioToken: true },
-  });
-  return settings?.twilioToken || "";
+  const { getSettings } = await import("@/lib/settings");
+  const settings = await getSettings();
+  return settings.twilioToken || "";
 }

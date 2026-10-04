@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getSettings } from "@/lib/settings";
 import OpenAI from "openai";
 import { logger } from "@/lib/logger";
 import { requireAuth, isAuthenticated } from "@/lib/route-auth";
@@ -20,9 +21,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Load settings for AI configuration
-    const settings = await prisma.settings.findUnique({
-      where: { id: "default" },
-    });
+    const settings = await getSettings();
 
     if (!settings?.aiApiKey) {
       return NextResponse.json(

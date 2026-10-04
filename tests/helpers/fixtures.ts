@@ -38,6 +38,7 @@ export const fixtures = {
     whatsappMode: "web",
     whatsappApiKey: "wa-key-12345",
     whatsappPhone: "+1234567890",
+    telegramBotToken: "tg-token-12345",
     createdAt: new Date("2025-01-01"),
     updatedAt: new Date("2025-01-01"),
   },

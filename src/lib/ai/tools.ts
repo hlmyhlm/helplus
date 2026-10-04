@@ -1,5 +1,6 @@
 import { ToolDefinition } from "./types";
 import { prisma } from "@/lib/prisma";
+import { getSettings } from "@/lib/settings";
 import nodemailer from "nodemailer";
 
 export const helplusTools: ToolDefinition[] = [
@@ -244,7 +245,7 @@ async function assignToPerson(args: Record<string, unknown>): Promise<string> {
 async function sendInternalEmail(
   args: Record<string, unknown>
 ): Promise<string> {
-  const settings = await prisma.settings.findFirst();
+  const settings = await getSettings();
   if (!settings?.smtpHost) {
     return JSON.stringify({
       success: false,

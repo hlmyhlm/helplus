@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { prisma } from "@/lib/prisma";
+import { getSettings } from "@/lib/settings";
 import { helplusTools, executeToolCall } from "./tools";
 import { emitNewMessage } from "@/lib/realtime";
 import { analyzeSentiment, detectIntent, estimateConfidence, requiresHumanApproval } from "./guardrails";
@@ -77,10 +78,7 @@ async function getKnowledgeBase(): Promise<KnowledgeItem[]> {
 }
 
 async function getAIConfig(): Promise<AIConfig & ConversationContext> {
-  let settings = await prisma.settings.findFirst();
-  if (!settings) {
-    settings = await prisma.settings.create({ data: { id: "default" } });
-  }
+  const settings = await getSettings();
 
   return {
     provider: settings.aiProvider,

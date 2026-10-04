@@ -2,6 +2,7 @@ import Imap from "imap";
 import { simpleParser, ParsedMail } from "mailparser";
 import nodemailer from "nodemailer";
 import { prisma } from "@/lib/prisma";
+import { getSettings } from "@/lib/settings";
 import { chat, createNewConversation } from "@/lib/ai/engine";
 import { escapeHtml, sanitizeEmailSubject } from "@/lib/security";
 import { logger } from "@/lib/logger";
@@ -23,7 +24,7 @@ let imapConnection: Imap | null = null;
 let isListening = false;
 
 async function getEmailConfig(): Promise<EmailConfig | null> {
-  const settings = await prisma.settings.findFirst();
+  const settings = await getSettings();
   if (!settings?.imapHost || !settings?.smtpHost) return null;
 
   return {
@@ -119,9 +120,7 @@ interface EmailBranding {
 }
 
 async function getEmailBranding(): Promise<EmailBranding> {
-  const settings = await prisma.settings.findFirst({
-    select: { businessName: true },
-  });
+  const settings = await getSettings();
   return {
     businessName: settings?.businessName || "Support",
   };
