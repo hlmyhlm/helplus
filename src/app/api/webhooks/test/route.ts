@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { withAuth } from "@/lib/tenant/with-auth";
 
-export async function POST(request: NextRequest) {
+export const POST = withAuth("webhooks:update", async (request: NextRequest, _auth) => {
   try {
     const body = await request.json();
     const { webhookId } = body;
@@ -87,4 +88,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

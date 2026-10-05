@@ -7,6 +7,12 @@
  */
 
 import { logger } from "@/lib/logger";
+import { currentCompanyId } from "@/lib/tenant/context";
+
+// subscribers and events are per company, so one company never sees another's events
+function companyChannel(channel: string): string {
+  return `${currentCompanyId()}:${channel}`;
+}
 
 export type EventType =
   | "message:new"
@@ -42,16 +48,17 @@ export function subscribe(
   channel: string,
   callback: EventCallback
 ): () => void {
-  if (!subscribers.has(channel)) {
-    subscribers.set(channel, new Set());
+  const key = companyChannel(channel);
+  if (!subscribers.has(key)) {
+    subscribers.set(key, new Set());
   }
-  subscribers.get(channel)!.add(callback);
+  subscribers.get(key)!.add(callback);
 
   return () => {
-    const subs = subscribers.get(channel);
+    const subs = subscribers.get(key);
     if (subs) {
       subs.delete(callback);
-      if (subs.size === 0) subscribers.delete(channel);
+      if (subs.size === 0) subscribers.delete(key);
     }
   };
 }
@@ -65,7 +72,7 @@ export function publish(channel: string, event: Omit<EventPayload, "timestamp">)
     timestamp: new Date().toISOString(),
   };
 
-  const subs = subscribers.get(channel);
+  const subs = subscribers.get(companyChannel(channel));
   if (subs) {
     for (const callback of subs) {
       try {
@@ -78,7 +85,7 @@ export function publish(channel: string, event: Omit<EventPayload, "timestamp">)
 
   // Also publish to global channel
   if (channel !== "global") {
-    const globalSubs = subscribers.get("global");
+    const globalSubs = subscribers.get(companyChannel("global"));
     if (globalSubs) {
       for (const callback of globalSubs) {
         try {

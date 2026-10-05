@@ -1,16 +1,17 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import {
   startEmailListener,
   stopEmailListener,
   getEmailStatus,
 } from "@/lib/channels/email";
+import { withAuth } from "@/lib/tenant/with-auth";
 
-export async function GET() {
+export const GET = withAuth("channels:read", async (_request: NextRequest, _auth) => {
   const status = getEmailStatus();
   return NextResponse.json(status);
-}
+});
 
-export async function POST(request: Request) {
+export const POST = withAuth("channels:update", async (request: NextRequest, _auth) => {
   const body = await request.json();
   const { action } = body;
 
@@ -26,4 +27,4 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({ error: "Invalid action" }, { status: 400 });
-}
+});

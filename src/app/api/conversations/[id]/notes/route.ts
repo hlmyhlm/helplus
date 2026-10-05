@@ -1,86 +1,80 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
-import { requireAuth, isAuthenticated } from "@/lib/route-auth";
+import { withAuth } from "@/lib/tenant/with-auth";
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const auth = await requireAuth(request, "messages:read");
-  if (!isAuthenticated(auth)) return auth;
+export const GET = withAuth(
+  "messages:read",
+  async (_request: NextRequest, _auth, { params }: { params: Promise<{ id: string }> }) => {
+    try {
+      const { id } = await params;
 
-  try {
-    const { id } = await params;
+      const conversation = await prisma.conversation.findUnique({
+        where: { id },
+      });
+      if (!conversation) {
+        return NextResponse.json(
+          { error: "Conversation not found" },
+          { status: 404 }
+        );
+      }
 
-    const conversation = await prisma.conversation.findUnique({
-      where: { id },
-    });
-    if (!conversation) {
+      const notes = await prisma.internalNote.findMany({
+        where: { conversationId: id },
+        orderBy: { createdAt: "desc" },
+      });
+
+      return NextResponse.json(notes);
+    } catch (error) {
+      logger.error("Failed to fetch internal notes:", error);
       return NextResponse.json(
-        { error: "Conversation not found" },
-        { status: 404 }
+        { error: "Failed to fetch internal notes" },
+        { status: 500 }
       );
     }
-
-    const notes = await prisma.internalNote.findMany({
-      where: { conversationId: id },
-      orderBy: { createdAt: "desc" },
-    });
-
-    return NextResponse.json(notes);
-  } catch (error) {
-    logger.error("Failed to fetch internal notes:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch internal notes" },
-      { status: 500 }
-    );
   }
-}
+);
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const auth = await requireAuth(request, "messages:create");
-  if (!isAuthenticated(auth)) return auth;
+export const POST = withAuth(
+  "messages:create",
+  async (request: NextRequest, _auth, { params }: { params: Promise<{ id: string }> }) => {
+    try {
+      const { id } = await params;
+      const body = await request.json();
+      const { content, authorName } = body;
 
-  try {
-    const { id } = await params;
-    const body = await request.json();
-    const { content, authorName } = body;
+      if (!content || typeof content !== "string" || !content.trim()) {
+        return NextResponse.json(
+          { error: "Content is required" },
+          { status: 400 }
+        );
+      }
 
-    if (!content || typeof content !== "string" || !content.trim()) {
+      const conversation = await prisma.conversation.findUnique({
+        where: { id },
+      });
+      if (!conversation) {
+        return NextResponse.json(
+          { error: "Conversation not found" },
+          { status: 404 }
+        );
+      }
+
+      const note = await prisma.internalNote.create({
+        data: {
+          conversationId: id,
+          content: content.trim(),
+          authorName: authorName?.trim() || "Admin",
+        },
+      });
+
+      return NextResponse.json(note, { status: 201 });
+    } catch (error) {
+      logger.error("Failed to create internal note:", error);
       return NextResponse.json(
-        { error: "Content is required" },
-        { status: 400 }
+        { error: "Failed to create internal note" },
+        { status: 500 }
       );
     }
-
-    const conversation = await prisma.conversation.findUnique({
-      where: { id },
-    });
-    if (!conversation) {
-      return NextResponse.json(
-        { error: "Conversation not found" },
-        { status: 404 }
-      );
-    }
-
-    const note = await prisma.internalNote.create({
-      data: {
-        conversationId: id,
-        content: content.trim(),
-        authorName: authorName?.trim() || "Admin",
-      },
-    });
-
-    return NextResponse.json(note, { status: 201 });
-  } catch (error) {
-    logger.error("Failed to create internal note:", error);
-    return NextResponse.json(
-      { error: "Failed to create internal note" },
-      { status: 500 }
-    );
   }
-}
+);

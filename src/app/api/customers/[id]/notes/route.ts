@@ -1,82 +1,76 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
-import { requireAuth, isAuthenticated } from "@/lib/route-auth";
+import { withAuth } from "@/lib/tenant/with-auth";
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const auth = await requireAuth(request, "customers:read");
-  if (!isAuthenticated(auth)) return auth;
+export const GET = withAuth(
+  "customers:read",
+  async (_request: NextRequest, _auth, { params }: { params: Promise<{ id: string }> }) => {
+    try {
+      const { id } = await params;
 
-  try {
-    const { id } = await params;
+      const customer = await prisma.customer.findUnique({ where: { id } });
+      if (!customer) {
+        return NextResponse.json(
+          { error: "Customer not found" },
+          { status: 404 }
+        );
+      }
 
-    const customer = await prisma.customer.findUnique({ where: { id } });
-    if (!customer) {
+      const notes = await prisma.customerNote.findMany({
+        where: { customerId: id },
+        orderBy: { createdAt: "desc" },
+      });
+
+      return NextResponse.json(notes);
+    } catch (error) {
+      logger.error("Failed to fetch customer notes:", error);
       return NextResponse.json(
-        { error: "Customer not found" },
-        { status: 404 }
+        { error: "Failed to fetch customer notes" },
+        { status: 500 }
       );
     }
-
-    const notes = await prisma.customerNote.findMany({
-      where: { customerId: id },
-      orderBy: { createdAt: "desc" },
-    });
-
-    return NextResponse.json(notes);
-  } catch (error) {
-    logger.error("Failed to fetch customer notes:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch customer notes" },
-      { status: 500 }
-    );
   }
-}
+);
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const auth = await requireAuth(request, "customers:update");
-  if (!isAuthenticated(auth)) return auth;
+export const POST = withAuth(
+  "customers:update",
+  async (request: NextRequest, _auth, { params }: { params: Promise<{ id: string }> }) => {
+    try {
+      const { id } = await params;
+      const body = await request.json();
+      const { content, authorName } = body;
 
-  try {
-    const { id } = await params;
-    const body = await request.json();
-    const { content, authorName } = body;
+      if (!content || typeof content !== "string" || !content.trim()) {
+        return NextResponse.json(
+          { error: "Content is required" },
+          { status: 400 }
+        );
+      }
 
-    if (!content || typeof content !== "string" || !content.trim()) {
+      const customer = await prisma.customer.findUnique({ where: { id } });
+      if (!customer) {
+        return NextResponse.json(
+          { error: "Customer not found" },
+          { status: 404 }
+        );
+      }
+
+      const note = await prisma.customerNote.create({
+        data: {
+          customerId: id,
+          content: content.trim(),
+          authorName: authorName?.trim() || "Admin",
+        },
+      });
+
+      return NextResponse.json(note, { status: 201 });
+    } catch (error) {
+      logger.error("Failed to create customer note:", error);
       return NextResponse.json(
-        { error: "Content is required" },
-        { status: 400 }
+        { error: "Failed to create customer note" },
+        { status: 500 }
       );
     }
-
-    const customer = await prisma.customer.findUnique({ where: { id } });
-    if (!customer) {
-      return NextResponse.json(
-        { error: "Customer not found" },
-        { status: 404 }
-      );
-    }
-
-    const note = await prisma.customerNote.create({
-      data: {
-        customerId: id,
-        content: content.trim(),
-        authorName: authorName?.trim() || "Admin",
-      },
-    });
-
-    return NextResponse.json(note, { status: 201 });
-  } catch (error) {
-    logger.error("Failed to create customer note:", error);
-    return NextResponse.json(
-      { error: "Failed to create customer note" },
-      { status: 500 }
-    );
   }
-}
+);

@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { chat, createNewConversation } from "@/lib/ai/engine";
 import { logger } from "@/lib/logger";
+import { withAuth } from "@/lib/tenant/with-auth";
 
-export async function POST(request: NextRequest) {
+export const POST = withAuth("conversations:create", async (request: NextRequest, _auth) => {
   try {
     const body = await request.json();
     const { message, conversationId, channel, customerName, customerContact } = body;
@@ -39,4 +40,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});
