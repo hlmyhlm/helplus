@@ -22,6 +22,11 @@ export async function PUT(
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
+    // owner accounts can only be touched by another owner, for any field
+    if (existing.role === "owner" && auth.role !== "owner") {
+      return NextResponse.json({ error: "Only an owner can change an owner account" }, { status: 403 });
+    }
+
     const updateData: Record<string, unknown> = {};
 
     if (name !== undefined) {
@@ -89,6 +94,11 @@ export async function DELETE(
     const existing = await prisma.admin.findUnique({ where: { id } });
     if (!existing) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+
+    // owner accounts can only be deleted by another owner
+    if (existing.role === "owner" && auth.role !== "owner") {
+      return NextResponse.json({ error: "Only an owner can delete an owner account" }, { status: 403 });
     }
 
     const ownerCount = await prisma.admin.count({ where: { role: "owner" } });
