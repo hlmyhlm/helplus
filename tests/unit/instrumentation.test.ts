@@ -2,6 +2,9 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 
 vi.mock("@/lib/shutdown", () => ({ registerShutdownHandlers: vi.fn() }));
 
+const status = vi.fn();
+vi.mock("@/lib/settings", () => ({ getSettingsWithStatus: () => status() }));
+
 const env = process.env as Record<string, string | undefined>;
 const saved = { ...env };
 
@@ -43,5 +46,30 @@ describe("instrumentation register", () => {
     env.HELPLUS_SECRET_KEY = "";
     const { register } = await import("@/instrumentation");
     await expect(register()).resolves.toBeUndefined();
+  });
+});
+
+describe("startup secret check", () => {
+  it("logs the fields it can't decrypt, never the values, and keeps going", async () => {
+    env.NODE_ENV = "production";
+    env.NEXT_RUNTIME = "nodejs";
+    status.mockResolvedValue({ settings: { twilioToken: "" }, undecryptable: ["twilioToken", "smtpPass"] });
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { register, checkStoredSecrets } = await import("@/instrumentation");
+    await expect(register()).resolves.toBeUndefined();
+    await checkStoredSecrets();
+    const logged = errorLog.mock.calls.flat().join(" ");
+    expect(logged).toContain("twilioToken");
+    expect(logged).toContain("smtpPass");
+    errorLog.mockRestore();
+  });
+
+  it("doesn't crash when the database is down", async () => {
+    status.mockRejectedValue(new Error("connect ECONNREFUSED"));
+    const warnLog = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { checkStoredSecrets } = await import("@/instrumentation");
+    await expect(checkStoredSecrets()).resolves.toBeUndefined();
+    expect(warnLog).toHaveBeenCalled();
+    warnLog.mockRestore();
   });
 });

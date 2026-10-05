@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { handleCallEnd } from "@/lib/channels/phone";
-import { validateTwilioSignature, getTwilioAuthToken } from "@/lib/twilio-verify";
+import { isTwilioRequestAllowed } from "@/lib/twilio-verify";
 import { logger } from "@/lib/logger";
 
 export async function POST(request: NextRequest) {
@@ -11,13 +11,9 @@ export async function POST(request: NextRequest) {
       params[key] = String(value);
     });
 
-    const authToken = await getTwilioAuthToken();
-    if (authToken) {
-      const signature = request.headers.get("x-twilio-signature") || "";
-      if (!validateTwilioSignature(authToken, signature, request.url, params)) {
-        logger.warn("[Phone] Invalid Twilio signature on status callback");
-        return new NextResponse("Forbidden", { status: 403 });
-      }
+    if (!(await isTwilioRequestAllowed(request, params))) {
+      logger.warn("[Phone] Rejected Twilio request on status callback (bad signature or unreadable token)");
+      return new NextResponse("Forbidden", { status: 403 });
     }
 
     const callSid = params.CallSid || "";

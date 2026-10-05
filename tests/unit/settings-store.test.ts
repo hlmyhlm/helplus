@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { prisma } from "@/lib/prisma";
 import { fixtures } from "../helpers/fixtures";
 import { encryptSecret, isEncrypted } from "@/lib/secrets";
-import { getSettings, saveSettings, prepareSettingsUpdate } from "@/lib/settings";
+import { getSettings, getSettingsWithStatus, saveSettings, prepareSettingsUpdate, reencryptSecrets } from "@/lib/settings";
 
 const mockPrisma = prisma as unknown as Record<string, Record<string, ReturnType<typeof vi.fn>>>;
 
@@ -161,5 +161,59 @@ describe("saveSettings key reset on provider change", () => {
     const s = await saveSettings({ embedProvider: "custom", embedBaseUrl: "http://x/v1", embedApiKey: "emb-new" });
     expect(isEncrypted(written().embedApiKey)).toBe(true);
     expect(s.embedApiKey).toBe("emb-new");
+  });
+});
+
+describe("getSettingsWithStatus", () => {
+  it("lists secrets that are stored but can't be decrypted", async () => {
+    mockPrisma.settings.upsert.mockResolvedValue({
+      ...fixtures.settings,
+      twilioToken: encryptSecret("tw"),
+      smtpPass: "",
+      aiApiKey: "sk-plain",
+    });
+    process.env.HELPLUS_SECRET_KEY = "b2".repeat(32);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const { settings, undecryptable } = await getSettingsWithStatus();
+      expect(undecryptable).toEqual(["twilioToken"]);
+      expect(settings.twilioToken).toBe("");
+      expect(settings.aiApiKey).toBe("sk-plain");
+    } finally {
+      process.env.HELPLUS_SECRET_KEY = "a1".repeat(32);
+      warn.mockRestore();
+    }
+  });
+
+  it("reports nothing when everything decrypts", async () => {
+    mockPrisma.settings.upsert.mockResolvedValue({ ...fixtures.settings, twilioToken: encryptSecret("tw") });
+    expect((await getSettingsWithStatus()).undecryptable).toEqual([]);
+  });
+});
+
+describe("reencryptSecrets", () => {
+  it("stops before writing when a stored secret can't be decrypted", async () => {
+    mockPrisma.settings.upsert.mockResolvedValue({ ...fixtures.settings, twilioToken: encryptSecret("tw") });
+    process.env.HELPLUS_SECRET_KEY = "b2".repeat(32);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await expect(reencryptSecrets()).rejects.toThrow(/twilioToken/);
+      expect(mockPrisma.settings.upsert).toHaveBeenCalledTimes(1);
+      expect(mockPrisma.settings.upsert.mock.calls[0][0].update).toEqual({});
+    } finally {
+      process.env.HELPLUS_SECRET_KEY = "a1".repeat(32);
+      warn.mockRestore();
+    }
+  });
+
+  it("re-saves every non-empty secret encrypted", async () => {
+    mockPrisma.settings.upsert.mockResolvedValue({ ...fixtures.settings, smtpPass: "", twilioToken: encryptSecret("tw") });
+    mockPrisma.settings.findUnique.mockResolvedValue(null);
+    const count = await reencryptSecrets();
+    const written = mockPrisma.settings.upsert.mock.calls[1][0].update;
+    expect(written).not.toHaveProperty("smtpPass");
+    expect(isEncrypted(written.aiApiKey)).toBe(true);
+    expect(isEncrypted(written.twilioToken)).toBe(true);
+    expect(count).toBe(Object.keys(written).length);
   });
 });

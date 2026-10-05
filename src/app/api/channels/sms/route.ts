@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { handleIncomingSms } from "@/lib/channels/sms";
-import { validateTwilioSignature, getTwilioAuthToken } from "@/lib/twilio-verify";
+import { isTwilioRequestAllowed } from "@/lib/twilio-verify";
 import { logger } from "@/lib/logger";
 
 export async function POST(request: NextRequest) {
@@ -11,14 +11,9 @@ export async function POST(request: NextRequest) {
       params[key] = String(value);
     });
 
-    // Validate Twilio signature
-    const authToken = await getTwilioAuthToken();
-    if (authToken) {
-      const signature = request.headers.get("x-twilio-signature") || "";
-      if (!validateTwilioSignature(authToken, signature, request.url, params)) {
-        logger.warn("[SMS] Invalid Twilio signature");
-        return new NextResponse("Forbidden", { status: 403 });
-      }
+    if (!(await isTwilioRequestAllowed(request, params))) {
+      logger.warn("[SMS] Rejected Twilio request (bad signature or unreadable token)");
+      return new NextResponse("Forbidden", { status: 403 });
     }
 
     const from = params.From || "";

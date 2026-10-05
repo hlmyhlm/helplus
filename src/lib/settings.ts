@@ -11,27 +11,40 @@ export type SettingsInput = Partial<
   Record<Exclude<keyof Settings, "id" | "createdAt" | "updatedAt">, string | number | boolean>
 >;
 
-// a bad or rotated key shouldn't lock admins out; they can re-enter the secret
-function decryptRow(row: Settings): Settings {
-  const out = { ...row };
-  for (const field of SECRET_FIELDS) {
-    try {
-      out[field] = decryptSecret(out[field] ?? "");
-    } catch {
-      logger.warn(`could not decrypt settings.${field}, treating it as empty`);
-      out[field] = "";
-    }
-  }
-  return out;
+export interface SettingsStatus {
+  settings: Settings;
+  // secrets that are stored but failed to decrypt (wrong or rotated key, tampered)
+  undecryptable: string[];
 }
 
-export async function getSettings(): Promise<Settings> {
+// a bad key shouldn't lock admins out of the settings page, so failed fields
+// come back empty. callers that guard something must check undecryptable
+function decryptRow(row: Settings): SettingsStatus {
+  const settings = { ...row };
+  const undecryptable: string[] = [];
+  for (const field of SECRET_FIELDS) {
+    try {
+      settings[field] = decryptSecret(settings[field] ?? "");
+    } catch {
+      logger.warn(`could not decrypt settings.${field}, treating it as empty`);
+      settings[field] = "";
+      undecryptable.push(field);
+    }
+  }
+  return { settings, undecryptable };
+}
+
+export async function getSettingsWithStatus(): Promise<SettingsStatus> {
   const row = await prisma.settings.upsert({
     where: { id: "default" },
     update: {},
     create: { id: "default" },
   });
   return decryptRow(row);
+}
+
+export async function getSettings(): Promise<Settings> {
+  return (await getSettingsWithStatus()).settings;
 }
 
 // the settings page posts "***" back for secrets it never saw, so skip those
@@ -82,5 +95,19 @@ export async function saveSettings(input: SettingsInput): Promise<Settings> {
     update: data,
     create: { id: "default", ...(data as Prisma.SettingsCreateInput) },
   });
-  return decryptRow(row);
+  return decryptRow(row).settings;
+}
+
+// re-saves every stored secret so old plain-text values get encrypted.
+// refuses to run if anything fails to decrypt, so a wrong key can't wipe secrets
+export async function reencryptSecrets(): Promise<number> {
+  const { settings, undecryptable } = await getSettingsWithStatus();
+  if (undecryptable.length > 0) {
+    throw new Error(
+      `can't decrypt ${undecryptable.join(", ")} with the current HELPLUS_SECRET_KEY. Nothing was written.`
+    );
+  }
+  const secrets = Object.fromEntries(SECRET_FIELDS.filter((f) => settings[f]).map((f) => [f, settings[f]]));
+  await saveSettings(secrets);
+  return Object.keys(secrets).length;
 }

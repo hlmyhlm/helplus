@@ -1,19 +1,13 @@
 // re-saves every secret so values stored as plain text get encrypted.
 // run once after deploying: npx tsx --env-file=.env scripts/encrypt-secrets.ts
-import { getSettings, saveSettings } from "../src/lib/settings";
-import { SECRET_FIELDS } from "../src/lib/security";
+import { reencryptSecrets } from "../src/lib/settings";
 
-async function main() {
-  const settings = await getSettings();
-  // skip empty ones, which includes any value that failed to decrypt
-  const secrets = Object.fromEntries(SECRET_FIELDS.filter((f) => settings[f]).map((f) => [f, settings[f]]));
-  await saveSettings(secrets);
-  console.log(`encrypted ${Object.keys(secrets).length} fields`);
-}
-
-main()
-  .then(() => process.exit(0))
+reencryptSecrets()
+  .then((count) => {
+    console.log(`encrypted ${count} fields`);
+    process.exit(0);
+  })
   .catch((e) => {
-    console.error(e);
+    console.error(e instanceof Error ? e.message : e);
     process.exit(1);
   });
