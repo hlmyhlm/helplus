@@ -96,4 +96,23 @@ describe("Real-time Event System", () => {
 
     expect(got).toEqual(["a"]);
   });
+
+  it("falls back to the default company outside any company context", async () => {
+    const { subscribe, publish } = await import("@/lib/realtime");
+    const callback = vi.fn();
+
+    // no runWithCompany here - this is the inbound-channel case (sms, telegram,
+    // phone, whatsapp, email) before Task 5 gives those flows a company
+    const unsub = subscribe("no-context-channel", callback);
+
+    expect(() =>
+      publish("no-context-channel", { type: "notification", data: {} })
+    ).not.toThrow();
+
+    expect(callback).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "notification" })
+    );
+
+    unsub();
+  });
 });

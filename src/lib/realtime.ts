@@ -7,11 +7,14 @@
  */
 
 import { logger } from "@/lib/logger";
-import { currentCompanyId } from "@/lib/tenant/context";
+import { companyIdOrFallback } from "@/lib/tenant/context";
 
-// subscribers and events are per company, so one company never sees another's events
+// subscribers and events are per company, so one company never sees another's events.
+// uses the fallback (not currentCompanyId) because inbound channel flows (sms, telegram,
+// phone, whatsapp, email) still call chat()/emitNewMessage outside any company context.
+// Task 5 gives those flows a company, after which this goes back to currentCompanyId().
 function companyChannel(channel: string): string {
-  return `${currentCompanyId()}:${channel}`;
+  return `${companyIdOrFallback()}:${channel}`;
 }
 
 export type EventType =
