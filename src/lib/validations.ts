@@ -203,7 +203,7 @@ export const createAdminSchema = z.object({
   username: z.string().min(3).max(100),
   password: z.string().min(6).max(200),
   name: z.string().max(200).optional(),
-  role: z.enum(["admin", "supervisor", "agent", "viewer"]).default("admin"),
+  role: z.enum(["viewer", "staff", "supervisor", "admin", "owner"]).default("staff"),
 });
 
 // API Keys

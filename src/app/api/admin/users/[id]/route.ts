@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { hashPassword } from "@/lib/auth";
 import { logger } from "@/lib/logger";
 import { requireAuth, isAuthenticated } from "@/lib/route-auth";
+import { STAFF_ROLES } from "@/lib/rbac";
 
 export async function PUT(
   request: NextRequest,
@@ -28,16 +29,18 @@ export async function PUT(
     }
 
     if (role !== undefined) {
-      const validRoles = ["admin", "editor", "viewer"];
-      if (validRoles.includes(role)) {
-        // Prevent removing the last admin
-        if (existing.role === "admin" && role !== "admin") {
-          const adminCount = await prisma.admin.count({
-            where: { role: "admin" },
+      if ((STAFF_ROLES as readonly string[]).includes(role)) {
+        if (role === "owner" && auth.role !== "owner") {
+          return NextResponse.json({ error: "Only an owner can add another owner" }, { status: 403 });
+        }
+        // Prevent removing the last owner
+        if (existing.role === "owner" && role !== "owner") {
+          const ownerCount = await prisma.admin.count({
+            where: { role: "owner" },
           });
-          if (adminCount <= 1) {
+          if (ownerCount <= 1) {
             return NextResponse.json(
-              { error: "Cannot change role of the last admin user" },
+              { error: "Cannot change role of the last owner user" },
               { status: 400 }
             );
           }
@@ -88,10 +91,10 @@ export async function DELETE(
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    const adminCount = await prisma.admin.count({ where: { role: "admin" } });
-    if (existing.role === "admin" && adminCount <= 1) {
+    const ownerCount = await prisma.admin.count({ where: { role: "owner" } });
+    if (existing.role === "owner" && ownerCount <= 1) {
       return NextResponse.json(
-        { error: "Cannot delete the last admin user" },
+        { error: "Cannot delete the last owner user" },
         { status: 400 }
       );
     }

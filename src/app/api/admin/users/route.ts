@@ -4,6 +4,7 @@ import { hashPassword } from "@/lib/auth";
 import { logger } from "@/lib/logger";
 import { parsePagination, paginatedResponse } from "@/lib/pagination";
 import { requireAuth, isAuthenticated } from "@/lib/route-auth";
+import { STAFF_ROLES } from "@/lib/rbac";
 
 export async function GET(request: NextRequest) {
   const auth = await requireAuth(request, "admin:read");
@@ -72,8 +73,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const validRoles = ["admin", "editor", "viewer"];
-    const userRole = validRoles.includes(role) ? role : "viewer";
+    const userRole = (STAFF_ROLES as readonly string[]).includes(role) ? role : "staff";
+    if (userRole === "owner" && auth.role !== "owner") {
+      return NextResponse.json({ error: "Only an owner can add another owner" }, { status: 403 });
+    }
 
     const hashed = await hashPassword(password);
     const user = await prisma.admin.create({

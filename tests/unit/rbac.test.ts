@@ -16,12 +16,12 @@ describe("RBAC System", () => {
       expect(hasPermission("viewer", "settings:read")).toBe(false);
     });
 
-    it("agent should have create/update but not delete on most resources", () => {
-      expect(hasPermission("agent", "conversations:create")).toBe(true);
-      expect(hasPermission("agent", "conversations:update")).toBe(true);
-      expect(hasPermission("agent", "conversations:delete")).toBe(false);
-      expect(hasPermission("agent", "tickets:create")).toBe(true);
-      expect(hasPermission("agent", "knowledge:create")).toBe(false);
+    it("staff should have create/update but not delete on most resources", () => {
+      expect(hasPermission("staff", "conversations:create")).toBe(true);
+      expect(hasPermission("staff", "conversations:update")).toBe(true);
+      expect(hasPermission("staff", "conversations:delete")).toBe(false);
+      expect(hasPermission("staff", "tickets:create")).toBe(true);
+      expect(hasPermission("staff", "knowledge:create")).toBe(false);
     });
 
     it("supervisor should have most permissions except admin", () => {
@@ -47,16 +47,21 @@ describe("RBAC System", () => {
       expect(hasMinRole("admin", "admin")).toBe(true);
     });
 
-    it("viewer does not meet agent minimum", () => {
-      expect(hasMinRole("viewer", "agent")).toBe(false);
+    it("viewer does not meet staff minimum", () => {
+      expect(hasMinRole("viewer", "staff")).toBe(false);
     });
 
-    it("agent meets agent minimum", () => {
-      expect(hasMinRole("agent", "agent")).toBe(true);
+    it("staff meets staff minimum", () => {
+      expect(hasMinRole("staff", "staff")).toBe(true);
     });
 
     it("invalid role returns false", () => {
       expect(hasMinRole("unknown", "admin")).toBe(false);
+    });
+
+    it("orders roles from client up to owner", () => {
+      expect(hasMinRole("owner", "admin")).toBe(true);
+      expect(hasMinRole("client", "viewer")).toBe(false);
     });
   });
 
@@ -72,5 +77,15 @@ describe("RBAC System", () => {
       const adminPerms = getPermissionsForRole("admin");
       expect(viewerPerms.length).toBeLessThan(adminPerms.length);
     });
+  });
+
+  it("owner can do everything admin can, plus company:manage", () => {
+    for (const p of getPermissionsForRole("admin")) expect(hasPermission("owner", p)).toBe(true);
+    expect(hasPermission("owner", "company:manage")).toBe(true);
+    expect(hasPermission("admin", "company:manage")).toBe(false);
+  });
+
+  it("client has no dashboard permissions", () => {
+    expect(getPermissionsForRole("client")).toEqual([]);
   });
 });

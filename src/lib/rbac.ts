@@ -1,102 +1,103 @@
-/**
- * Role-Based Access Control (RBAC) System
- *
- * Roles: admin > supervisor > agent > viewer
- * Each role inherits all permissions of the roles below it.
- */
+// roles, lowest to highest. each permission lists who may use it.
 
-export const ROLES = ["viewer", "agent", "supervisor", "admin"] as const;
+export const ROLES = ["client", "viewer", "staff", "supervisor", "admin", "owner"] as const;
 export type Role = (typeof ROLES)[number];
+
+// roles that can log in to the dashboard
+export const STAFF_ROLES = ["viewer", "staff", "supervisor", "admin", "owner"] as const;
 
 export const PERMISSIONS = {
   // Conversations
-  "conversations:read": ["viewer", "agent", "supervisor", "admin"],
-  "conversations:create": ["agent", "supervisor", "admin"],
-  "conversations:update": ["agent", "supervisor", "admin"],
-  "conversations:delete": ["supervisor", "admin"],
-  "conversations:assign": ["supervisor", "admin"],
-  "conversations:transfer": ["agent", "supervisor", "admin"],
+  "conversations:read": ["viewer", "staff", "supervisor", "admin", "owner"],
+  "conversations:create": ["staff", "supervisor", "admin", "owner"],
+  "conversations:update": ["staff", "supervisor", "admin", "owner"],
+  "conversations:delete": ["supervisor", "admin", "owner"],
+  "conversations:assign": ["supervisor", "admin", "owner"],
+  "conversations:transfer": ["staff", "supervisor", "admin", "owner"],
 
   // Messages
-  "messages:read": ["viewer", "agent", "supervisor", "admin"],
-  "messages:create": ["agent", "supervisor", "admin"],
+  "messages:read": ["viewer", "staff", "supervisor", "admin", "owner"],
+  "messages:create": ["staff", "supervisor", "admin", "owner"],
 
   // Tickets
-  "tickets:read": ["viewer", "agent", "supervisor", "admin"],
-  "tickets:create": ["agent", "supervisor", "admin"],
-  "tickets:update": ["agent", "supervisor", "admin"],
-  "tickets:delete": ["supervisor", "admin"],
+  "tickets:read": ["viewer", "staff", "supervisor", "admin", "owner"],
+  "tickets:create": ["staff", "supervisor", "admin", "owner"],
+  "tickets:update": ["staff", "supervisor", "admin", "owner"],
+  "tickets:delete": ["supervisor", "admin", "owner"],
 
   // Customers
-  "customers:read": ["viewer", "agent", "supervisor", "admin"],
-  "customers:create": ["agent", "supervisor", "admin"],
-  "customers:update": ["agent", "supervisor", "admin"],
-  "customers:delete": ["admin"],
-  "customers:export": ["supervisor", "admin"],
+  "customers:read": ["viewer", "staff", "supervisor", "admin", "owner"],
+  "customers:create": ["staff", "supervisor", "admin", "owner"],
+  "customers:update": ["staff", "supervisor", "admin", "owner"],
+  "customers:delete": ["admin", "owner"],
+  "customers:export": ["supervisor", "admin", "owner"],
 
   // Knowledge Base
-  "knowledge:read": ["viewer", "agent", "supervisor", "admin"],
-  "knowledge:create": ["supervisor", "admin"],
-  "knowledge:update": ["supervisor", "admin"],
-  "knowledge:delete": ["admin"],
+  "knowledge:read": ["viewer", "staff", "supervisor", "admin", "owner"],
+  "knowledge:create": ["supervisor", "admin", "owner"],
+  "knowledge:update": ["supervisor", "admin", "owner"],
+  "knowledge:delete": ["admin", "owner"],
 
   // Team Management
-  "team:read": ["viewer", "agent", "supervisor", "admin"],
-  "team:create": ["admin"],
-  "team:update": ["admin"],
-  "team:delete": ["admin"],
+  "team:read": ["viewer", "staff", "supervisor", "admin", "owner"],
+  "team:create": ["admin", "owner"],
+  "team:update": ["admin", "owner"],
+  "team:delete": ["admin", "owner"],
 
   // Automation
-  "automation:read": ["viewer", "agent", "supervisor", "admin"],
-  "automation:create": ["supervisor", "admin"],
-  "automation:update": ["supervisor", "admin"],
-  "automation:delete": ["admin"],
+  "automation:read": ["viewer", "staff", "supervisor", "admin", "owner"],
+  "automation:create": ["supervisor", "admin", "owner"],
+  "automation:update": ["supervisor", "admin", "owner"],
+  "automation:delete": ["admin", "owner"],
 
   // Webhooks
-  "webhooks:read": ["supervisor", "admin"],
-  "webhooks:create": ["admin"],
-  "webhooks:update": ["admin"],
-  "webhooks:delete": ["admin"],
+  "webhooks:read": ["supervisor", "admin", "owner"],
+  "webhooks:create": ["admin", "owner"],
+  "webhooks:update": ["admin", "owner"],
+  "webhooks:delete": ["admin", "owner"],
 
   // Settings
-  "settings:read": ["admin"],
-  "settings:update": ["admin"],
+  "settings:read": ["admin", "owner"],
+  "settings:update": ["admin", "owner"],
 
   // Admin (users, API keys)
-  "admin:read": ["admin"],
-  "admin:create": ["admin"],
-  "admin:update": ["admin"],
-  "admin:delete": ["admin"],
+  "admin:read": ["admin", "owner"],
+  "admin:create": ["admin", "owner"],
+  "admin:update": ["admin", "owner"],
+  "admin:delete": ["admin", "owner"],
 
   // Analytics
-  "analytics:read": ["viewer", "agent", "supervisor", "admin"],
-  "analytics:export": ["supervisor", "admin"],
+  "analytics:read": ["viewer", "staff", "supervisor", "admin", "owner"],
+  "analytics:export": ["supervisor", "admin", "owner"],
 
   // Activity Log
-  "activity:read": ["supervisor", "admin"],
+  "activity:read": ["supervisor", "admin", "owner"],
 
   // Channels
-  "channels:read": ["supervisor", "admin"],
-  "channels:update": ["admin"],
+  "channels:read": ["supervisor", "admin", "owner"],
+  "channels:update": ["admin", "owner"],
 
   // SLA
-  "sla:read": ["viewer", "agent", "supervisor", "admin"],
-  "sla:create": ["admin"],
-  "sla:update": ["admin"],
-  "sla:delete": ["admin"],
+  "sla:read": ["viewer", "staff", "supervisor", "admin", "owner"],
+  "sla:create": ["admin", "owner"],
+  "sla:update": ["admin", "owner"],
+  "sla:delete": ["admin", "owner"],
 
   // Business Hours
-  "business-hours:read": ["viewer", "agent", "supervisor", "admin"],
-  "business-hours:update": ["admin"],
+  "business-hours:read": ["viewer", "staff", "supervisor", "admin", "owner"],
+  "business-hours:update": ["admin", "owner"],
 
   // Canned Responses
-  "canned:read": ["agent", "supervisor", "admin"],
-  "canned:create": ["supervisor", "admin"],
-  "canned:update": ["supervisor", "admin"],
-  "canned:delete": ["admin"],
+  "canned:read": ["staff", "supervisor", "admin", "owner"],
+  "canned:create": ["supervisor", "admin", "owner"],
+  "canned:update": ["supervisor", "admin", "owner"],
+  "canned:delete": ["admin", "owner"],
 
   // Export
-  "export:read": ["supervisor", "admin"],
+  "export:read": ["supervisor", "admin", "owner"],
+
+  // Company (owner only)
+  "company:manage": ["owner"],
 } as const;
 
 export type Permission = keyof typeof PERMISSIONS;

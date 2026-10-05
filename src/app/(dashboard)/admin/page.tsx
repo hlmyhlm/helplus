@@ -49,8 +49,10 @@ interface ApiKeyItem {
 // ---------------------------------------------------------------------------
 
 const roleBadgeStyles: Record<string, string> = {
+  owner: "bg-helplus-primary-50 text-helplus-link border border-helplus-primary-100",
   admin: "bg-helplus-primary-50 text-helplus-link border border-helplus-primary-100",
-  editor: "bg-amber-50 text-amber-700 border border-amber-200",
+  supervisor: "bg-amber-50 text-amber-700 border border-amber-200",
+  staff: "bg-amber-50 text-amber-700 border border-amber-200",
   viewer: "bg-gray-100 text-gray-600 border border-gray-200",
 };
 
@@ -95,7 +97,7 @@ export default function AdminPage() {
     name: "",
     username: "",
     password: "",
-    role: "viewer",
+    role: "staff",
   });
   const [savingUser, setSavingUser] = useState(false);
   const [userError, setUserError] = useState("");
@@ -179,7 +181,7 @@ export default function AdminPage() {
       });
     } else {
       setEditingUser(null);
-      setUserForm({ name: "", username: "", password: "", role: "viewer" });
+      setUserForm({ name: "", username: "", password: "", role: "staff" });
     }
     setShowPassword(false);
     setShowUserModal(true);
@@ -704,9 +706,11 @@ export default function AdminPage() {
                   onChange={(e) => setUserForm({ ...userForm, role: e.target.value })}
                   className="w-full px-3 py-2 text-sm border border-helplus-border rounded-lg focus:outline-none focus:ring-2 focus:ring-helplus-primary/30 focus:border-helplus-primary bg-helplus-surface text-helplus-text"
                 >
+                  <option value="owner">Owner - Everything, incl. company settings</option>
                   <option value="admin">Admin - Full access</option>
-                  <option value="editor">Editor - Can edit content</option>
-                  <option value="viewer">Viewer - Read-only access</option>
+                  <option value="supervisor">Supervisor - Team lead</option>
+                  <option value="staff">Staff - Handles tickets</option>
+                  <option value="viewer">Viewer - Read only</option>
                 </select>
               </div>
             </div>

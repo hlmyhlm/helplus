@@ -13,16 +13,20 @@ vi.mock("@/lib/prisma", () => {
 });
 
 // Mock route-auth to always authenticate as admin in tests
-vi.mock("@/lib/route-auth", () => ({
-  requireAuth: vi.fn().mockResolvedValue({
-    userId: "test-admin-id",
-    role: "admin",
-    username: "admin",
-    name: "Test Admin",
-    authMethod: "cookie",
-  }),
-  isAuthenticated: vi.fn().mockReturnValue(true),
-}));
+vi.mock("@/lib/route-auth", async () => {
+  const { NextResponse } = await import("next/server");
+  return {
+    requireAuth: vi.fn().mockResolvedValue({
+      userId: "test-admin-id",
+      role: "admin",
+      username: "admin",
+      name: "Test Admin",
+      authMethod: "cookie",
+      companyId: "test-company",
+    }),
+    isAuthenticated: vi.fn((r) => !(r instanceof NextResponse)),
+  };
+});
 
 // Mock realtime to prevent side effects in tests
 vi.mock("@/lib/realtime", () => ({
