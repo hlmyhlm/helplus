@@ -1,6 +1,7 @@
 import { Client, LocalAuth, Message } from "whatsapp-web.js";
 import * as qrcode from "qrcode";
 import { prisma } from "@/lib/prisma";
+import { channelKey } from "@/lib/tenant/keys";
 import { chat, createNewConversation } from "@/lib/ai/engine";
 import { logger } from "@/lib/logger";
 import { resolveCustomer } from "@/lib/customer-resolver";
@@ -54,7 +55,7 @@ export async function initWhatsApp(): Promise<void> {
     statusMessage = "Connected to WhatsApp";
 
     await prisma.channel.upsert({
-      where: { type: "whatsapp" },
+      where: channelKey("whatsapp"),
       update: { isActive: true, status: "connected" },
       create: { type: "whatsapp", isActive: true, status: "connected" },
     });
@@ -79,7 +80,7 @@ export async function initWhatsApp(): Promise<void> {
     whatsappClient = null;
 
     await prisma.channel.upsert({
-      where: { type: "whatsapp" },
+      where: channelKey("whatsapp"),
       update: { isActive: false, status: "disconnected" },
       create: { type: "whatsapp", isActive: false, status: "disconnected" },
     });

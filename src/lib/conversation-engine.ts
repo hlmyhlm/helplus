@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { tagKey } from "@/lib/tenant/keys";
 import { logger } from "@/lib/logger";
 
 /**
@@ -290,7 +291,7 @@ export async function executeMacro(
 
         case "add_tag": {
           let tag = await prisma.tag.findUnique({
-            where: { name: action.value },
+            where: tagKey(action.value),
           });
           if (!tag) {
             tag = await prisma.tag.create({ data: { name: action.value } });

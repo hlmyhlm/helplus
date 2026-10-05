@@ -27,4 +27,10 @@ describe("company context", () => {
   it("refuses an empty company id", () => {
     expect(() => runWithCompany("", () => 1)).toThrow(MissingCompanyError);
   });
+
+  it("runs a lazy thenable (like a prisma query) inside the company", async () => {
+    // prisma queries only start when then() is called, often after runWithCompany has returned
+    const lazy = { then: (resolve: (v: string | undefined) => void) => resolve(maybeCompanyId()) };
+    expect(await runWithCompany("co-lazy", () => lazy)).toBe("co-lazy");
+  });
 });

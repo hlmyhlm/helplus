@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { channelKey } from "@/lib/tenant/keys";
 import { logger } from "@/lib/logger";
 import { requireAuth, isAuthenticated } from "@/lib/route-auth";
 
@@ -22,7 +23,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     }
 
     const channel = await prisma.channel.findUnique({
-      where: { type },
+      where: channelKey(type),
     });
 
     if (!channel) {
@@ -65,7 +66,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
     const { isActive, config, status } = body;
 
     const channel = await prisma.channel.upsert({
-      where: { type },
+      where: channelKey(type),
       update: {
         isActive: typeof isActive === "boolean" ? isActive : undefined,
         config: config ?? undefined,
@@ -113,11 +114,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
       );
     }
 
-    const channel = await prisma.channel.findUnique({ where: { type } });
+    const channel = await prisma.channel.findUnique({ where: channelKey(type) });
 
     if (action === "disconnect") {
       const updated = await prisma.channel.upsert({
-        where: { type },
+        where: channelKey(type),
         update: { status: "disconnected" },
         create: {
           type,
@@ -141,7 +142,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       }
 
       const updated = await prisma.channel.update({
-        where: { type },
+        where: channelKey(type),
         data: { status: "connected", isActive: true },
       });
 

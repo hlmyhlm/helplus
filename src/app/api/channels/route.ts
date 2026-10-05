@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { channelKey } from "@/lib/tenant/keys";
 import { logger } from "@/lib/logger";
 import { requireAuth, isAuthenticated } from "@/lib/route-auth";
 
@@ -55,7 +56,7 @@ export async function POST(request: NextRequest) {
     }
 
     const channel = await prisma.channel.upsert({
-      where: { type },
+      where: channelKey(type),
       update: {
         isActive: typeof isActive === "boolean" ? isActive : undefined,
         config: config ?? undefined,

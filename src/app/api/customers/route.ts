@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { companyIdOrFallback } from "@/lib/tenant/context";
 import { logger } from "@/lib/logger";
 import { parsePagination, paginatedResponse } from "@/lib/pagination";
 import { requireAuth, isAuthenticated } from "@/lib/route-auth";
@@ -81,7 +82,7 @@ export async function POST(request: NextRequest) {
         ...(notes
           ? {
               notes: {
-                create: { content: notes.trim(), authorName: "Admin" },
+                create: { content: notes.trim(), authorName: "Admin", companyId: companyIdOrFallback() },
               },
             }
           : {}),

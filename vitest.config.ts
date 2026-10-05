@@ -12,6 +12,7 @@ export default defineConfig({
     environment: "node",
     setupFiles: ["./tests/setup.ts"],
     include: ["tests/**/*.test.ts"],
+    exclude: ["tests/integration/**", "node_modules/**"],
     coverage: {
       provider: "v8",
       include: ["src/lib/**", "src/app/api/**", "src/middleware.ts"],

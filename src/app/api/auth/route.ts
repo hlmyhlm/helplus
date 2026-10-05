@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { channelKey } from "@/lib/tenant/keys";
 import { saveSettings } from "@/lib/settings";
 import {
   hashPassword,
@@ -48,7 +49,7 @@ export async function POST(request: NextRequest) {
     // Ensure channels exist
     for (const type of ["whatsapp", "email", "phone"]) {
       await prisma.channel.upsert({
-        where: { type },
+        where: channelKey(type),
         update: {},
         create: { type, isActive: false, status: "disconnected" },
       });

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { prisma } from "@/lib/prisma";
 import { fixtures } from "../helpers/fixtures";
 import { encryptSecret, isEncrypted } from "@/lib/secrets";
+import { runWithCompany } from "@/lib/tenant/context";
 import { getSettings, getSettingsWithStatus, saveSettings, prepareSettingsUpdate, reencryptSecrets } from "@/lib/settings";
 
 const mockPrisma = prisma as unknown as Record<string, Record<string, ReturnType<typeof vi.fn>>>;
@@ -25,11 +26,11 @@ describe("getSettings", () => {
 
   it("creates the default row in one upsert", async () => {
     mockPrisma.settings.upsert.mockResolvedValue({ ...fixtures.settings });
-    await getSettings();
+    await runWithCompany("test-company", getSettings);
     expect(mockPrisma.settings.upsert).toHaveBeenCalledWith({
-      where: { id: "default" },
+      where: { companyId: "test-company" },
       update: {},
-      create: { id: "default" },
+      create: {},
     });
     expect(mockPrisma.settings.create).not.toHaveBeenCalled();
   });

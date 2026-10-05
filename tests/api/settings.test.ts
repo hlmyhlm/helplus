@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { createRequest, parseJsonResponse } from "../helpers/request";
 import { fixtures } from "../helpers/fixtures";
 import { SECRET_FIELDS } from "@/lib/security";
+import { runWithCompany } from "@/lib/tenant/context";
 
 const mockPrisma = prisma as unknown as Record<string, Record<string, ReturnType<typeof vi.fn>>>;
 
@@ -52,11 +53,11 @@ describe("GET /api/settings", () => {
     });
 
     const { GET } = await import("@/app/api/settings/route");
-    const response = await GET();
+    const response = await runWithCompany("test-company", () => GET());
 
     expect(response.status).toBe(200);
     expect(mockPrisma.settings.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: "default" }, create: { id: "default" } })
+      expect.objectContaining({ where: { companyId: "test-company" }, create: {} })
     );
   });
 
