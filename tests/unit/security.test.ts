@@ -96,6 +96,7 @@ describe("Security Utilities", () => {
         elevenLabsKey: "el-key",
         whatsappApiKey: "wa-key",
         telegramBotToken: "tg-token",
+        telegramWebhookSecret: "tg-secret",
         embedApiKey: "emb-key",
       };
 

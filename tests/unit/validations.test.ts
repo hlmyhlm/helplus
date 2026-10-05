@@ -233,6 +233,11 @@ describe("Input Validation Schemas", () => {
       expect(result.success).toBe(false);
     });
 
+    it("should accept a telegram webhook secret", () => {
+      const result = validateBody(updateSettingsSchema, { telegramWebhookSecret: "tg-secret_1" });
+      expect(result.success).toBe(true);
+    });
+
     it("should reject unknown fields (strict mode)", () => {
       const result = validateBody(updateSettingsSchema, {
         businessName: "Test",

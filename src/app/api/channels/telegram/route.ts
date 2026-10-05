@@ -3,6 +3,7 @@ import { handleTelegramUpdate } from "@/lib/channels/telegram";
 import { logger } from "@/lib/logger";
 import { runWithCompany } from "@/lib/tenant/context";
 import { resolveWebhookCompany } from "@/lib/tenant/webhook-company";
+import { isTelegramRequestAllowed } from "@/lib/telegram-verify";
 
 export async function POST(request: NextRequest) {
   const companyId = await resolveWebhookCompany(request);
@@ -10,6 +11,9 @@ export async function POST(request: NextRequest) {
     return new NextResponse("Unknown company", { status: 404 });
   }
   return runWithCompany(companyId, async () => {
+    if (!(await isTelegramRequestAllowed(request))) {
+      return new NextResponse("Forbidden", { status: 403 });
+    }
     try {
       const update = await request.json();
 

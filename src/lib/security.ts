@@ -18,6 +18,7 @@ export const SECRET_FIELDS = [
   "elevenLabsKey",
   "whatsappApiKey",
   "telegramBotToken",
+  "telegramWebhookSecret",
   "embedApiKey",
 ] as const;
 

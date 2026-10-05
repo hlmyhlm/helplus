@@ -176,6 +176,8 @@ export const updateSettingsSchema = z.object({
   whatsappMode: z.string().max(50).optional(),
   whatsappApiKey: z.string().max(500).optional(),
   whatsappPhone: z.string().max(50).optional(),
+  // telegram only allows these characters in secret_token. "***" is the masked value coming back
+  telegramWebhookSecret: z.string().max(256).regex(/^([A-Za-z0-9_-]*|\*\*\*)$/).optional(),
 }).strict();
 
 // Canned Responses
