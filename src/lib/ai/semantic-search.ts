@@ -1,7 +1,9 @@
 // knowledge base search: embeddings when a provider is set up, keyword match otherwise.
 // vectors live in KnowledgeEntry.metadata for now.
 
+import { createHash } from "node:crypto";
 import { prisma } from "@/lib/prisma";
+import { currentCompanyId } from "@/lib/tenant/context";
 import { getSettings } from "@/lib/settings";
 import { logger } from "@/lib/logger";
 import { cacheGet, cacheSet } from "@/lib/cache";
@@ -14,6 +16,12 @@ interface SearchResult {
   content: string;
   category: string;
   score: number;
+}
+
+// vectors differ per provider and model, and queries can be private, so key on all of it
+export function embeddingCacheKey(companyId: string, provider: string, model: string, query: string): string {
+  const hash = createHash("sha256").update(query).digest("hex");
+  return `embedding:${companyId}:${provider}:${model}:${hash}`;
 }
 
 async function generateEmbedding(text: string): Promise<number[] | null> {
@@ -86,7 +94,7 @@ export async function searchKnowledgeBase(
 
   if (isConfigured(cfg)) {
     // Try semantic search with embeddings
-    const cacheKey = `embedding:${Buffer.from(query).toString("base64").substring(0, 50)}`;
+    const cacheKey = embeddingCacheKey(currentCompanyId(), cfg.kind, cfg.model, query);
     let queryEmbedding: number[] | null = null;
 
     const cached = await cacheGet(cacheKey);
