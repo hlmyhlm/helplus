@@ -14,6 +14,7 @@ beforeEach(() => {
   mockPrisma.settings.findUnique.mockReset();
   mockPrisma.settings.create.mockReset();
   mockPrisma.settings.upsert.mockReset();
+  mockPrisma.$transaction.mockImplementation(async (fn) => (fn as (tx: unknown) => Promise<unknown>)(mockPrisma));
 });
 
 describe("getSettings", () => {

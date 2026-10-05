@@ -76,6 +76,7 @@ describe("PUT /api/settings", () => {
     vi.restoreAllMocks();
     mockPrisma.settings.findUnique.mockReset();
     mockPrisma.settings.findUnique.mockResolvedValue({ ...fixtures.settings });
+    mockPrisma.$transaction.mockImplementation(async (fn) => (fn as (tx: unknown) => Promise<unknown>)(mockPrisma));
   });
 
   it("should update settings with valid data", async () => {

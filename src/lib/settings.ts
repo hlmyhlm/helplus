@@ -88,15 +88,17 @@ function dropStaleKeys(current: Settings | null, input: Record<string, unknown>)
 }
 
 export async function saveSettings(input: SettingsInput): Promise<Settings> {
-  const current = await prisma.settings.findUnique({ where: { companyId: currentCompanyId() } });
-  const checked = dropStaleKeys(current ?? null, input);
-  const data = prepareSettingsUpdate(checked) as Prisma.SettingsUpdateInput;
-  const row = await prisma.settings.upsert({
-    where: { companyId: currentCompanyId() },
-    update: data,
-    create: { ...(data as Prisma.SettingsCreateInput) },
+  return prisma.$transaction(async (tx) => {
+    const current = await tx.settings.findUnique({ where: { companyId: currentCompanyId() } });
+    const checked = dropStaleKeys(current ?? null, input);
+    const data = prepareSettingsUpdate(checked) as Prisma.SettingsUpdateInput;
+    const row = await tx.settings.upsert({
+      where: { companyId: currentCompanyId() },
+      update: data,
+      create: { ...(data as Prisma.SettingsCreateInput) },
+    });
+    return decryptRow(row).settings;
   });
-  return decryptRow(row).settings;
 }
 
 // re-saves every stored secret so old plain-text values get encrypted.

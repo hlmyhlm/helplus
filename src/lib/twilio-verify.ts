@@ -52,8 +52,8 @@ export async function getTwilioAuthToken(): Promise<string> {
 }
 
 /**
- * Shared webhook check. With no token configured the request is let through
- * (signatures can't be checked); a stored token that can't be read rejects it.
+ * Shared webhook check. With no token configured the request is refused unless
+ * HELPLUS_ALLOW_UNSIGNED_WEBHOOKS is set; a stored token that can't be read rejects it.
  */
 export async function isTwilioRequestAllowed(
   request: Request,
@@ -66,7 +66,7 @@ export async function isTwilioRequestAllowed(
     if (error instanceof UndecryptableSecretError) return false;
     throw error;
   }
-  if (!authToken) return true;
+  if (!authToken) return process.env.HELPLUS_ALLOW_UNSIGNED_WEBHOOKS === "true";
   const signature = request.headers.get("x-twilio-signature") || "";
   return validateTwilioSignature(authToken, signature, request.url, params);
 }

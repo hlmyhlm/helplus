@@ -2,18 +2,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { withAuth } from "@/lib/tenant/with-auth";
+import { currentCompanyId } from "@/lib/tenant/context";
 
 export const GET = withAuth(
   "business-hours:read",
   async (_request: NextRequest, _auth) => {
     try {
       let config = await prisma.businessHours.findUnique({
-        where: { id: "default" },
+        where: { companyId: currentCompanyId() },
       });
 
       if (!config) {
         config = await prisma.businessHours.create({
-          data: { id: "default" },
+          data: {},
         });
       }
 
@@ -59,7 +60,7 @@ export const PUT = withAuth(
       }
 
       const config = await prisma.businessHours.upsert({
-        where: { id: "default" },
+        where: { companyId: currentCompanyId() },
         update: {
           ...(enabled !== undefined && { enabled }),
           ...(timezone !== undefined && { timezone }),
@@ -73,7 +74,6 @@ export const PUT = withAuth(
           ...(offlineMessage !== undefined && { offlineMessage }),
         },
         create: {
-          id: "default",
           enabled: enabled ?? false,
           timezone: timezone ?? "UTC",
           monday: monday ?? "09:00-18:00",

@@ -66,12 +66,25 @@ describe("twilio webhooks", () => {
     expect(response.status).toBe(403);
   });
 
-  // no token configured means signatures can't be checked; requests go through as before
-  it.each(routes)("%s skips the check when no token is configured", async (_path, load) => {
+  // no token configured means signatures can't be checked, so the request is refused
+  it.each(routes)("%s rejects when no token is configured", async (_path, load) => {
     mockPrisma.settings.upsert.mockResolvedValue({ ...fixtures.settings, twilioToken: "" });
     const { POST } = await load();
     const response = await POST(twilioRequest(_path));
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(403);
+  });
+
+  it.each(routes)("%s allows no token when HELPLUS_ALLOW_UNSIGNED_WEBHOOKS is set", async (_path, load) => {
+    mockPrisma.settings.upsert.mockResolvedValue({ ...fixtures.settings, twilioToken: "" });
+    const saved = process.env.HELPLUS_ALLOW_UNSIGNED_WEBHOOKS;
+    process.env.HELPLUS_ALLOW_UNSIGNED_WEBHOOKS = "true";
+    try {
+      const { POST } = await load();
+      const response = await POST(twilioRequest(_path));
+      expect(response.status).toBe(200);
+    } finally {
+      process.env.HELPLUS_ALLOW_UNSIGNED_WEBHOOKS = saved;
+    }
   });
 });
 

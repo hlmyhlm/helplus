@@ -497,8 +497,8 @@ model AutomationRule {
 // ==================== BUSINESS HOURS ====================
 
 model BusinessHours {
-  id             String  @id @default("default")
-  companyId      String  @default("")
+  id             String  @id @default(uuid())
+  companyId      String  @unique @default("")
   company        Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
   enabled        Boolean @default(false)
   timezone       String  @default("UTC")
@@ -510,8 +510,6 @@ model BusinessHours {
   saturday       String  @default("")
   sunday         String  @default("")
   offlineMessage String  @default("We are currently offline. We will get back to you during business hours.")
-
-  @@index([companyId])
 }
 
 // ==================== API KEYS ====================
