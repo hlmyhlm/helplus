@@ -1416,10 +1416,11 @@ describe("no company in context", () => {
 
 Run: `npm run test:integration` — Expected: the first two FAIL (the fallback still answers).
 
-`src/lib/prisma.ts`:
-- Delete `FALLBACK_COMPANY_ID` and its comment.
-- Change the import to `import { currentCompanyId } from "@/lib/tenant/context";`.
-- Change the line to `const companyId = currentCompanyId();`.
+The temporary fallback ended up in `src/lib/tenant/context.ts`, not `prisma.ts`, as `FALLBACK_COMPANY_ID` and `companyIdOrFallback()`. Its users are the prisma extension, `src/lib/tenant/keys.ts`, `src/lib/settings.ts` and the nested note create in `src/app/api/customers/route.ts`. Remove it:
+- Delete `FALLBACK_COMPANY_ID` and `companyIdOrFallback()` from `context.ts`.
+- Run `npx tsc --noEmit`. It now lists every caller.
+- Change each caller to `currentCompanyId()`.
+- Run `git grep -n "companyIdOrFallback\|FALLBACK_COMPANY_ID" -- src` — Expected: no output.
 
 Run: `npm run test:integration` — Expected: all pass.
 
@@ -1548,7 +1549,59 @@ Append to `.env.example`:
 # HELPLUS_ALLOW_UNSIGNED_WEBHOOKS="true"
 ```
 
-- [ ] **Step 4: Check everything**
+- [ ] **Step 4: Business hours per company**
+
+`BusinessHours` is still a single row with the global id `"default"`, so a second company's first save collides on the primary key. Give it the same treatment as Settings.
+
+Integration test first. Add to `tests/integration/settings-per-company.test.ts`:
+
+```ts
+describe("business hours per company", () => {
+  it("lets two companies save their own hours", async () => {
+    const save = (tz: string) =>
+      prisma.businessHours.upsert({
+        where: { companyId: currentCompanyId() },
+        update: { timezone: tz },
+        create: { timezone: tz },
+      });
+    await runWithCompany(A, () => save("Asia/Kuala_Lumpur"));
+    await runWithCompany(B, () => save("UTC"));
+    const a = await runWithCompany(A, () => prisma.businessHours.findUnique({ where: { companyId: A } }));
+    const b = await runWithCompany(B, () => prisma.businessHours.findUnique({ where: { companyId: B } }));
+    expect(a?.timezone).toBe("Asia/Kuala_Lumpur");
+    expect(b?.timezone).toBe("UTC");
+  });
+});
+```
+
+Add `prisma` and `currentCompanyId` to that file's imports. Run `npm run test:integration` — Expected: FAIL (`companyId` is not a unique field on `BusinessHours`).
+
+Schema, in `model BusinessHours`:
+- `id String @id @default("default")` → `id String @id @default(uuid())`
+- `companyId String @default("")` → `companyId String @unique @default("")`
+- Remove its `@@index([companyId])`.
+
+Create `prisma/migrations/20261005020000_business_hours_per_company/migration.sql`:
+
+```sql
+ALTER TABLE "BusinessHours" ALTER COLUMN "id" DROP DEFAULT;
+DROP INDEX "BusinessHours_companyId_idx";
+CREATE UNIQUE INDEX "BusinessHours_companyId_key" ON "BusinessHours"("companyId");
+```
+
+Apply it to the dev database with psql (same command as the earlier migrations), then:
+- `npx prisma db push && npx prisma generate` — Expected: already in sync.
+- Apply to the test database: `DATABASE_URL="postgresql://helpplus:helpplus_dev_2026@localhost:5432/helpplus_test?schema=public" npx prisma db push`.
+- Restart the dev server after `generate`.
+
+`src/app/api/business-hours/route.ts`:
+- Replace `where: { id: "default" }` (both the `findUnique` and the `upsert`) with `where: { companyId: currentCompanyId() }`.
+- Remove any `id: "default"` from `create`.
+
+Run: `git grep -n '"default"' -- src/app/api/business-hours` — Expected: no output.
+Run: `npm run test:integration` — Expected: all pass. Update the business-hours unit tests if they assert the old `where`.
+
+- [ ] **Step 5: Check everything**
 
 Run: `npx tsc --noEmit` — Expected: no output.
 Run: `npx vitest run` — Expected: all pass.
@@ -1557,11 +1610,256 @@ Run: `npm run lint` — Expected: 0 errors.
 Run: `npm run smoke` — Expected: `no runtime errors`.
 Run: `npx next build` (stop the dev server first, restart it afterwards) — Expected: build succeeds.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add src tests .env.example
-git commit -m "per-company settings in one transaction, refuse unsigned twilio by default"
+git add src tests prisma .env.example
+git commit -m "per-company settings and business hours, refuse unsigned twilio by default"
+```
+
+---
+
+### Task 7: A row can only link to rows of its own company
+
+The scope extension filters top-level queries, but a write can still put another company's id into a foreign key. For example, company B creates a ticket with `conversationId` set to one of company A's conversations. A later `include: { conversation }` would then show A's data to B. This task makes every write check that each linked id belongs to the current company.
+
+**Files:**
+- Create: `src/lib/tenant/links.ts`, `tests/unit/tenant-links.test.ts`, `tests/integration/cross-company-links.test.ts`
+- Modify: `src/lib/prisma.ts`
+
+**Interfaces:**
+- Consumes: `scopeArgs`, `systemPrisma` and the extension (Task 2), `currentCompanyId` (Task 1, fail-closed after Task 5)
+- Produces:
+  - `LINKS: Record<string, Record<string, string>>`, mapping model → FK field → target model
+  - `linkedIds(model: string, data: unknown): { field: string; target: string; id: string }[]`
+  - `class CrossCompanyLinkError extends Error`
+
+- [ ] **Step 1: Unit tests first**
+
+Create `tests/unit/tenant-links.test.ts`:
+
+```ts
+import { describe, it, expect } from "vitest";
+import { readFileSync } from "fs";
+import path from "path";
+import { LINKS, linkedIds } from "@/lib/tenant/links";
+
+describe("LINKS", () => {
+  it("matches every foreign key in schema.prisma except companyId", () => {
+    const schema = readFileSync(path.resolve(__dirname, "../../prisma/schema.prisma"), "utf8");
+    const found: Record<string, Record<string, string>> = {};
+    let model = "";
+    for (const line of schema.split("\n")) {
+      const m = line.match(/^model (\w+)/);
+      if (m) model = m[1];
+      const rel = line.match(/^\s+\w+\s+(\w+)\??\s+@relation\(fields: \[(\w+)\]/);
+      if (rel && rel[2] !== "companyId") {
+        (found[model] ??= {})[rel[2]] = rel[1];
+      }
+    }
+    expect(LINKS).toEqual(found);
+  });
+});
+
+describe("linkedIds", () => {
+  it("collects set foreign keys from one row", () => {
+    expect(linkedIds("Ticket", { title: "x", conversationId: "c1", departmentId: null })).toEqual([
+      { field: "conversationId", target: "Conversation", id: "c1" },
+    ]);
+  });
+
+  it("collects from many rows and from Prisma's { set } form", () => {
+    expect(
+      linkedIds("ConversationTag", [{ conversationId: "c1", tagId: "t1" }, { conversationId: { set: "c2" }, tagId: "t1" }])
+    ).toEqual([
+      { field: "conversationId", target: "Conversation", id: "c1" },
+      { field: "tagId", target: "Tag", id: "t1" },
+      { field: "conversationId", target: "Conversation", id: "c2" },
+    ]);
+  });
+
+  it("ignores models without links", () => {
+    expect(linkedIds("Customer", { name: "x" })).toEqual([]);
+  });
+});
+```
+
+Run: `npx vitest run tests/unit/tenant-links.test.ts` — Expected: FAIL, cannot resolve module.
+
+- [ ] **Step 2: Write links.ts**
+
+Create `src/lib/tenant/links.ts`:
+
+```ts
+// foreign keys between company tables. every write checks these point at rows of the same company.
+// tenant-links.test.ts fails if this drifts from schema.prisma.
+export const LINKS: Record<string, Record<string, string>> = {
+  KnowledgeEntry: { categoryId: "Category" },
+  TeamMember: { departmentId: "Department" },
+  Conversation: { customerId: "Customer" },
+  Message: { conversationId: "Conversation" },
+  Ticket: { conversationId: "Conversation", departmentId: "Department", assignedToId: "TeamMember" },
+  ConversationTag: { conversationId: "Conversation", tagId: "Tag" },
+  WebhookDelivery: { webhookId: "Webhook" },
+  CustomerNote: { customerId: "Customer" },
+  InternalNote: { conversationId: "Conversation" },
+};
+
+export class CrossCompanyLinkError extends Error {
+  constructor(model: string, field: string) {
+    super(`${model}.${field} points at a row of another company`);
+    this.name = "CrossCompanyLinkError";
+  }
+}
+
+function value(v: unknown): string | null {
+  if (typeof v === "string") return v;
+  if (v && typeof v === "object" && "set" in v && typeof (v as { set: unknown }).set === "string") {
+    return (v as { set: string }).set;
+  }
+  return null;
+}
+
+export function linkedIds(model: string, data: unknown): { field: string; target: string; id: string }[] {
+  const fields = LINKS[model];
+  if (!fields || !data) return [];
+  const rows = Array.isArray(data) ? data : [data];
+  const out: { field: string; target: string; id: string }[] = [];
+  const seen = new Set<string>();
+  for (const row of rows) {
+    if (!row || typeof row !== "object") continue;
+    for (const [field, target] of Object.entries(fields)) {
+      const id = value((row as Record<string, unknown>)[field]);
+      if (!id || seen.has(`${field}:${id}`)) continue;
+      seen.add(`${field}:${id}`);
+      out.push({ field, target, id });
+    }
+  }
+  return out;
+}
+```
+
+Run the unit test — Expected: PASS (4 tests).
+
+- [ ] **Step 3: Integration tests first**
+
+Create `tests/integration/cross-company-links.test.ts`:
+
+```ts
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { prisma, systemPrisma } from "@/lib/prisma";
+import { runWithCompany } from "@/lib/tenant/context";
+import { CrossCompanyLinkError } from "@/lib/tenant/links";
+
+const A = "it-links-a";
+const B = "it-links-b";
+let convA: string;
+let tagA: string;
+
+beforeAll(async () => {
+  await systemPrisma.company.deleteMany({ where: { id: { in: [A, B] } } });
+  await systemPrisma.company.createMany({
+    data: [
+      { id: A, name: "A", slug: A },
+      { id: B, name: "B", slug: B },
+    ],
+  });
+  convA = (await runWithCompany(A, () => prisma.conversation.create({ data: { channel: "web", customerName: "x", customerContact: "x" } }))).id;
+  tagA = (await runWithCompany(A, () => prisma.tag.create({ data: { name: "vip" } }))).id;
+});
+
+afterAll(async () => {
+  await systemPrisma.company.deleteMany({ where: { id: { in: [A, B] } } });
+  await systemPrisma.$disconnect();
+});
+
+describe("links across companies", () => {
+  it("refuses to create a row linked to another company's row", async () => {
+    await expect(
+      runWithCompany(B, () => prisma.ticket.create({ data: { title: "t", description: "d", conversationId: convA } }))
+    ).rejects.toThrow(CrossCompanyLinkError);
+  });
+
+  it("refuses to re-point an own row at another company's row", async () => {
+    const t = await runWithCompany(B, () => prisma.ticket.create({ data: { title: "t", description: "d" } }));
+    await expect(
+      runWithCompany(B, () => prisma.ticket.update({ where: { id: t.id }, data: { conversationId: convA } }))
+    ).rejects.toThrow(CrossCompanyLinkError);
+  });
+
+  it("refuses createMany with a foreign tag", async () => {
+    const convB = await runWithCompany(B, () =>
+      prisma.conversation.create({ data: { channel: "web", customerName: "y", customerContact: "y" } })
+    );
+    await expect(
+      runWithCompany(B, () => prisma.conversationTag.createMany({ data: [{ conversationId: convB.id, tagId: tagA }] }))
+    ).rejects.toThrow(CrossCompanyLinkError);
+  });
+
+  it("allows links inside the same company and empty links", async () => {
+    const t = await runWithCompany(A, () =>
+      prisma.ticket.create({ data: { title: "t", description: "d", conversationId: convA, departmentId: null } })
+    );
+    expect(t.conversationId).toBe(convA);
+  });
+
+  it("refuses a link to an id that doesn't exist", async () => {
+    await expect(
+      runWithCompany(A, () => prisma.ticket.create({ data: { title: "t", description: "d", conversationId: "nope" } }))
+    ).rejects.toThrow(CrossCompanyLinkError);
+  });
+});
+```
+
+Check `Conversation` and `Ticket`'s required fields in `prisma/schema.prisma`, and set any other required ones (no default) in the `create` data above, keeping the intent. Run `npm run test:integration` — Expected: the first three and the last FAIL.
+
+- [ ] **Step 4: Check links in the extension**
+
+In `src/lib/prisma.ts`, inside `$allOperations`, after computing `companyId` and before `query(...)`, check the links of write operations. Use `systemPrisma` with an explicit `companyId`, so the check itself isn't re-scoped:
+
+```ts
+import { CrossCompanyLinkError, linkedIds } from "@/lib/tenant/links";
+
+const WRITE_OPS = new Set(["create", "createMany", "createManyAndReturn", "update", "updateMany", "updateManyAndReturn", "upsert"]);
+
+async function assertLinksInCompany(model: string, operation: string, args: Record<string, unknown>, companyId: string) {
+  if (!WRITE_OPS.has(operation)) return;
+  const payloads = operation === "upsert" ? [args.create, args.update] : [args.data];
+  for (const payload of payloads) {
+    for (const link of linkedIds(model, payload)) {
+      const delegate = link.target.charAt(0).toLowerCase() + link.target.slice(1);
+      const count = await (systemPrisma as unknown as Record<string, { count: (a: unknown) => Promise<number> }>)[delegate].count({
+        where: { id: link.id, companyId },
+      });
+      if (count === 0) throw new CrossCompanyLinkError(model, link.field);
+    }
+  }
+}
+```
+
+Then, in the extension:
+
+```ts
+        const scoped = scopeArgs(model, operation, args as Record<string, unknown>, companyId);
+        await assertLinksInCompany(model, operation, scoped, companyId);
+        return query(scoped as typeof args);
+```
+
+Keep however the company id is obtained at that point (fallback or `currentCompanyId()`, depending on whether Task 5 is done).
+
+Run: `npm run test:integration` — Expected: all pass.
+Run: `npx vitest run` — Expected: all pass. Unit tests use the mocked Prisma, so the extension doesn't run there.
+
+- [ ] **Step 5: Check everything**
+
+Run: `npx tsc --noEmit` — Expected: no output.
+Run: `npm run smoke` (restart the dev server first) — Expected: `no runtime errors`.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src tests
+git commit -m "check that links point at rows of the same company"
 ```
 
 ---
@@ -1574,7 +1872,8 @@ git commit -m "per-company settings in one transaction, refuse unsigned twilio b
 - Every logged-in API route uses `withAuth`, enforced by `route-guard.test.ts`.
 - Webhooks pick their company from `?company=<slug>`, and refuse to guess when there are several companies.
 - Roles are owner, admin, supervisor, staff, viewer and client. The first admin is now owner. Clients can't use dashboard APIs.
-- Settings are one row per company, and secrets stay encrypted.
+- Settings and business hours are one row per company, and secrets stay encrypted.
+- A write can't link a row to another company's row (`CrossCompanyLinkError`). This is shown by real-database tests, and `tenant-links.test.ts` keeps the link list in step with the schema.
 
 Not in this stage:
 - Clients/projects and limiting staff to projects (stage 2)
