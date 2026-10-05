@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 import path from "path";
-import { LINKS, linkedIds } from "@/lib/tenant/links";
+import { CrossCompanyLinkError, LINKS, guardNestedWrites, linkedIds } from "@/lib/tenant/links";
 
 describe("LINKS", () => {
   it("matches every foreign key in schema.prisma except companyId", () => {
@@ -39,5 +39,32 @@ describe("linkedIds", () => {
 
   it("ignores models without links", () => {
     expect(linkedIds("Customer", { name: "x" })).toEqual([]);
+  });
+});
+
+describe("guardNestedWrites", () => {
+  it("stamps the company on allowed nested creates, single and createMany", () => {
+    const { args, nested } = guardNestedWrites(
+      "Customer",
+      "create",
+      { data: { name: "x", notes: { createMany: { data: [{ content: "a", companyId: "other" }] } } } },
+      "co"
+    );
+    expect(args.data).toEqual({ name: "x", notes: { createMany: { data: [{ content: "a", companyId: "co" }] } } });
+    expect(nested).toEqual([{ model: "CustomerNote", rows: [{ content: "a", companyId: "co" }] }]);
+  });
+
+  it("refuses relation writes in upsert update and in array rows", () => {
+    expect(() =>
+      guardNestedWrites("Customer", "upsert", { create: { name: "x" }, update: { notes: { deleteMany: {} } } }, "co")
+    ).toThrow(CrossCompanyLinkError);
+    expect(() =>
+      guardNestedWrites("Ticket", "createMany", { data: [{ title: "t", conversation: { connect: { id: "c" } } }] }, "co")
+    ).toThrow(CrossCompanyLinkError);
+  });
+
+  it("leaves plain scalar writes alone", () => {
+    const args = { data: { title: "t", conversationId: "c1" } };
+    expect(guardNestedWrites("Ticket", "create", args, "co")).toEqual({ args, nested: [] });
   });
 });

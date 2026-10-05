@@ -12,9 +12,37 @@ export const LINKS: Record<string, Record<string, string>> = {
   InternalNote: { conversationId: "Conversation" },
 };
 
+// relation fields between company tables (not `company`), model -> field -> target model.
+// nested writes through these skip the LINKS check, so the scoped client refuses them.
+export const RELATIONS: Record<string, Record<string, string>> = {
+  Category: { entries: "KnowledgeEntry" },
+  KnowledgeEntry: { category: "Category" },
+  Department: { members: "TeamMember", tickets: "Ticket" },
+  TeamMember: { department: "Department", tickets: "Ticket" },
+  Conversation: {
+    customer: "Customer",
+    messages: "Message",
+    tickets: "Ticket",
+    tags: "ConversationTag",
+    notes: "InternalNote",
+  },
+  Message: { conversation: "Conversation" },
+  Ticket: { conversation: "Conversation", department: "Department", assignedTo: "TeamMember" },
+  Tag: { conversations: "ConversationTag" },
+  ConversationTag: { conversation: "Conversation", tag: "Tag" },
+  Webhook: { deliveries: "WebhookDelivery" },
+  WebhookDelivery: { webhook: "Webhook" },
+  Customer: { notes: "CustomerNote", conversations: "Conversation" },
+  CustomerNote: { customer: "Customer" },
+  InternalNote: { conversation: "Conversation" },
+};
+
+// the only nested creates allowed. each nested row gets the current company stamped on it.
+export const NESTED_CREATE_OK = new Set(["Customer.notes"]);
+
 export class CrossCompanyLinkError extends Error {
-  constructor(model: string, field: string) {
-    super(`${model}.${field} points at a row of another company`);
+  constructor(model: string, field: string, reason = "points at a row of another company") {
+    super(`${model}.${field} ${reason}`);
     this.name = "CrossCompanyLinkError";
   }
 }
@@ -43,4 +71,57 @@ export function linkedIds(model: string, data: unknown): { field: string; target
     }
   }
   return out;
+}
+
+type Row = Record<string, unknown>;
+export type NestedRows = { model: string; rows: Row[] };
+
+function asRows(v: unknown): Row[] {
+  const list = Array.isArray(v) ? v : [v];
+  return list.filter((r): r is Row => !!r && typeof r === "object");
+}
+
+function guardRow(model: string, row: Row, companyId: string, nested: NestedRows[]): Row {
+  const relations = RELATIONS[model];
+  if (!relations) return row;
+  const out: Row = { ...row };
+  for (const [field, target] of Object.entries(relations)) {
+    const rel = out[field];
+    if (rel === undefined || rel === null) continue;
+    if (typeof rel !== "object") throw new CrossCompanyLinkError(model, field, "nested write isn't allowed, set the id instead");
+    const next: Row = {};
+    for (const [op, v] of Object.entries(rel as Row)) {
+      if ((op !== "create" && op !== "createMany") || !NESTED_CREATE_OK.has(`${model}.${field}`)) {
+        throw new CrossCompanyLinkError(model, field, `nested ${op} isn't allowed, set the id instead`);
+      }
+      const source = op === "create" ? v : (v as Row | undefined)?.data;
+      const rows = asRows(source).map((r) => ({ ...guardRow(target, r, companyId, nested), companyId }));
+      nested.push({ model: target, rows });
+      if (op === "create") next.create = Array.isArray(v) ? rows : rows[0];
+      else next.createMany = { ...(v as Row), data: rows };
+    }
+    out[field] = next;
+  }
+  return out;
+}
+
+// checks nested relation writes and stamps the company on allowed nested creates.
+// returns new args plus the nested rows, so their own foreign keys get checked too.
+export function guardNestedWrites(
+  model: string,
+  operation: string,
+  args: Row,
+  companyId: string
+): { args: Row; nested: NestedRows[] } {
+  const nested: NestedRows[] = [];
+  const keys = operation === "upsert" ? ["create", "update"] : ["data"];
+  const out: Row = { ...args };
+  for (const key of keys) {
+    const payload = out[key];
+    if (!payload || typeof payload !== "object") continue;
+    out[key] = Array.isArray(payload)
+      ? payload.map((r) => (r && typeof r === "object" ? guardRow(model, r as Row, companyId, nested) : r))
+      : guardRow(model, payload as Row, companyId, nested);
+  }
+  return { args: out, nested };
 }

@@ -61,3 +61,39 @@ describe("links across companies", () => {
     ).rejects.toThrow(CrossCompanyLinkError);
   });
 });
+
+describe("nested writes", () => {
+  it("refuses to connect another company's note to a customer", async () => {
+    const custA = await runWithCompany(A, () =>
+      prisma.customer.create({ data: { name: "a", notes: { create: { content: "secret", authorName: "x" } } }, include: { notes: true } })
+    );
+    const custB = await runWithCompany(B, () => prisma.customer.create({ data: { name: "b" } }));
+    await expect(
+      runWithCompany(B, () =>
+        prisma.customer.update({ where: { id: custB.id }, data: { notes: { connect: [{ id: custA.notes[0].id }] } } })
+      )
+    ).rejects.toThrow(CrossCompanyLinkError);
+    const note = await systemPrisma.customerNote.findUnique({ where: { id: custA.notes[0].id } });
+    expect(note?.customerId).toBe(custA.id);
+  });
+
+  it("stamps the current company on a nested note, whatever the caller sends", async () => {
+    const cust = await runWithCompany(B, () =>
+      prisma.customer.create({
+        data: { name: "c", notes: { create: [{ content: "n", authorName: "x", companyId: A }] } },
+        include: { notes: true },
+      })
+    );
+    expect(cust.notes[0].companyId).toBe(B);
+  });
+
+  it("refuses a nested create on a relation that isn't allowed", async () => {
+    await expect(
+      runWithCompany(B, () =>
+        prisma.conversation.create({
+          data: { channel: "web", customerName: "z", customerContact: "z", messages: { create: { role: "user", content: "hi" } } },
+        })
+      )
+    ).rejects.toThrow(CrossCompanyLinkError);
+  });
+});
