@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { scopeArgs, isTenantModel } from "@/lib/tenant/scope";
+import { scopeArgs, scopeCompanyArgs, isTenantModel } from "@/lib/tenant/scope";
 import { channelKey, tagKey } from "@/lib/tenant/keys";
 import { runWithCompany } from "@/lib/tenant/context";
 
@@ -79,5 +79,25 @@ describe("compound keys", () => {
       expect(channelKey("whatsapp")).toEqual({ companyId_type: { companyId: C, type: "whatsapp" } });
       expect(tagKey("vip")).toEqual({ companyId_name: { companyId: C, name: "vip" } });
     });
+  });
+});
+
+describe("scopeCompanyArgs", () => {
+  it("limits Company reads to the current company", () => {
+    expect(scopeCompanyArgs("findMany", undefined, C)).toEqual({ where: { id: C } });
+    expect(scopeCompanyArgs("count", { where: { slug: "x" } }, C)).toEqual({ where: { AND: [{ slug: "x" }, { id: C }] } });
+    expect(scopeCompanyArgs("findUnique", { where: { slug: "x" }, select: { id: true } }, C)).toEqual({
+      where: { slug: "x", AND: [{ id: C }] },
+      select: { id: true },
+    });
+    expect(scopeCompanyArgs("findUniqueOrThrow", { where: { id: "y", AND: { name: "n" } } }, C)).toEqual({
+      where: { id: "y", AND: [{ name: "n" }, { id: C }] },
+    });
+  });
+
+  it("refuses Company writes", () => {
+    for (const op of ["create", "createMany", "update", "updateMany", "upsert", "delete", "deleteMany"]) {
+      expect(() => scopeCompanyArgs(op, { data: {} }, C)).toThrow(/systemPrisma/);
+    }
   });
 });

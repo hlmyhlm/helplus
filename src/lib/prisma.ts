@@ -1,7 +1,7 @@
 import { PrismaClient } from "../generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { currentCompanyId } from "@/lib/tenant/context";
-import { isTenantModel, scopeArgs } from "@/lib/tenant/scope";
+import { isTenantModel, scopeArgs, scopeCompanyArgs } from "@/lib/tenant/scope";
 import { CrossCompanyLinkError, guardNestedWrites, linkedIds } from "@/lib/tenant/links";
 
 const connectionString =
@@ -48,6 +48,7 @@ export const prisma = systemPrisma.$extends({
   query: {
     $allModels: {
       async $allOperations({ model, operation, args, query }) {
+        if (model === "Company") return query(scopeCompanyArgs(operation, args as Record<string, unknown>, currentCompanyId()) as typeof args);
         if (!isTenantModel(model)) return query(args);
         const companyId = currentCompanyId();
         let input = args as Record<string, unknown>;

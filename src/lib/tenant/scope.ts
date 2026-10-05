@@ -61,3 +61,27 @@ export function scopeArgs(model: string, operation: string, args: Args | undefin
 
   throw new Error(`tenant scope: unhandled operation ${operation} on ${model}`);
 }
+
+const COMPANY_UNIQUE_READS = new Set(["findUnique", "findUniqueOrThrow"]);
+const COMPANY_FILTER_READS = new Set(["findFirst", "findFirstOrThrow", "findMany", "count", "aggregate", "groupBy"]);
+
+// the scoped client only sees its own Company row and can't change it.
+// cross-company lookups (slug routing, login, signup) stay on systemPrisma.
+export function scopeCompanyArgs(operation: string, args: Args | undefined, companyId: string): Args {
+  const a: Args = { ...(args ?? {}) };
+  const where = a.where as Args | undefined;
+
+  if (COMPANY_UNIQUE_READS.has(operation)) {
+    const and = where?.AND === undefined ? [] : Array.isArray(where.AND) ? where.AND : [where.AND];
+    a.where = { ...(where ?? {}), AND: [...and, { id: companyId }] };
+    return a;
+  }
+
+  if (COMPANY_FILTER_READS.has(operation)) {
+    a.where = where ? { AND: [where, { id: companyId }] } : { id: companyId };
+    return a;
+  }
+
+  throw new Error(`Company.${operation} isn't allowed on the scoped client, use systemPrisma`);
+}
+
