@@ -3,18 +3,22 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const handlers: Record<string, (...args: unknown[]) => unknown> = {};
 const destroy = vi.fn().mockResolvedValue(undefined);
 const sendMessage = vi.fn().mockResolvedValue(undefined);
+const initialize = vi.fn().mockResolvedValue(undefined);
+const localAuth = vi.fn();
 vi.mock("whatsapp-web.js", () => ({
   Client: vi.fn().mockImplementation(function () {
     return {
       on: (event: string, fn: (...args: unknown[]) => unknown) => {
         handlers[event] = fn;
       },
-      initialize: vi.fn().mockResolvedValue(undefined),
+      initialize,
       destroy,
       sendMessage,
     };
   }),
-  LocalAuth: vi.fn(),
+  LocalAuth: vi.fn().mockImplementation(function (opts: unknown) {
+    localAuth(opts);
+  }),
 }));
 vi.mock("qrcode", () => ({ toDataURL: vi.fn().mockResolvedValue("data:image/png;base64,QR") }));
 
@@ -56,6 +60,8 @@ beforeEach(async () => {
   vi.resetModules();
   destroy.mockClear();
   sendMessage.mockClear();
+  initialize.mockReset().mockResolvedValue(undefined);
+  localAuth.mockClear();
   imapEnd.mockClear();
   const { runWithCompany } = await import("@/lib/tenant/context");
   asA = (fn) => runWithCompany("co-a", fn);
@@ -98,6 +104,49 @@ describe("whatsapp belongs to the company that connected it", () => {
     await asA(() => wa.disconnectWhatsApp());
     expect(destroy).toHaveBeenCalled();
     await expect(asB(() => wa.initWhatsApp())).resolves.toBeUndefined();
+  });
+});
+
+describe("whatsapp sessions and failures", () => {
+  it("each company gets its own saved session, default keeps the old one", async () => {
+    const wa = await import("@/lib/channels/whatsapp");
+    const { runWithCompany } = await import("@/lib/tenant/context");
+    await asA(() => wa.initWhatsApp());
+    await asA(() => wa.disconnectWhatsApp());
+    await asB(() => wa.initWhatsApp());
+    await asB(() => wa.disconnectWhatsApp());
+    await runWithCompany("default", () => wa.initWhatsApp());
+    const ids = localAuth.mock.calls.map(([o]) => (o as { clientId?: string }).clientId);
+    expect(ids).toEqual(["co-a", "co-b", undefined]);
+  });
+
+  it("a failed initialize frees the client for another company", async () => {
+    const wa = await import("@/lib/channels/whatsapp");
+    initialize.mockRejectedValueOnce(new Error("no browser"));
+    await expect(asA(() => wa.initWhatsApp())).rejects.toThrow("no browser");
+    await expect(asB(() => wa.initWhatsApp())).resolves.toBeUndefined();
+  });
+
+  it("an auth failure frees the client for another company", async () => {
+    const wa = await import("@/lib/channels/whatsapp");
+    await asA(() => wa.initWhatsApp());
+    await handlers.auth_failure("bad session");
+    await expect(asB(() => wa.initWhatsApp())).resolves.toBeUndefined();
+  });
+
+  it("incoming messages run as the company that connected", async () => {
+    const wa = await import("@/lib/channels/whatsapp");
+    const { currentCompanyId } = await import("@/lib/tenant/context");
+    await asA(() => wa.initWhatsApp());
+    let seen: string | undefined;
+    const message = {
+      get fromMe() {
+        seen = currentCompanyId();
+        return true;
+      },
+    };
+    await handlers.message(message);
+    expect(seen).toBe("co-a");
   });
 });
 

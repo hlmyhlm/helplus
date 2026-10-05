@@ -19,6 +19,15 @@ function ownedByAnother(companyId: string): boolean {
   return ownerCompanyId !== null && ownerCompanyId !== companyId;
 }
 
+// let go of a client that never got going, so another company can connect
+function release(client: Client) {
+  if (whatsappClient !== client) return;
+  whatsappClient = null;
+  ownerCompanyId = null;
+  currentQR = null;
+  client.destroy().catch(() => {});
+}
+
 export function getWhatsAppStatus() {
   if (ownedByAnother(currentCompanyId())) {
     return { status: "disconnected" as const, qr: null, message: "" };
@@ -44,7 +53,11 @@ export async function initWhatsApp(): Promise<void> {
   statusMessage = "Initializing WhatsApp client...";
 
   const client = new Client({
-    authStrategy: new LocalAuth({ dataPath: ".wwebjs_auth" }),
+    // one saved session per company. default keeps the old unnamed session folder
+    authStrategy: new LocalAuth({
+      dataPath: ".wwebjs_auth",
+      clientId: companyId === "default" ? undefined : companyId,
+    }),
     puppeteer: {
       headless: true,
       args: [
@@ -88,6 +101,7 @@ export async function initWhatsApp(): Promise<void> {
     logger.error(`[WhatsApp] Auth failure: ${message}`);
     connectionStatus = "error";
     statusMessage = `Authentication failed: ${message}`;
+    release(client);
   });
 
   client.on("disconnected", async (reason: string) => {
@@ -169,7 +183,14 @@ export async function initWhatsApp(): Promise<void> {
 
   whatsappClient = client;
   ownerCompanyId = companyId;
-  await client.initialize();
+  try {
+    await client.initialize();
+  } catch (error) {
+    connectionStatus = "error";
+    statusMessage = "Could not start WhatsApp";
+    release(client);
+    throw error;
+  }
 }
 
 export async function disconnectWhatsApp(): Promise<void> {
