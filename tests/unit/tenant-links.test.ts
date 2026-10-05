@@ -1,22 +1,93 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 import path from "path";
-import { CrossCompanyLinkError, LINKS, guardNestedWrites, linkedIds } from "@/lib/tenant/links";
+import { CrossCompanyLinkError, LINKS, RELATIONS, guardNestedWrites, linkedIds } from "@/lib/tenant/links";
 
-describe("LINKS", () => {
-  it("matches every foreign key in schema.prisma except companyId", () => {
-    const schema = readFileSync(path.resolve(__dirname, "../../prisma/schema.prisma"), "utf8");
-    const found: Record<string, Record<string, string>> = {};
-    let model = "";
-    for (const line of schema.split("\n")) {
-      const m = line.match(/^model (\w+)/);
-      if (m) model = m[1];
-      const rel = line.match(/^\s+\w+\s+(\w+)\??\s+@relation\(fields: \[(\w+)\]/);
-      if (rel && rel[2] !== "companyId") {
-        (found[model] ??= {})[rel[2]] = rel[1];
-      }
-    }
-    expect(LINKS).toEqual(found);
+type Map2 = Record<string, Record<string, string>>;
+
+// reads foreign keys (LINKS) and relation fields (RELATIONS) out of a prisma schema.
+// both skip the company relation. throws on a composite key so LINKS can't silently miss it.
+function parseSchema(schema: string) {
+  const models = new Set([...schema.matchAll(/^model (\w+)/gm)].map((m) => m[1]));
+  const links: Map2 = {};
+  const relations: Map2 = {};
+  let model = "";
+  for (const line of schema.split("\n")) {
+    const m = line.match(/^model (\w+)/);
+    if (m) model = m[1];
+    const field = line.match(/^\s+(\w+)\s+(\w+)/);
+    if (!field || model === "Company") continue;
+    const [, name, type] = field;
+    if (models.has(type) && type !== "Company") (relations[model] ??= {})[name] = type;
+    if (!line.includes("@relation(")) continue;
+    const fk = line.match(/fields:\s*\[([^\]]*)\]/);
+    if (!fk) continue;
+    if (fk[1].includes(",")) throw new Error(`composite FK, extend LINKS: ${model}.${name}`);
+    const key = fk[1].trim();
+    if (key !== "companyId") (links[model] ??= {})[key] = type;
+  }
+  return { links, relations };
+}
+
+function count(map: Map2) {
+  return Object.values(map).reduce((n, fields) => n + Object.keys(fields).length, 0);
+}
+
+describe("schema parser", () => {
+  const sample = `model A {
+  id    String @id
+  b     B      @relation("named", fields: [bId], references: [id])
+  bId   String
+  c     C?     @relation(references: [id], fields: [cId])
+  cId   String?
+  ds    D[]
+  company Company @relation(fields: [companyId], references: [id])
+}
+model B {
+  id String @id
+}
+model C {
+  id String @id
+}
+model D {
+  id String @id
+}
+model Company {
+  id String @id
+  as A[]
+}`;
+
+  it("handles named and references-first relations and list relations", () => {
+    expect(parseSchema(sample)).toEqual({
+      links: { A: { bId: "B", cId: "C" } },
+      relations: { A: { b: "B", c: "C", ds: "D" } },
+    });
+  });
+
+  it("fails on a composite key", () => {
+    const composite = sample.replace("fields: [bId]", "fields: [bId, cId]");
+    expect(() => parseSchema(composite)).toThrow("composite FK, extend LINKS");
+  });
+});
+
+describe("LINKS and RELATIONS", () => {
+  const schema = readFileSync(path.resolve(__dirname, "../../prisma/schema.prisma"), "utf8");
+  const parsed = parseSchema(schema);
+
+  it("parsed every @relation with fields", () => {
+    const fkLines = schema
+      .split("\n")
+      .filter((l) => l.includes("@relation(") && /fields:/.test(l) && !/fields:\s*\[\s*companyId\s*\]/.test(l));
+    expect(fkLines.length).toBeGreaterThan(0);
+    expect(count(parsed.links)).toBe(fkLines.length);
+  });
+
+  it("LINKS matches every foreign key in schema.prisma except companyId", () => {
+    expect(LINKS).toEqual(parsed.links);
+  });
+
+  it("RELATIONS matches every relation field except company", () => {
+    expect(RELATIONS).toEqual(parsed.relations);
   });
 });
 
