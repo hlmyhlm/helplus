@@ -8,6 +8,7 @@ import { escapeHtml, sanitizeEmailSubject } from "@/lib/security";
 import { logger } from "@/lib/logger";
 import { resolveCustomer } from "@/lib/customer-resolver";
 import { currentCompanyId, runWithCompany } from "@/lib/tenant/context";
+import { ChannelInUseError } from "@/lib/errors";
 
 interface EmailConfig {
   imapHost: string;
@@ -21,9 +22,14 @@ interface EmailConfig {
   smtpFrom: string;
 }
 
-// one imap listener per server for now, like whatsapp
+// one imap listener per server for now; per-company clients come with the silent bot
 let imapConnection: Imap | null = null;
 let isListening = false;
+let ownerCompanyId: string | null = null;
+
+function ownedByAnother(companyId: string): boolean {
+  return ownerCompanyId !== null && ownerCompanyId !== companyId;
+}
 
 async function getEmailConfig(): Promise<EmailConfig | null> {
   const settings = await getSettings();
@@ -160,6 +166,7 @@ function buildEmailHtml(text: string, branding?: EmailBranding): string {
 export async function startEmailListener() {
   // the listener is started from a logged-in request; its events must run as that company
   const companyId = currentCompanyId();
+  if (ownedByAnother(companyId)) throw new ChannelInUseError("email");
 
   if (isListening) return;
 
@@ -205,25 +212,35 @@ export async function startEmailListener() {
     });
   });
 
+  const release = () => {
+    if (imapConnection !== imap) return;
+    isListening = false;
+    imapConnection = null;
+    ownerCompanyId = null;
+  };
+
   imap.once("error", (err: Error) => {
     logger.error("[Email] IMAP error:", err);
-    isListening = false;
+    release();
   });
 
   imap.once("end", () => {
     logger.info("[Email] IMAP disconnected");
-    isListening = false;
+    release();
   });
 
   imapConnection = imap;
+  ownerCompanyId = companyId;
   imap.connect();
 }
 
 export async function stopEmailListener() {
+  if (ownedByAnother(currentCompanyId())) throw new ChannelInUseError("email");
   if (imapConnection) {
     imapConnection.end();
     imapConnection = null;
     isListening = false;
+    ownerCompanyId = null;
   }
 }
 
@@ -249,6 +266,9 @@ export async function sendEmail(
 }
 
 export function getEmailStatus() {
+  if (ownedByAnother(currentCompanyId())) {
+    return { connected: false, status: "disconnected" };
+  }
   return {
     connected: isListening,
     status: isListening ? "connected" : "disconnected",

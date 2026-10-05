@@ -6,14 +6,23 @@ import { chat, createNewConversation } from "@/lib/ai/engine";
 import { logger } from "@/lib/logger";
 import { resolveCustomer } from "@/lib/customer-resolver";
 import { currentCompanyId, runWithCompany } from "@/lib/tenant/context";
+import { ChannelInUseError } from "@/lib/errors";
 
 // one whatsapp client per server for now; per-company clients come with the silent bot
 let whatsappClient: Client | null = null;
+let ownerCompanyId: string | null = null;
 let currentQR: string | null = null;
 let connectionStatus: "disconnected" | "qr_ready" | "connecting" | "connected" | "error" = "disconnected";
 let statusMessage = "";
 
+function ownedByAnother(companyId: string): boolean {
+  return ownerCompanyId !== null && ownerCompanyId !== companyId;
+}
+
 export function getWhatsAppStatus() {
+  if (ownedByAnother(currentCompanyId())) {
+    return { status: "disconnected" as const, qr: null, message: "" };
+  }
   return {
     status: connectionStatus,
     qr: currentQR,
@@ -24,6 +33,7 @@ export function getWhatsAppStatus() {
 export async function initWhatsApp(): Promise<void> {
   // the client is started from a logged-in request; its events must run as that company
   const companyId = currentCompanyId();
+  if (ownedByAnother(companyId)) throw new ChannelInUseError("WhatsApp");
 
   if (whatsappClient) {
     logger.info("[WhatsApp] Client already exists");
@@ -84,7 +94,10 @@ export async function initWhatsApp(): Promise<void> {
     logger.info(`[WhatsApp] Disconnected: ${reason}`);
     connectionStatus = "disconnected";
     statusMessage = `Disconnected: ${reason}`;
-    whatsappClient = null;
+    if (whatsappClient === client) {
+      whatsappClient = null;
+      ownerCompanyId = null;
+    }
 
     await runWithCompany(companyId, async () => {
       await prisma.channel.upsert({
@@ -155,13 +168,16 @@ export async function initWhatsApp(): Promise<void> {
   });
 
   whatsappClient = client;
+  ownerCompanyId = companyId;
   await client.initialize();
 }
 
 export async function disconnectWhatsApp(): Promise<void> {
+  if (ownedByAnother(currentCompanyId())) throw new ChannelInUseError("WhatsApp");
   if (whatsappClient) {
     await whatsappClient.destroy();
     whatsappClient = null;
+    ownerCompanyId = null;
     currentQR = null;
     connectionStatus = "disconnected";
     statusMessage = "Disconnected";
@@ -172,7 +188,7 @@ export async function sendWhatsAppMessage(
   to: string,
   message: string
 ): Promise<boolean> {
-  if (!whatsappClient || connectionStatus !== "connected") {
+  if (!whatsappClient || connectionStatus !== "connected" || ownedByAnother(currentCompanyId())) {
     return false;
   }
 

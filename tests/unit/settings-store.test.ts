@@ -29,7 +29,7 @@ describe("getSettings", () => {
 
   it("creates the default row in one upsert", inCompany(async () => {
     mockPrisma.settings.upsert.mockResolvedValue({ ...fixtures.settings });
-    await runWithCompany("test-company", getSettings);
+    await getSettings();
     expect(mockPrisma.settings.upsert).toHaveBeenCalledWith({
       where: { companyId: "test-company" },
       update: {},

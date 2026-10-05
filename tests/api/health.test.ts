@@ -100,5 +100,4 @@ describe("GET /api/health", () => {
 
     vi.unstubAllGlobals();
   });
-
 });

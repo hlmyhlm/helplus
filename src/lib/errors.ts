@@ -12,6 +12,14 @@ export class AppError extends Error {
   }
 }
 
+// the whatsapp and imap connections are one per server, owned by the company that started them
+export class ChannelInUseError extends Error {
+  constructor(channel: "WhatsApp" | "email") {
+    super(`Another company is using this server's ${channel} connection.`);
+    this.name = "ChannelInUseError";
+  }
+}
+
 export function errorResponse(
   statusCode: number,
   code: string,

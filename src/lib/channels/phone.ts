@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { getSettings } from "@/lib/settings";
 import { chat, createNewConversation } from "@/lib/ai/engine";
 import { resolveCustomer } from "@/lib/customer-resolver";
+import { currentCompanyId } from "@/lib/tenant/context";
 
 interface PhoneConfig {
   twilioSid: string;
@@ -22,6 +23,13 @@ async function getPhoneConfig(): Promise<PhoneConfig | null> {
     elevenLabsKey: settings.elevenLabsKey,
     elevenLabsVoice: settings.elevenLabsVoice,
   };
+}
+
+// twilio calls this back without a login, so the url names the company
+async function gatherUrl(params: Record<string, string> = {}): Promise<string> {
+  const company = await prisma.company.findUnique({ where: { id: currentCompanyId() }, select: { slug: true } });
+  const query = new URLSearchParams({ ...params, company: company?.slug ?? "" });
+  return `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/api/channels/phone/gather?${query}`;
 }
 
 // Text-to-Speech using ElevenLabs
@@ -67,18 +75,18 @@ export function generateTwiMLGather(
   return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say voice="alice">${escapeXml(message)}</Say>
-  <Gather input="speech" action="${callbackUrl}" method="POST" speechTimeout="auto" language="auto">
+  <Gather input="speech" action="${escapeXml(callbackUrl)}" method="POST" speechTimeout="auto" language="auto">
     <Say voice="alice">I'm listening.</Say>
   </Gather>
   <Say voice="alice">I didn't hear anything. Goodbye.</Say>
 </Response>`;
 }
 
-export function generateTwiMLSay(message: string): string {
+export function generateTwiMLSay(message: string, callbackUrl: string): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say voice="alice">${escapeXml(message)}</Say>
-  <Gather input="speech" action="/api/channels/phone/gather" method="POST" speechTimeout="auto" language="auto">
+  <Gather input="speech" action="${escapeXml(callbackUrl)}" method="POST" speechTimeout="auto" language="auto">
     <Say voice="alice">Is there anything else I can help with?</Say>
   </Gather>
   <Say voice="alice">Thank you for calling. Goodbye.</Say>
@@ -111,7 +119,8 @@ export async function handleIncomingCall(
   const config = await getPhoneConfig();
   if (!config) {
     return generateTwiMLSay(
-      "Sorry, the phone system is not properly configured. Please try again later."
+      "Sorry, the phone system is not properly configured. Please try again later.",
+      await gatherUrl()
     );
   }
 
@@ -148,7 +157,7 @@ export async function handleIncomingCall(
   const welcomeMessage =
     settings?.welcomeMessage || "Hello! How can I help you today?";
 
-  const callbackUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/channels/phone/gather?conversationId=${conversation.id}&callSid=${callSid}`;
+  const callbackUrl = await gatherUrl({ conversationId: conversation.id, callSid });
 
   return generateTwiMLGather(welcomeMessage, callbackUrl);
 }
@@ -159,8 +168,10 @@ export async function handleSpeechInput(
   conversationId: string,
   callSid: string
 ): Promise<string> {
+  const callbackUrl = await gatherUrl({ conversationId, callSid });
+
   if (!speechResult || speechResult.trim() === "") {
-    return generateTwiMLSay("I didn't catch that. Could you please repeat?");
+    return generateTwiMLSay("I didn't catch that. Could you please repeat?", callbackUrl);
   }
 
   // Get AI response
@@ -168,7 +179,7 @@ export async function handleSpeechInput(
   try {
     aiResponse = await chat(conversationId, speechResult);
   } catch {
-    return generateTwiMLSay("I'm sorry, I'm having trouble right now. Please try again or hold for an agent.");
+    return generateTwiMLSay("I'm sorry, I'm having trouble right now. Please try again or hold for an agent.", callbackUrl);
   }
 
   // Update call log
@@ -177,7 +188,7 @@ export async function handleSpeechInput(
     data: { status: "in-progress" },
   });
 
-  return generateTwiMLSay(aiResponse);
+  return generateTwiMLSay(aiResponse, callbackUrl);
 }
 
 // End call handler
