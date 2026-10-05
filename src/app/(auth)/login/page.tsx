@@ -21,10 +21,12 @@ export default function LoginPage() {
           router.replace("/setup");
           return;
         }
-        if (data.authenticated) {
+        // clients have no dashboard yet, sending them to / would loop back here
+        if (data.authenticated && data.user?.role !== "client") {
           router.replace("/");
           return;
         }
+        if (data.authenticated) setError("This account doesn't have access to the dashboard yet.");
       } catch {
         // Allow login page to render
       }
@@ -49,6 +51,13 @@ export default function LoginPage() {
 
       if (!res.ok) {
         setError(data.error || "Login failed. Please try again.");
+        setLoading(false);
+        return;
+      }
+
+      const me = await fetch("/api/auth").then((r) => r.json()).catch(() => null);
+      if (me?.user?.role === "client") {
+        setError("This account doesn't have access to the dashboard yet.");
         setLoading(false);
         return;
       }

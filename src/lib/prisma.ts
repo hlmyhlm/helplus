@@ -37,7 +37,8 @@ async function assertRowsInCompany(model: string, payload: unknown, companyId: s
 
 // a write can set a foreign key to another company's row id. check every linked id
 // belongs to the current company before the query runs. uses systemPrisma so the
-// check itself isn't re-scoped.
+// check itself isn't re-scoped. it runs outside any interactive transaction, so a parent
+// created earlier in the same $transaction isn't visible yet and the check fails.
 async function assertLinksInCompany(model: string, operation: string, args: Record<string, unknown>, companyId: string) {
   if (!WRITE_OPS.has(operation)) return;
   const payloads = operation === "upsert" ? [args.create, args.update] : [args.data];

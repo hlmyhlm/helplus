@@ -55,6 +55,9 @@ export function scopeArgs(model: string, operation: string, args: Args | undefin
 
   if (CREATE_MANY_OPS.has(operation)) {
     const rows = Array.isArray(a.data) ? a.data : [a.data];
+    if (rows.some((r) => !r || typeof r !== "object" || Array.isArray(r))) {
+      throw new Error(`tenant scope: ${operation} on ${model} needs object rows in data`);
+    }
     a.data = rows.map((r) => ({ ...withoutCompany(r), companyId }));
     return a;
   }

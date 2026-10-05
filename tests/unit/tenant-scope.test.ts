@@ -101,3 +101,11 @@ describe("scopeCompanyArgs", () => {
     }
   });
 });
+
+describe("createMany with bad data", () => {
+  it("throws instead of stamping an empty row", () => {
+    expect(() => scopeArgs("Ticket", "createMany", {}, C)).toThrow(/createMany/);
+    expect(() => scopeArgs("Ticket", "createManyAndReturn", { data: "x" }, C)).toThrow(/createMany/);
+    expect(() => scopeArgs("Ticket", "createMany", { data: [{ title: "a" }, null] }, C)).toThrow(/createMany/);
+  });
+});

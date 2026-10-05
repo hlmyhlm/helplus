@@ -13,6 +13,7 @@ export class MissingCompanyError extends Error {
   }
 }
 
+// a thenable result comes back as a plain Promise, so don't put this inside an array $transaction([...])
 export function runWithCompany<T>(companyId: string, fn: () => T): T {
   if (!companyId) throw new MissingCompanyError();
   return storage.run({ companyId }, () => {

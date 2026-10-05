@@ -69,6 +69,8 @@ const channelIcons: Record<string, React.ElementType> = {
 export default async function DashboardPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
+  // clients have no dashboard yet
+  if (user.role === "client") redirect("/login");
   const stats = await runWithCompany(user.companyId, getStats);
 
   return (
