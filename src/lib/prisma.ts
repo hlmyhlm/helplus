@@ -1,6 +1,6 @@
 import { PrismaClient } from "../generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
-import { companyIdOrFallback } from "@/lib/tenant/context";
+import { currentCompanyId } from "@/lib/tenant/context";
 import { isTenantModel, scopeArgs } from "@/lib/tenant/scope";
 
 const connectionString =
@@ -27,7 +27,7 @@ export const prisma = systemPrisma.$extends({
     $allModels: {
       async $allOperations({ model, operation, args, query }) {
         if (!isTenantModel(model)) return query(args);
-        const companyId = companyIdOrFallback();
+        const companyId = currentCompanyId();
         return query(scopeArgs(model, operation, args as Record<string, unknown>, companyId) as typeof args);
       },
     },

@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { companyIdOrFallback } from "@/lib/tenant/context";
+import { currentCompanyId } from "@/lib/tenant/context";
 import type { Prisma, Settings } from "@/generated/prisma/client";
 import { SECRET_FIELDS } from "@/lib/security";
 import { decryptSecret, encryptSecret } from "@/lib/secrets";
@@ -37,7 +37,7 @@ function decryptRow(row: Settings): SettingsStatus {
 
 export async function getSettingsWithStatus(): Promise<SettingsStatus> {
   const row = await prisma.settings.upsert({
-    where: { companyId: companyIdOrFallback() },
+    where: { companyId: currentCompanyId() },
     update: {},
     create: {},
   });
@@ -88,11 +88,11 @@ function dropStaleKeys(current: Settings | null, input: Record<string, unknown>)
 }
 
 export async function saveSettings(input: SettingsInput): Promise<Settings> {
-  const current = await prisma.settings.findUnique({ where: { companyId: companyIdOrFallback() } });
+  const current = await prisma.settings.findUnique({ where: { companyId: currentCompanyId() } });
   const checked = dropStaleKeys(current ?? null, input);
   const data = prepareSettingsUpdate(checked) as Prisma.SettingsUpdateInput;
   const row = await prisma.settings.upsert({
-    where: { companyId: companyIdOrFallback() },
+    where: { companyId: currentCompanyId() },
     update: data,
     create: { ...(data as Prisma.SettingsCreateInput) },
   });

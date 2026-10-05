@@ -34,10 +34,3 @@ export function currentCompanyId(): string {
 export function maybeCompanyId(): string | undefined {
   return storage.getStore()?.companyId;
 }
-
-// TEMPORARY: lets code that doesn't set a company yet keep working. removed once every entry point does.
-export const FALLBACK_COMPANY_ID = "default";
-
-export function companyIdOrFallback(): string {
-  return maybeCompanyId() ?? FALLBACK_COMPANY_ID;
-}

@@ -4,6 +4,10 @@ import { prisma } from "@/lib/prisma";
 import { encryptSecret } from "@/lib/secrets";
 import { fixtures } from "../helpers/fixtures";
 import { validateTwilioSignature, getTwilioAuthToken, UndecryptableSecretError } from "@/lib/twilio-verify";
+import { runWithCompany } from "@/lib/tenant/context";
+
+// callers always run inside a company, so the tests do too
+const inCompany = (fn: () => Promise<void>) => () => runWithCompany("test-company", fn);
 
 const mockPrisma = prisma as unknown as Record<string, Record<string, ReturnType<typeof vi.fn>>>;
 
@@ -43,17 +47,17 @@ describe("Twilio Signature Validation", () => {
 });
 
 describe("getTwilioAuthToken", () => {
-  it("returns the token", async () => {
+  it("returns the token", inCompany(async () => {
     mockPrisma.settings.upsert.mockResolvedValue({ ...fixtures.settings, twilioToken: encryptSecret("tw") });
     expect(await getTwilioAuthToken()).toBe("tw");
-  });
+  }));
 
-  it("returns empty when no token is set", async () => {
+  it("returns empty when no token is set", inCompany(async () => {
     mockPrisma.settings.upsert.mockResolvedValue({ ...fixtures.settings, twilioToken: "" });
     expect(await getTwilioAuthToken()).toBe("");
-  });
+  }));
 
-  it("throws when a token is stored but can't be decrypted", async () => {
+  it("throws when a token is stored but can't be decrypted", inCompany(async () => {
     mockPrisma.settings.upsert.mockResolvedValue({ ...fixtures.settings, twilioToken: encryptSecret("tw") });
     process.env.HELPLUS_SECRET_KEY = "b2".repeat(32);
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -63,5 +67,5 @@ describe("getTwilioAuthToken", () => {
       process.env.HELPLUS_SECRET_KEY = "a1".repeat(32);
       warn.mockRestore();
     }
-  });
+  }));
 });

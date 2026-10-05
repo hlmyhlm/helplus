@@ -5,6 +5,9 @@ import { encryptSecret, isEncrypted } from "@/lib/secrets";
 import { runWithCompany } from "@/lib/tenant/context";
 import { getSettings, getSettingsWithStatus, saveSettings, prepareSettingsUpdate, reencryptSecrets } from "@/lib/settings";
 
+// callers always run inside a company, so the tests do too
+const inCompany = (fn: () => Promise<void>) => () => runWithCompany("test-company", fn);
+
 const mockPrisma = prisma as unknown as Record<string, Record<string, ReturnType<typeof vi.fn>>>;
 
 beforeEach(() => {
@@ -14,7 +17,7 @@ beforeEach(() => {
 });
 
 describe("getSettings", () => {
-  it("decrypts secrets", async () => {
+  it("decrypts secrets", inCompany(async () => {
     mockPrisma.settings.upsert.mockResolvedValue({
       ...fixtures.settings,
       aiApiKey: encryptSecret("sk-real"),
@@ -22,9 +25,9 @@ describe("getSettings", () => {
     const s = await getSettings();
     expect(s.aiApiKey).toBe("sk-real");
     expect(s.businessName).toBe("Test Business");
-  });
+  }));
 
-  it("creates the default row in one upsert", async () => {
+  it("creates the default row in one upsert", inCompany(async () => {
     mockPrisma.settings.upsert.mockResolvedValue({ ...fixtures.settings });
     await runWithCompany("test-company", getSettings);
     expect(mockPrisma.settings.upsert).toHaveBeenCalledWith({
@@ -33,9 +36,9 @@ describe("getSettings", () => {
       create: {},
     });
     expect(mockPrisma.settings.create).not.toHaveBeenCalled();
-  });
+  }));
 
-  it("blanks a secret it can't decrypt and names only the field", async () => {
+  it("blanks a secret it can't decrypt and names only the field", inCompany(async () => {
     const enc = encryptSecret("sk-real");
     const raw = Buffer.from(enc.slice("enc:v1:".length), "base64");
     raw[raw.length - 1] ^= 1;
@@ -52,9 +55,9 @@ describe("getSettings", () => {
     expect(logged).toContain("aiApiKey");
     expect(logged).not.toContain("enc:v1:");
     warn.mockRestore();
-  });
+  }));
 
-  it("blanks secrets when the key is missing", async () => {
+  it("blanks secrets when the key is missing", inCompany(async () => {
     mockPrisma.settings.upsert.mockResolvedValue({ ...fixtures.settings, aiApiKey: encryptSecret("sk-real") });
     const saved = process.env.HELPLUS_SECRET_KEY;
     delete process.env.HELPLUS_SECRET_KEY;
@@ -67,7 +70,7 @@ describe("getSettings", () => {
       process.env.HELPLUS_SECRET_KEY = saved;
       warn.mockRestore();
     }
-  });
+  }));
 });
 
 describe("prepareSettingsUpdate", () => {
@@ -94,7 +97,7 @@ describe("prepareSettingsUpdate", () => {
 });
 
 describe("saveSettings", () => {
-  it("writes encrypted values and returns decrypted ones", async () => {
+  it("writes encrypted values and returns decrypted ones", inCompany(async () => {
     mockPrisma.settings.upsert.mockImplementation(async ({ update }) => ({
       ...fixtures.settings,
       ...update,
@@ -103,7 +106,7 @@ describe("saveSettings", () => {
     const written = mockPrisma.settings.upsert.mock.calls[0][0].update.aiApiKey;
     expect(isEncrypted(written)).toBe(true);
     expect(s.aiApiKey).toBe("sk-new");
-  });
+  }));
 });
 
 describe("saveSettings key reset on provider change", () => {
@@ -120,53 +123,53 @@ describe("saveSettings key reset on provider change", () => {
 
   const written = () => mockPrisma.settings.upsert.mock.calls[0][0].update;
 
-  it("clears the chat key when the provider changes without a new key", async () => {
+  it("clears the chat key when the provider changes without a new key", inCompany(async () => {
     await saveSettings({ aiProvider: "deepseek", aiApiKey: "***" });
     expect(written().aiApiKey).toBe("");
-  });
+  }));
 
-  it("clears the chat key when the provider changes and no key is sent", async () => {
+  it("clears the chat key when the provider changes and no key is sent", inCompany(async () => {
     await saveSettings({ aiProvider: "deepseek" });
     expect(written().aiApiKey).toBe("");
-  });
+  }));
 
-  it("keeps a new key sent with the provider change", async () => {
+  it("keeps a new key sent with the provider change", inCompany(async () => {
     const s = await saveSettings({ aiProvider: "deepseek", aiApiKey: "sk-deep" });
     expect(isEncrypted(written().aiApiKey)).toBe(true);
     expect(s.aiApiKey).toBe("sk-deep");
-  });
+  }));
 
-  it("clears the chat key when the server URL changes", async () => {
+  it("clears the chat key when the server URL changes", inCompany(async () => {
     await saveSettings({ aiBaseUrl: "https://other.example.com/v1", aiApiKey: "***" });
     expect(written().aiApiKey).toBe("");
-  });
+  }));
 
-  it("keeps the stored key when provider and URL stay the same", async () => {
+  it("keeps the stored key when provider and URL stay the same", inCompany(async () => {
     await saveSettings({ aiProvider: "openai", aiBaseUrl: "", aiApiKey: "***", businessName: "Y" });
     expect(written()).not.toHaveProperty("aiApiKey");
     expect(written()).not.toHaveProperty("embedApiKey");
-  });
+  }));
 
-  it("clears the embed key when the embed provider changes", async () => {
+  it("clears the embed key when the embed provider changes", inCompany(async () => {
     await saveSettings({ embedProvider: "ollama", embedApiKey: "***" });
     expect(written().embedApiKey).toBe("");
     expect(written()).not.toHaveProperty("aiApiKey");
-  });
+  }));
 
-  it("clears the embed key when the embed URL changes", async () => {
+  it("clears the embed key when the embed URL changes", inCompany(async () => {
     await saveSettings({ embedBaseUrl: "https://emb.example.com/v1" });
     expect(written().embedApiKey).toBe("");
-  });
+  }));
 
-  it("keeps a new embed key sent with the change", async () => {
+  it("keeps a new embed key sent with the change", inCompany(async () => {
     const s = await saveSettings({ embedProvider: "custom", embedBaseUrl: "http://x/v1", embedApiKey: "emb-new" });
     expect(isEncrypted(written().embedApiKey)).toBe(true);
     expect(s.embedApiKey).toBe("emb-new");
-  });
+  }));
 });
 
 describe("getSettingsWithStatus", () => {
-  it("lists secrets that are stored but can't be decrypted", async () => {
+  it("lists secrets that are stored but can't be decrypted", inCompany(async () => {
     mockPrisma.settings.upsert.mockResolvedValue({
       ...fixtures.settings,
       twilioToken: encryptSecret("tw"),
@@ -184,16 +187,16 @@ describe("getSettingsWithStatus", () => {
       process.env.HELPLUS_SECRET_KEY = "a1".repeat(32);
       warn.mockRestore();
     }
-  });
+  }));
 
-  it("reports nothing when everything decrypts", async () => {
+  it("reports nothing when everything decrypts", inCompany(async () => {
     mockPrisma.settings.upsert.mockResolvedValue({ ...fixtures.settings, twilioToken: encryptSecret("tw") });
     expect((await getSettingsWithStatus()).undecryptable).toEqual([]);
-  });
+  }));
 });
 
 describe("reencryptSecrets", () => {
-  it("stops before writing when a stored secret can't be decrypted", async () => {
+  it("stops before writing when a stored secret can't be decrypted", inCompany(async () => {
     mockPrisma.settings.upsert.mockResolvedValue({ ...fixtures.settings, twilioToken: encryptSecret("tw") });
     process.env.HELPLUS_SECRET_KEY = "b2".repeat(32);
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -205,9 +208,9 @@ describe("reencryptSecrets", () => {
       process.env.HELPLUS_SECRET_KEY = "a1".repeat(32);
       warn.mockRestore();
     }
-  });
+  }));
 
-  it("re-saves every non-empty secret encrypted", async () => {
+  it("re-saves every non-empty secret encrypted", inCompany(async () => {
     mockPrisma.settings.upsert.mockResolvedValue({ ...fixtures.settings, smtpPass: "", twilioToken: encryptSecret("tw") });
     mockPrisma.settings.findUnique.mockResolvedValue(null);
     const count = await reencryptSecrets();
@@ -216,5 +219,5 @@ describe("reencryptSecrets", () => {
     expect(isEncrypted(written.aiApiKey)).toBe(true);
     expect(isEncrypted(written.twilioToken)).toBe(true);
     expect(count).toBe(Object.keys(written).length);
-  });
+  }));
 });

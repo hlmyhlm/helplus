@@ -2,34 +2,42 @@ import { NextRequest, NextResponse } from "next/server";
 import { handleSpeechInput } from "@/lib/channels/phone";
 import { isTwilioRequestAllowed } from "@/lib/twilio-verify";
 import { logger } from "@/lib/logger";
+import { runWithCompany } from "@/lib/tenant/context";
+import { resolveWebhookCompany } from "@/lib/tenant/webhook-company";
 
 export async function POST(request: NextRequest) {
-  try {
-    const formData = await request.formData();
-    const params: Record<string, string> = {};
-    formData.forEach((value, key) => {
-      params[key] = String(value);
-    });
-
-    if (!(await isTwilioRequestAllowed(request, params))) {
-      logger.warn("[Phone] Rejected Twilio request on gather (bad signature or unreadable token)");
-      return new NextResponse("Forbidden", { status: 403 });
-    }
-
-    const speechResult = params.SpeechResult || "";
-    const conversationId = request.nextUrl.searchParams.get("conversationId") || "";
-    const callSid = request.nextUrl.searchParams.get("callSid") || params.CallSid || "";
-
-    const twiml = await handleSpeechInput(speechResult, conversationId, callSid);
-
-    return new NextResponse(twiml, {
-      headers: { "Content-Type": "text/xml" },
-    });
-  } catch (error) {
-    logger.error("[Phone] Failed to handle speech input:", error);
-    return new NextResponse(
-      '<?xml version="1.0" encoding="UTF-8"?><Response><Say>An error occurred. Please try again.</Say></Response>',
-      { headers: { "Content-Type": "text/xml" } }
-    );
+  const companyId = await resolveWebhookCompany(request);
+  if (!companyId) {
+    return new NextResponse("Unknown company", { status: 404 });
   }
+  return runWithCompany(companyId, async () => {
+    try {
+      const formData = await request.formData();
+      const params: Record<string, string> = {};
+      formData.forEach((value, key) => {
+        params[key] = String(value);
+      });
+
+      if (!(await isTwilioRequestAllowed(request, params))) {
+        logger.warn("[Phone] Rejected Twilio request on gather (bad signature or unreadable token)");
+        return new NextResponse("Forbidden", { status: 403 });
+      }
+
+      const speechResult = params.SpeechResult || "";
+      const conversationId = request.nextUrl.searchParams.get("conversationId") || "";
+      const callSid = request.nextUrl.searchParams.get("callSid") || params.CallSid || "";
+
+      const twiml = await handleSpeechInput(speechResult, conversationId, callSid);
+
+      return new NextResponse(twiml, {
+        headers: { "Content-Type": "text/xml" },
+      });
+    } catch (error) {
+      logger.error("[Phone] Failed to handle speech input:", error);
+      return new NextResponse(
+        '<?xml version="1.0" encoding="UTF-8"?><Response><Say>An error occurred. Please try again.</Say></Response>',
+        { headers: { "Content-Type": "text/xml" } }
+      );
+    }
+  });
 }

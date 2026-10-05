@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { systemPrisma } from "@/lib/prisma";
+import { runWithCompany } from "@/lib/tenant/context";
 import { getSettings } from "@/lib/settings";
 import { resolveBaseUrl } from "@/lib/ai/provider";
 import { chatConfig, isConfigured } from "@/lib/ai/config";
@@ -11,28 +12,16 @@ export async function GET() {
 
   // Database check
   try {
-    await prisma.$queryRaw`SELECT 1`;
+    await systemPrisma.$queryRaw`SELECT 1`;
     checks.database = "connected";
   } catch {
     checks.database = "error";
   }
 
-  // AI provider reachability
+  // AI provider reachability. a shared server shouldn't report one company's AI on a public endpoint
   try {
-    const ai = chatConfig(await getSettings());
-    if (isConfigured(ai)) {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 3000);
-      const base = resolveBaseUrl(ai) ?? "https://api.openai.com/v1";
-      const res = await fetch(`${base.replace(/\/$/, "")}/models`, {
-        headers: ai.apiKey ? { Authorization: `Bearer ${ai.apiKey}` } : {},
-        signal: controller.signal,
-      });
-      clearTimeout(timeout);
-      checks.ai = res.ok ? "reachable" : "error";
-    } else {
-      checks.ai = "not_configured";
-    }
+    const companies = await systemPrisma.company.findMany({ select: { id: true }, take: 2 });
+    checks.ai = companies.length === 1 ? await runWithCompany(companies[0].id, checkAi) : "not_configured";
   } catch {
     checks.ai = "unreachable";
   }
@@ -62,4 +51,18 @@ export async function GET() {
       heap: `${Math.round(mem.heapUsed / 1024 / 1024)}/${Math.round(mem.heapTotal / 1024 / 1024)}MB`,
     },
   });
+}
+
+async function checkAi(): Promise<string> {
+  const ai = chatConfig(await getSettings());
+  if (!isConfigured(ai)) return "not_configured";
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 3000);
+  const base = resolveBaseUrl(ai) ?? "https://api.openai.com/v1";
+  const res = await fetch(`${base.replace(/\/$/, "")}/models`, {
+    headers: ai.apiKey ? { Authorization: `Bearer ${ai.apiKey}` } : {},
+    signal: controller.signal,
+  });
+  clearTimeout(timeout);
+  return res.ok ? "reachable" : "error";
 }

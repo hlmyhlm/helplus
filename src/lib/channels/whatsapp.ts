@@ -5,7 +5,9 @@ import { channelKey } from "@/lib/tenant/keys";
 import { chat, createNewConversation } from "@/lib/ai/engine";
 import { logger } from "@/lib/logger";
 import { resolveCustomer } from "@/lib/customer-resolver";
+import { currentCompanyId, runWithCompany } from "@/lib/tenant/context";
 
+// one whatsapp client per server for now; per-company clients come with the silent bot
 let whatsappClient: Client | null = null;
 let currentQR: string | null = null;
 let connectionStatus: "disconnected" | "qr_ready" | "connecting" | "connected" | "error" = "disconnected";
@@ -20,6 +22,9 @@ export function getWhatsAppStatus() {
 }
 
 export async function initWhatsApp(): Promise<void> {
+  // the client is started from a logged-in request; its events must run as that company
+  const companyId = currentCompanyId();
+
   if (whatsappClient) {
     logger.info("[WhatsApp] Client already exists");
     return;
@@ -54,10 +59,12 @@ export async function initWhatsApp(): Promise<void> {
     connectionStatus = "connected";
     statusMessage = "Connected to WhatsApp";
 
-    await prisma.channel.upsert({
-      where: channelKey("whatsapp"),
-      update: { isActive: true, status: "connected" },
-      create: { type: "whatsapp", isActive: true, status: "connected" },
+    await runWithCompany(companyId, async () => {
+      await prisma.channel.upsert({
+        where: channelKey("whatsapp"),
+        update: { isActive: true, status: "connected" },
+        create: { type: "whatsapp", isActive: true, status: "connected" },
+      });
     });
   });
 
@@ -79,68 +86,72 @@ export async function initWhatsApp(): Promise<void> {
     statusMessage = `Disconnected: ${reason}`;
     whatsappClient = null;
 
-    await prisma.channel.upsert({
-      where: channelKey("whatsapp"),
-      update: { isActive: false, status: "disconnected" },
-      create: { type: "whatsapp", isActive: false, status: "disconnected" },
+    await runWithCompany(companyId, async () => {
+      await prisma.channel.upsert({
+        where: channelKey("whatsapp"),
+        update: { isActive: false, status: "disconnected" },
+        create: { type: "whatsapp", isActive: false, status: "disconnected" },
+      });
     });
   });
 
   client.on("message", async (message: Message) => {
-    try {
-      if (message.fromMe) return;
+    await runWithCompany(companyId, async () => {
+      try {
+        if (message.fromMe) return;
 
-      const contact = await message.getContact();
-      const customerName = contact.pushname || contact.name || "Unknown";
-      const customerContact = message.from;
+        const contact = await message.getContact();
+        const customerName = contact.pushname || contact.name || "Unknown";
+        const customerContact = message.from;
 
-      // Resolve customer identity across channels
-      const customerId = await resolveCustomer("whatsapp", customerContact, customerName);
+        // Resolve customer identity across channels
+        const customerId = await resolveCustomer("whatsapp", customerContact, customerName);
 
-      // Find or create conversation
-      let conversation = await prisma.conversation.findFirst({
-        where: {
-          channel: "whatsapp",
-          status: { in: ["active", "escalated"] },
-          OR: [
-            { customerId },
-            { customerContact },
-          ],
-        },
-      });
+        // Find or create conversation
+        let conversation = await prisma.conversation.findFirst({
+          where: {
+            channel: "whatsapp",
+            status: { in: ["active", "escalated"] },
+            OR: [
+              { customerId },
+              { customerContact },
+            ],
+          },
+        });
 
-      if (!conversation) {
-        conversation = await createNewConversation(
-          "whatsapp",
-          customerName,
-          customerContact,
-          customerId
-        );
-      }
+        if (!conversation) {
+          conversation = await createNewConversation(
+            "whatsapp",
+            customerName,
+            customerContact,
+            customerId
+          );
+        }
 
-      let messageContent = message.body;
+        let messageContent = message.body;
 
-      // Handle media messages
-      if (message.hasMedia) {
-        const media = await message.downloadMedia();
-        if (media) {
-          const mediaType = media.mimetype.split("/")[0];
-          messageContent = `[${mediaType} attachment: ${media.filename || "media"}] ${message.body || ""}`;
+        // Handle media messages
+        if (message.hasMedia) {
+          const media = await message.downloadMedia();
+          if (media) {
+            const mediaType = media.mimetype.split("/")[0];
+            messageContent = `[${mediaType} attachment: ${media.filename || "media"}] ${message.body || ""}`;
 
-          if (mediaType === "audio") {
-            messageContent = `[Voice message received] ${message.body || ""}`;
+            if (mediaType === "audio") {
+              messageContent = `[Voice message received] ${message.body || ""}`;
+            }
           }
         }
+
+        // Get AI response
+        const aiResponse = await chat(conversation.id, messageContent);
+
+        // Send response back via WhatsApp
+        await message.reply(aiResponse);
+      } catch (error) {
+        logger.error("[WhatsApp] Failed to process message:", error);
       }
-
-      // Get AI response
-      const aiResponse = await chat(conversation.id, messageContent);
-
-      // Send response back via WhatsApp
-      await message.reply(aiResponse);
-    } catch (error) {
-      logger.error("[WhatsApp] Failed to process message:", error);
-    }
+    });
   });
 
   whatsappClient = client;

@@ -12,6 +12,9 @@ vi.mock("@/lib/channels/phone", () => ({
 vi.mock("@/lib/channels/sms", () => ({
   handleIncomingSms: vi.fn().mockResolvedValue("ok"),
 }));
+vi.mock("@/lib/channels/telegram", () => ({
+  handleTelegramUpdate: vi.fn().mockResolvedValue(undefined),
+}));
 
 const mockPrisma = prisma as unknown as Record<string, Record<string, ReturnType<typeof vi.fn>>>;
 const KEY = process.env.HELPLUS_SECRET_KEY;
@@ -36,6 +39,7 @@ let errorLog: ReturnType<typeof vi.spyOn>;
 let warnLog: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
+  mockPrisma.company.findMany.mockResolvedValue([{ id: "test-company" }]);
   errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
   warnLog = vi.spyOn(console, "warn").mockImplementation(() => {});
 });
@@ -68,5 +72,20 @@ describe("twilio webhooks", () => {
     const { POST } = await load();
     const response = await POST(twilioRequest(_path));
     expect(response.status).toBe(200);
+  });
+});
+
+describe("webhook company", () => {
+  const allRoutes = [
+    ...routes,
+    ["telegram", () => import("@/app/api/channels/telegram/route")],
+  ] as const;
+
+  it.each(allRoutes)("%s returns 404 when there are several companies and no ?company=", async (_path, load) => {
+    mockPrisma.company.findMany.mockResolvedValue([{ id: "a" }, { id: "b" }]);
+    const { POST } = await load();
+    const response = await POST(twilioRequest(_path));
+    expect(response.status).toBe(404);
+    expect(await response.text()).toBe("Unknown company");
   });
 });

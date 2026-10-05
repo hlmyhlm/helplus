@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { prisma } from "@/lib/prisma";
+import { runWithCompany } from "@/lib/tenant/context";
+
+// callers always run inside a company, so the tests do too
+const inCompany = (fn: () => Promise<void>) => () => runWithCompany("test-company", fn);
 
 // Mock OpenAI
 const mockOpenAICreateFn = vi.fn();
@@ -63,7 +67,7 @@ describe("AI Engine", () => {
     mockPrisma.conversation.update.mockResolvedValue({});
   });
 
-  it("should return fallback when AI API key is not configured", async () => {
+  it("should return fallback when AI API key is not configured", inCompany(async () => {
     mockPrisma.settings.upsert.mockResolvedValue({
       id: "default",
       aiApiKey: "",
@@ -83,18 +87,18 @@ describe("AI Engine", () => {
     const response = await chat("conv-1", "Hello");
 
     expect(response).toContain("AI is not configured");
-  });
+  }));
 
-  it("should return error when conversation not found", async () => {
+  it("should return error when conversation not found", inCompany(async () => {
     mockPrisma.conversation.findUnique.mockResolvedValue(null);
 
     const { chat } = await import("@/lib/ai/engine");
     const response = await chat("nonexistent", "Hello");
 
     expect(response).toBe("Conversation not found.");
-  });
+  }));
 
-  it("should call OpenAI with correct parameters", async () => {
+  it("should call OpenAI with correct parameters", inCompany(async () => {
     mockOpenAICreateFn.mockResolvedValue({
       choices: [
         {
@@ -115,9 +119,9 @@ describe("AI Engine", () => {
         temperature: 0.7,
       })
     );
-  });
+  }));
 
-  it("hides an IC number from the AI provider", async () => {
+  it("hides an IC number from the AI provider", inCompany(async () => {
     const text = "My IC is 900101-14-5678, please check";
     mockPrisma.conversation.findUnique.mockResolvedValue({
       id: "conv-1",
@@ -137,9 +141,9 @@ describe("AI Engine", () => {
     const sent = JSON.stringify(mockOpenAICreateFn.mock.calls[0][0].messages);
     expect(sent).toContain("My IC is [IC HIDDEN], please check");
     expect(sent).not.toContain("900101");
-  });
+  }));
 
-  it("should save user and assistant messages", async () => {
+  it("should save user and assistant messages", inCompany(async () => {
     mockOpenAICreateFn.mockResolvedValue({
       choices: [
         {
@@ -173,9 +177,9 @@ describe("AI Engine", () => {
         }),
       })
     );
-  });
+  }));
 
-  it("should include knowledge base in system prompt", async () => {
+  it("should include knowledge base in system prompt", inCompany(async () => {
     mockPrisma.knowledgeEntry.findMany.mockResolvedValue([
       {
         category: { name: "FAQ" },
@@ -201,9 +205,9 @@ describe("AI Engine", () => {
     const systemMessage = callArgs.messages[0];
     expect(systemMessage.content).toContain("Return Policy");
     expect(systemMessage.content).toContain("30-day returns allowed");
-  });
+  }));
 
-  it("should handle tool calls and recurse", async () => {
+  it("should handle tool calls and recurse", inCompany(async () => {
     // First call returns tool_calls
     mockOpenAICreateFn
       .mockResolvedValueOnce({
@@ -246,9 +250,9 @@ describe("AI Engine", () => {
 
     expect(response).toBe("Based on your history, I can see...");
     expect(mockOpenAICreateFn).toHaveBeenCalledTimes(2);
-  });
+  }));
 
-  it("should return fallback message when content is empty", async () => {
+  it("should return fallback message when content is empty", inCompany(async () => {
     mockOpenAICreateFn.mockResolvedValue({
       choices: [
         {
@@ -262,5 +266,5 @@ describe("AI Engine", () => {
     const response = await chat("conv-1", "Hello");
 
     expect(response).toContain("could not generate a response");
-  });
+  }));
 });

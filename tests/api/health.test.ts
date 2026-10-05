@@ -7,6 +7,7 @@ const mockPrisma = prisma as unknown as Record<string, Record<string, ReturnType
 describe("GET /api/health", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    (mockPrisma.company as Record<string, ReturnType<typeof vi.fn>>).findMany.mockResolvedValue([{ id: "test-company" }]);
     // Mock settings for AI provider check
     (mockPrisma.settings as Record<string, ReturnType<typeof vi.fn>>).upsert.mockResolvedValue({ aiApiKey: "" });
   });
@@ -82,4 +83,22 @@ describe("GET /api/health", () => {
 
     vi.unstubAllGlobals();
   });
+
+  it("should report ai as not_configured when the server has several companies", async () => {
+    (mockPrisma.$queryRaw as ReturnType<typeof vi.fn>).mockResolvedValue([{ "?column?": 1 }]);
+    (mockPrisma.company as Record<string, ReturnType<typeof vi.fn>>).findMany.mockResolvedValue([{ id: "a" }, { id: "b" }]);
+    (mockPrisma.settings as Record<string, ReturnType<typeof vi.fn>>).upsert.mockResolvedValue({ aiApiKey: "sk-test" });
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { GET } = await import("@/app/api/health/route");
+    const response = await GET();
+    const data = await parseJsonResponse(response);
+
+    expect(data.services.ai).toBe("not_configured");
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    vi.unstubAllGlobals();
+  });
+
 });

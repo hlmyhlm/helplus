@@ -2,6 +2,9 @@ import { Header } from "@/components/layout/header";
 import { StatCard } from "@/components/ui/stat-card";
 import { OnboardingChecklist } from "@/components/ui/onboarding-checklist";
 import { prisma } from "@/lib/prisma";
+import { getCurrentUser } from "@/lib/auth";
+import { runWithCompany } from "@/lib/tenant/context";
+import { redirect } from "next/navigation";
 import {
   MessageSquare,
   Ticket,
@@ -64,7 +67,9 @@ const channelIcons: Record<string, React.ElementType> = {
 };
 
 export default async function DashboardPage() {
-  const stats = await getStats();
+  const user = await getCurrentUser();
+  if (!user) redirect("/login");
+  const stats = await runWithCompany(user.companyId, getStats);
 
   return (
     <>

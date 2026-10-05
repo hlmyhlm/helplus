@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { companyIdOrFallback } from "@/lib/tenant/context";
+import { currentCompanyId } from "@/lib/tenant/context";
 import { logger } from "@/lib/logger";
 import { parsePagination, paginatedResponse } from "@/lib/pagination";
 import { withAuth } from "@/lib/tenant/with-auth";
@@ -81,7 +81,7 @@ export const POST = withAuth(
           ...(notes
             ? {
                 notes: {
-                  create: { content: notes.trim(), authorName: "Admin", companyId: companyIdOrFallback() },
+                  create: { content: notes.trim(), authorName: "Admin", companyId: currentCompanyId() },
                 },
               }
             : {}),

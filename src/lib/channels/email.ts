@@ -7,6 +7,7 @@ import { chat, createNewConversation } from "@/lib/ai/engine";
 import { escapeHtml, sanitizeEmailSubject } from "@/lib/security";
 import { logger } from "@/lib/logger";
 import { resolveCustomer } from "@/lib/customer-resolver";
+import { currentCompanyId, runWithCompany } from "@/lib/tenant/context";
 
 interface EmailConfig {
   imapHost: string;
@@ -20,6 +21,7 @@ interface EmailConfig {
   smtpFrom: string;
 }
 
+// one imap listener per server for now, like whatsapp
 let imapConnection: Imap | null = null;
 let isListening = false;
 
@@ -156,6 +158,9 @@ function buildEmailHtml(text: string, branding?: EmailBranding): string {
 }
 
 export async function startEmailListener() {
+  // the listener is started from a logged-in request; its events must run as that company
+  const companyId = currentCompanyId();
+
   if (isListening) return;
 
   const config = await getEmailConfig();
@@ -189,7 +194,7 @@ export async function startEmailListener() {
                   logger.error("[Email] Parse error:", err);
                   return;
                 }
-                processEmail(parsed, config).catch((e) =>
+                runWithCompany(companyId, () => processEmail(parsed, config)).catch((e) =>
                   logger.error("[Email] Failed to process email:", e)
                 );
               });
