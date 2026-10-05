@@ -7,9 +7,10 @@ process.env.NODE_ENV = "test";
 process.env.HELPLUS_SECRET_KEY = "a1".repeat(32);
 
 // Mock Prisma globally
-vi.mock("@/lib/prisma", () => ({
-  prisma: createMockPrismaClient(),
-}));
+vi.mock("@/lib/prisma", () => {
+  const client = createMockPrismaClient();
+  return { prisma: client, systemPrisma: client };
+});
 
 // Mock route-auth to always authenticate as admin in tests
 vi.mock("@/lib/route-auth", () => ({
@@ -59,6 +60,7 @@ function createMockPrismaClient() {
   };
 
   const models = [
+    "company",
     "settings",
     "admin",
     "conversation",
