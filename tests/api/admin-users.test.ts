@@ -177,4 +177,36 @@ describe("POST /api/admin/users", () => {
 
     expect([200, 201]).toContain(response.status);
   });
+  it("refuses a username another company already uses, with the usual message", async () => {
+    authAs("admin");
+    mockPrisma.admin.findUnique.mockResolvedValue(staffUser({ username: "taken", companyId: "other-company" }));
+
+    const { POST } = await import("@/app/api/admin/users/route");
+    const request = createRequest("/api/admin/users", {
+      method: "POST",
+      body: { username: "taken", password: "secure123" },
+    });
+    const response = await POST(request);
+
+    expect(response.status).toBe(409);
+    expect(await parseJsonResponse(response)).toEqual({ error: "Username already exists" });
+    expect(mockPrisma.admin.findUnique).toHaveBeenCalledWith({ where: { username: "taken" } });
+    expect(mockPrisma.admin.create).not.toHaveBeenCalled();
+  });
+
+  it("turns a unique clash on create into the same 409", async () => {
+    authAs("admin");
+    mockPrisma.admin.findUnique.mockResolvedValue(null);
+    mockPrisma.admin.create.mockRejectedValue(Object.assign(new Error("Unique constraint failed"), { code: "P2002" }));
+
+    const { POST } = await import("@/app/api/admin/users/route");
+    const request = createRequest("/api/admin/users", {
+      method: "POST",
+      body: { username: "racer", password: "secure123" },
+    });
+    const response = await POST(request);
+
+    expect(response.status).toBe(409);
+    expect(await parseJsonResponse(response)).toEqual({ error: "Username already exists" });
+  });
 });

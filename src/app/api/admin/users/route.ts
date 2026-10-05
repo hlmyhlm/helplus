@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { prisma, systemPrisma } from "@/lib/prisma";
 import { hashPassword } from "@/lib/auth";
 import { logger } from "@/lib/logger";
 import { parsePagination, paginatedResponse } from "@/lib/pagination";
 import { withAuth } from "@/lib/tenant/with-auth";
 import { STAFF_ROLES } from "@/lib/rbac";
+
+// usernames are unique across all companies, so say the same thing whoever owns the name
+const USERNAME_TAKEN = { error: "Username already exists" };
 
 export const GET = withAuth(
   "admin:read",
@@ -62,14 +65,11 @@ export const POST = withAuth(
         );
       }
 
-      const existing = await prisma.admin.findUnique({
+      const existing = await systemPrisma.admin.findUnique({
         where: { username: username.trim() },
       });
       if (existing) {
-        return NextResponse.json(
-          { error: "Username already exists" },
-          { status: 409 }
-        );
+        return NextResponse.json(USERNAME_TAKEN, { status: 409 });
       }
 
       const userRole = (STAFF_ROLES as readonly string[]).includes(role) ? role : "staff";
@@ -97,6 +97,9 @@ export const POST = withAuth(
 
       return NextResponse.json(user, { status: 201 });
     } catch (error) {
+      if ((error as { code?: string }).code === "P2002") {
+        return NextResponse.json(USERNAME_TAKEN, { status: 409 });
+      }
       logger.error("Failed to create admin user:", error);
       return NextResponse.json(
         { error: "Failed to create admin user" },
