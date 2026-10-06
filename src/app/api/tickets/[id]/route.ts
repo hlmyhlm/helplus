@@ -44,8 +44,9 @@ export const PATCH = withAuth("tickets:update", async (request: NextRequest, aut
     if (!validation.success) return NextResponse.json({ error: validation.error }, { status: 400 });
     const { status, assigneeId, projectId, ...rest } = validation.data;
 
+    const now = new Date();
     const data: Record<string, unknown> = { ...rest };
-    if (status) Object.assign(data, statusChange(ticket, status));
+    if (status) Object.assign(data, statusChange(ticket, status, now));
 
     if (assigneeId !== undefined) {
       if (assigneeId !== null) {
@@ -74,7 +75,7 @@ export const PATCH = withAuth("tickets:update", async (request: NextRequest, aut
       }
     }
 
-    const updated = await saveTicket(ticket, data, { actorId: auth.userId });
+    const updated = await saveTicket(ticket, data, { now, actorId: auth.userId });
     // the thread is shared, so its other tickets move too
     if (projectId !== undefined && ticket.conversationId) {
       await prisma.ticket.updateMany({

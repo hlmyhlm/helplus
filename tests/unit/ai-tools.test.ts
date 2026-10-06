@@ -170,6 +170,25 @@ describe("AI Tools", () => {
       expect(result.success).toBe(false);
       expect(result.message).toContain("No available team member");
     }));
+
+    it("should return failure when the ticket doesn't exist", inCompany(async () => {
+      mockPrisma.teamMember.findFirst.mockResolvedValue({
+        id: "member-1",
+        name: "Jane",
+        department: { name: "Billing" },
+      });
+      mockPrisma.ticket.findUnique.mockResolvedValue(null);
+
+      const result = JSON.parse(
+        await executeToolCall("assign_to_person", {
+          ticketId: "ghost",
+          expertise: "billing",
+        })
+      );
+
+      expect(result).toEqual({ success: false, message: "Ticket not found" });
+      expect(mockPrisma.ticket.update).not.toHaveBeenCalled();
+    }));
   });
 
   describe("send_internal_email", () => {

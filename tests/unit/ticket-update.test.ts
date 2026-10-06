@@ -68,4 +68,35 @@ describe("slaChanges", () => {
   it("does nothing for unrelated changes", () => {
     expect(slaChanges(ticket, { title: "new title" }, ctx, min(1))).toEqual({});
   });
+
+  it("leaves a legacy ticket without a rule without times when it reopens", () => {
+    const legacy = {
+      ...(ticket as object),
+      status: "closed",
+      closedAt: min(400),
+      slaRuleId: null,
+      firstReplyWarnAt: null,
+      firstReplyDueAt: null,
+      resolveWarnAt: null,
+      resolveDueAt: null,
+    } as never;
+    const out = slaChanges(legacy, { status: "reopened", closedAt: null }, ctx, min(600));
+    expect(out).toMatchObject({ slaPausedMins: 200 });
+    expect(out.resolveDueAt).toBeUndefined();
+    expect(out.resolveWarnAt).toBeUndefined();
+    expect(out.firstReplyDueAt).toBeUndefined();
+  });
+
+  it("keeps its own targets when its rule isn't in context anymore", () => {
+    const answered = { ...(ticket as object), status: "answered", slaPausedAt: min(200) } as never;
+    const noRuleCtx: SlaContext = { rules: [urgent], cal: ALWAYS_OPEN };
+    const out = slaChanges(answered, { status: "working" }, noRuleCtx, min(500));
+    expect(out).toMatchObject({ slaPausedAt: null, slaPausedMins: 300, resolveDueAt: min(1300) });
+  });
+
+  it("accrues the pause when an answered ticket closes", () => {
+    const answered = { ...(ticket as object), status: "answered", slaPausedAt: min(200) } as never;
+    const out = slaChanges(answered, { status: "closed", closedAt: min(500) }, ctx, min(500));
+    expect(out).toMatchObject({ slaPausedAt: null, slaPausedMins: 300 });
+  });
 });

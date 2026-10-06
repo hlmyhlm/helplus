@@ -1,6 +1,6 @@
 import type { SLARule, Ticket } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
-import { businessMinutesBetween, type BusinessCalendar } from "@/lib/sla/calendar";
+import { addBusinessMinutes, businessMinutesBetween, ALWAYS_OPEN, type BusinessCalendar } from "@/lib/sla/calendar";
 import { loadCalendar } from "@/lib/sla/load-calendar";
 import { pickRule } from "@/lib/sla/rules";
 import { slaState, slaTimes, type SlaTicket } from "@/lib/sla/clock";
@@ -33,10 +33,23 @@ export function slaChanges(before: Ticket, data: Record<string, unknown>, ctx: S
   }
   if (next.status === "answered" && before.status !== "answered") out.slaPausedAt = now;
 
+  // rules aren't retroactive: only a changed sla input re-picks one
   const inputsChanged = SLA_INPUTS.some((k) => k in data && data[k] !== before[k]);
-  if (pausedMins !== before.slaPausedMins || inputsChanged) {
+  const pausedChanged = pausedMins !== before.slaPausedMins;
+
+  if (inputsChanged) {
     out.slaPausedMins = pausedMins;
     Object.assign(out, slaTimes(before.createdAt, pausedMins, pickRule(ctx.rules, next), ctx.cal));
+  } else if (pausedChanged) {
+    out.slaPausedMins = pausedMins;
+    if (before.slaRuleId) {
+      const delta = pausedMins - before.slaPausedMins;
+      if (before.resolveWarnAt) out.resolveWarnAt = addBusinessMinutes(before.resolveWarnAt, delta, ctx.cal);
+      if (before.resolveDueAt) out.resolveDueAt = addBusinessMinutes(before.resolveDueAt, delta, ctx.cal);
+    }
+  }
+
+  if (inputsChanged || pausedChanged) {
     const state = slaState({ ...next, ...out } as SlaTicket, now);
     if (state === "ok" || state === "paused") {
       out.slaWarnedAt = null;
@@ -55,7 +68,9 @@ export async function saveTicket(
   opts: { now?: Date; ctx?: SlaContext; actorId?: string; db?: Pick<typeof prisma, "ticket"> } = {}
 ): Promise<Ticket> {
   const now = opts.now ?? new Date();
-  const ctx = opts.ctx ?? (await loadSlaContext());
+  // no status or sla input means slaChanges can't do anything, skip the db round trip
+  const needsCtx = "status" in data || SLA_INPUTS.some((k) => k in data);
+  const ctx = opts.ctx ?? (needsCtx ? await loadSlaContext() : { rules: [], cal: ALWAYS_OPEN });
   const db = opts.db ?? prisma;
   return db.ticket.update({ where: { id: before.id }, data: { ...data, ...slaChanges(before, data, ctx, now) } });
 }
