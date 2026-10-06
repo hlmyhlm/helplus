@@ -61,6 +61,7 @@ describe("needsCheck", () => {
 
 describe("images", () => {
   const red = () => sharp({ create: { width: 100, height: 50, channels: 3, background: "#ff0000" } }).jpeg().toBuffer();
+  const redPng = () => sharp({ create: { width: 100, height: 50, channels: 3, background: "#ff0000" } }).png().toBuffer();
 
   it("normalises to png and reports the size", async () => {
     const n = await normalizeImage(await red());
@@ -69,7 +70,7 @@ describe("images", () => {
   });
 
   it("covers a box in black", async () => {
-    const { png } = await normalizeImage(await red());
+    const { png } = await normalizeImage(await redPng());
     const out = await coverBoxes(png, [{ x: 10, y: 10, w: 20, h: 10 }]);
     const { data, info } = await sharp(out).raw().toBuffer({ resolveWithObject: true });
     const at = (px: number, py: number) => Array.from(data.subarray((py * info.width + px) * info.channels, (py * info.width + px) * info.channels + 3));
@@ -78,7 +79,7 @@ describe("images", () => {
   });
 
   it("clips boxes to the image", async () => {
-    const { png } = await normalizeImage(await red());
+    const { png } = await normalizeImage(await redPng());
     await expect(coverBoxes(png, [{ x: 90, y: 40, w: 50, h: 50 }])).resolves.toBeInstanceOf(Buffer);
   });
 
