@@ -3,6 +3,9 @@ import { maskIC } from "@/lib/privacy/ic-mask";
 import { defaultProjectId } from "@/lib/projects/default";
 import { nextTicketNumber } from "./number";
 import { OPEN_STATUSES } from "./status";
+import { loadSlaContext } from "./update";
+import { pickRule } from "@/lib/sla/rules";
+import { slaTimes } from "@/lib/sla/clock";
 
 export function titleFrom(text: string): string {
   const line = text.split("\n").find((l) => l.trim())?.trim() ?? "";
@@ -24,17 +27,24 @@ export interface OpenTicketInput {
 export async function openTicket(input: OpenTicketInput) {
   const description = maskIC(input.description).text;
   const title = maskIC(input.title?.trim() || titleFrom(description)).text;
+  const now = new Date();
+  const match = {
+    projectId: input.projectId || (await defaultProjectId()),
+    priority: input.priority ?? "medium",
+    category: input.category ?? "",
+    source: input.source,
+  };
+  const ctx = await loadSlaContext();
   return prisma.ticket.create({
     data: {
       number: await nextTicketNumber(),
       title,
       description,
-      source: input.source,
-      projectId: input.projectId || (await defaultProjectId()),
-      priority: input.priority ?? "medium",
-      category: input.category ?? "",
+      ...match,
       status: "new",
       conversationId: input.conversationId,
+      createdAt: now,
+      ...slaTimes(now, 0, pickRule(ctx.rules, match), ctx.cal),
     },
   });
 }

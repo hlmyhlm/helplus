@@ -5,6 +5,7 @@ import { withAuth } from "@/lib/tenant/with-auth";
 import { ticketReplySchema, validateBody } from "@/lib/validations";
 import { loadTicketFor } from "@/lib/tickets/load";
 import { statusChange } from "@/lib/tickets/status";
+import { saveTicket } from "@/lib/tickets/update";
 import { emitNewMessage } from "@/lib/realtime";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -29,7 +30,7 @@ export const POST = withAuth("tickets:update", async (request: NextRequest, auth
     const data: Record<string, unknown> = markAnswered ? statusChange(ticket, "answered", now) : {};
     if (!ticket.firstReplyAt) data.firstReplyAt = now;
     if (!ticket.assigneeId) data.assigneeId = auth.userId.startsWith("api-key:") ? null : auth.userId;
-    await prisma.ticket.update({ where: { id }, data });
+    await saveTicket(ticket, data, { now });
 
     emitNewMessage(ticket.conversationId, { id: message.id, role: "agent", content });
     return NextResponse.json(message, { status: 201 });

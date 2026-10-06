@@ -16,7 +16,7 @@ const ticket = {
 };
 
 beforeEach(() => {
-  for (const m of ["ticket", "project", "projectAccess", "message", "internalNote", "admin"]) {
+  for (const m of ["ticket", "project", "projectAccess", "message", "internalNote", "admin", "sLARule", "businessHours", "holiday"]) {
     for (const fn of Object.values(db[m])) fn.mockReset();
   }
   vi.mocked(requireAuth).mockResolvedValue({
@@ -29,6 +29,9 @@ beforeEach(() => {
   } as never);
   db.ticket.findUnique.mockResolvedValue(ticket);
   db.ticket.update.mockImplementation(async ({ data }) => ({ ...ticket, ...data }));
+  db.sLARule.findMany.mockResolvedValue([]);
+  db.businessHours.findUnique.mockResolvedValue(null);
+  db.holiday.findMany.mockResolvedValue([]);
 });
 
 describe("PATCH /api/tickets/:id", () => {

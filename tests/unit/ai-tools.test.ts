@@ -30,6 +30,9 @@ describe("AI Tools", () => {
         }
       }
     }
+    mockPrisma.sLARule.findMany.mockResolvedValue([]);
+    mockPrisma.businessHours.findUnique.mockResolvedValue(null);
+    mockPrisma.holiday.findMany.mockResolvedValue([]);
   });
 
   describe("create_ticket", () => {
@@ -122,6 +125,20 @@ describe("AI Tools", () => {
         id: "member-1",
         name: "Jane",
         department: { name: "Billing" },
+      });
+      mockPrisma.ticket.findUnique.mockResolvedValue({
+        id: "ticket-1",
+        status: "new",
+        firstReplyAt: null,
+        reopenCount: 0,
+        priority: "medium",
+        projectId: "p1",
+        category: "",
+        source: "whatsapp",
+        createdAt: new Date(),
+        closedAt: null,
+        slaPausedAt: null,
+        slaPausedMins: 0,
       });
       mockPrisma.ticket.update.mockResolvedValue({});
 

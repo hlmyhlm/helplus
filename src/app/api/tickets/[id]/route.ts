@@ -6,6 +6,7 @@ import { updateTicketSchema, validateBody } from "@/lib/validations";
 import { allowedProjectIds, canSeeProject } from "@/lib/tickets/access";
 import { loadTicketFor } from "@/lib/tickets/load";
 import { statusChange, InvalidTransitionError } from "@/lib/tickets/status";
+import { saveTicket } from "@/lib/tickets/update";
 import { STAFF_ROLES } from "@/lib/rbac";
 import { projectProblem } from "@/lib/projects/usable";
 
@@ -73,7 +74,7 @@ export const PATCH = withAuth("tickets:update", async (request: NextRequest, aut
       }
     }
 
-    const updated = await prisma.ticket.update({ where: { id }, data });
+    const updated = await saveTicket(ticket, data, { actorId: auth.userId });
     // the thread is shared, so its other tickets move too
     if (projectId !== undefined && ticket.conversationId) {
       await prisma.ticket.updateMany({

@@ -15,13 +15,16 @@ const asRole = (role: string) =>
   } as never);
 
 beforeEach(() => {
-  for (const m of ["ticket", "projectAccess", "project", "conversation", "message", "ticketCounter"]) {
+  for (const m of ["ticket", "projectAccess", "project", "conversation", "message", "ticketCounter", "sLARule", "businessHours", "holiday"]) {
     for (const fn of Object.values(db[m])) fn.mockReset();
   }
   asRole("admin");
   db.ticket.findMany.mockResolvedValue([{ id: "t1", number: 1, status: "new" }]);
   db.ticket.count.mockResolvedValue(1);
   db.ticket.groupBy.mockResolvedValue([{ status: "new", _count: { _all: 1 } }]);
+  db.sLARule.findMany.mockResolvedValue([]);
+  db.businessHours.findUnique.mockResolvedValue(null);
+  db.holiday.findMany.mockResolvedValue([]);
 });
 
 describe("GET /api/tickets", () => {
