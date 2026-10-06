@@ -3,7 +3,8 @@ import { maskIC } from "@/lib/privacy/ic-mask";
 import { defaultProjectId } from "@/lib/projects/default";
 import { nextTicketNumber } from "./number";
 import { OPEN_STATUSES } from "./status";
-import { loadSlaContext } from "./update";
+import { loadSlaContext, saveTicket } from "./update";
+import { statusChange } from "./status";
 import { pickRule } from "@/lib/sla/rules";
 import { slaTimes } from "@/lib/sla/clock";
 
@@ -88,6 +89,10 @@ export async function ticketForIncomingMessage(conversationId: string, text: str
     orderBy: { createdAt: "desc" },
   });
   if (open) {
+    // the client wrote back, so it needs staff again
+    if (open.status === "answered" || open.status === "ai_suggested") {
+      return saveTicket(open, statusChange(open, "working"));
+    }
     return prisma.ticket.update({ where: { id: open.id }, data: { updatedAt: new Date() } });
   }
   const conversation = await prisma.conversation.findUnique({
@@ -102,15 +107,18 @@ export async function ticketForIncomingMessage(conversationId: string, text: str
   });
 }
 
-// keep the thread in the project it was already in
+// keep the thread in the project it was already in, unless that project is archived
 async function followUpProjectId(conversationId: string, customerId: string | null): Promise<string | undefined> {
   const last = await prisma.ticket.findFirst({
     where: { conversationId },
     orderBy: { createdAt: "desc" },
-    select: { projectId: true },
+    select: { projectId: true, project: { select: { archived: true } } },
   });
-  if (last) return last.projectId;
+  if (last && !last.project.archived) return last.projectId;
   if (!customerId) return undefined;
-  const customer = await prisma.customer.findUnique({ where: { id: customerId }, select: { projectId: true } });
-  return customer?.projectId ?? undefined;
+  const customer = await prisma.customer.findUnique({
+    where: { id: customerId },
+    select: { projectId: true, project: { select: { archived: true } } },
+  });
+  return customer?.projectId && !customer.project?.archived ? customer.projectId : undefined;
 }

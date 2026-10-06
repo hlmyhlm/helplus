@@ -8,6 +8,8 @@ import { emitNewMessage } from "@/lib/realtime";
 import { analyzeSentiment, detectIntent, estimateConfidence, requiresHumanApproval } from "./guardrails";
 import { maskIC } from "@/lib/privacy/ic-mask";
 import { ticketForIncomingMessage } from "@/lib/tickets/service";
+import { saveTicket } from "@/lib/tickets/update";
+import { statusChange } from "@/lib/tickets/status";
 import type {
   AIMessage,
   AIConfig,
@@ -132,7 +134,7 @@ export async function chat(
   // every incoming message is kept on a ticket, with or without AI
   const customerText = maskIC(userMessage).text;
   await prisma.message.create({ data: { conversationId, role: "customer", content: customerText } });
-  await ticketForIncomingMessage(conversationId, customerText);
+  const ticket = await ticketForIncomingMessage(conversationId, customerText);
 
   if (!isConfigured(providerFor(config))) {
     return "AI is not configured. Please add your API key in Settings > AI Configuration.";
@@ -183,16 +185,21 @@ export async function chat(
   }
 
   // Call AI
-  const response = await callAI(config, messages, conversationId);
+  const reply = await callAI(config, messages, conversationId);
 
   // Save assistant message
   const savedMessage = await prisma.message.create({
     data: {
       conversationId,
       role: "assistant",
-      content: response,
+      content: reply.text,
     },
   });
+
+  // only a real ai answer counts as a suggestion
+  if (reply.ok && ticket.status === "new") {
+    await saveTicket(ticket, statusChange(ticket, "ai_suggested"));
+  }
 
   // Update conversation timestamp
   await prisma.conversation.update({
@@ -201,7 +208,7 @@ export async function chat(
   });
 
   // Confidence scoring
-  const confidence = estimateConfidence(response, knowledgeBase.length, false);
+  const confidence = estimateConfidence(reply.text, knowledgeBase.length, false);
   if (confidence.shouldEscalate) {
     await prisma.conversation.update({
       where: { id: conversationId },
@@ -209,9 +216,9 @@ export async function chat(
     });
   }
 
-  emitNewMessage(conversationId, { id: savedMessage.id, role: "assistant", content: response });
+  emitNewMessage(conversationId, { id: savedMessage.id, role: "assistant", content: reply.text });
 
-  return response;
+  return reply.text;
 }
 
 async function callAI(
@@ -219,9 +226,12 @@ async function callAI(
   messages: AIMessage[],
   conversationId: string,
   depth = 0
-): Promise<string> {
+): Promise<{ text: string; ok: boolean }> {
   if (depth > 5) {
-    return "I apologize, but I'm having trouble processing your request. Let me connect you with a team member.";
+    return {
+      text: "I apologize, but I'm having trouble processing your request. Let me connect you with a team member.",
+      ok: false,
+    };
   }
 
   let response;
@@ -233,7 +243,10 @@ async function callAI(
       temperature: config.temperature,
     });
   } catch {
-    return "I'm temporarily unable to process your request. Please try again in a moment, or I can connect you with a team member.";
+    return {
+      text: "I'm temporarily unable to process your request. Please try again in a moment, or I can connect you with a team member.",
+      ok: false,
+    };
   }
 
   const choice = response.choices[0];
@@ -281,7 +294,7 @@ async function callAI(
     return callAI(config, messages, conversationId, depth + 1);
   }
 
-  return choice.message.content || "I apologize, I could not generate a response.";
+  return { text: choice.message.content || "I apologize, I could not generate a response.", ok: true };
 }
 
 export async function createNewConversation(
