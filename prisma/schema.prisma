@@ -280,7 +280,7 @@ model Ticket {
   companyId      String        @default("")
   company        Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
   conversationId String?
-  conversation   Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  conversation   Conversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   departmentId   String?
   department     Department?   @relation(fields: [departmentId], references: [id], onDelete: SetNull)
   assignedToId   String?
