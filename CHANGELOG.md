@@ -16,6 +16,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Quick add, ticket detail with replies and internal notes, and a Clients/Projects screen. Staff and viewers only see the projects they are given.
 - The old Conversations page now opens Tickets. Deleting a conversation deletes its tickets.
 - The realtime stream is limited to supervisors, admins and owners for now.
+- SLA rules per company with project, priority, category and source overrides. Due times follow business hours and holidays and pause while a ticket waits on the client.
+- Answered tickets close by themselves after 3 days by default (Settings > Closing tickets). Clients with an email get a warning a day before.
+- Link-only email alerts for new, reopened, near-breach and overdue tickets, with retries and an email log.
 
 ### Upgrade notes
 
@@ -25,6 +28,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - With more than one company on a server, add `?company=<slug>` to the Twilio and Telegram webhook URLs.
 - Run `npx prisma migrate deploy`. The tickets migration gives every conversation without a ticket its own ticket, numbers all tickets, maps the old statuses (open to New, in progress to Staff working, resolved to Closed) and puts everything in a "General" project. Back up first.
 - Existing staff and viewer accounts get access to "General" only. Give them other projects under Clients.
+- Run the worker next to the app: `npm run worker`. Without it, nothing closes by itself and no emails go out.
+- Add an email address to each user who should get alerts (Users & roles).
+- SLA times apply to tickets created after the upgrade, and to older tickets once their priority, project, category or source changes.
 
 ## [0.2.2] - 2026-04-08
 
