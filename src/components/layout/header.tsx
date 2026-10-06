@@ -4,6 +4,7 @@ import { Bell, Search, Sun, Moon, LogOut, User } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { useTheme } from "@/lib/hooks/use-theme";
 import { useRouter } from "next/navigation";
+import { clearCompanyCache } from "@/lib/hooks/use-company";
 
 interface HeaderProps {
   title: string;
@@ -34,6 +35,7 @@ export function Header({ title, description, actions }: HeaderProps) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "logout" }),
     });
+    clearCompanyCache(); // next user in this tab shouldn't inherit the old company info
     router.push("/login");
   };
 

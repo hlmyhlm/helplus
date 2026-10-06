@@ -22,9 +22,20 @@ const CHIPS: { key: string; label: string; status: string; assignee?: string }[]
 
 export default function TicketsPage() {
   return (
-    <Suspense>
+    <Suspense fallback={<TicketsPageFallback />}>
       <TicketsPageInner />
     </Suspense>
+  );
+}
+
+function TicketsPageFallback() {
+  return (
+    <>
+      <Header title="Tickets" description="Every issue from WhatsApp, the web form and imports" />
+      <div className="flex-1 overflow-y-auto p-4 md:p-6">
+        <div className="text-sm text-helplus-text-light">Loading…</div>
+      </div>
+    </>
   );
 }
 
@@ -77,26 +88,33 @@ function TicketsPageInner() {
     return () => clearTimeout(t);
   }, [load, q]);
 
-  // chip needs a project name; the row list already carries it once loaded, else ask the projects list
+  // chip needs a project name; ask the projects list (it's also how we find out the id is bad)
   useEffect(() => {
     if (!projectId) {
       setProjectName("");
       return;
     }
-    const fromRows = rows.find((r) => r.project?.id === projectId)?.project.name;
-    if (fromRows) {
-      setProjectName(fromRows);
-      return;
-    }
+    let cancelled = false;
+    setProjectName("");
     fetch("/api/projects?archived=1")
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
-        if (!d) return;
-        const match = unwrapList<{ id: string; name: string }>(d).find((p) => p.id === projectId);
-        if (match) setProjectName(match.name);
+        if (cancelled) return;
+        const match = d ? unwrapList<{ id: string; name: string }>(d).find((p) => p.id === projectId) : null;
+        setProjectName(match ? match.name : "unknown");
       })
-      .catch(() => {});
-  }, [projectId, rows]);
+      .catch(() => {
+        if (!cancelled) setProjectName("unknown");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
+
+  // a new project filter starts back at page 1
+  useEffect(() => {
+    setPage(1);
+  }, [projectId]);
 
   const clearProject = () => {
     router.push("/tickets");

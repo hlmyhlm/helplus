@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import { clearCompanyCache } from "@/lib/hooks/use-company";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -62,6 +63,7 @@ export default function LoginPage() {
         return;
       }
 
+      clearCompanyCache(); // whoever was cached belongs to the previous session in this tab
       router.replace("/");
     } catch {
       setError("An unexpected error occurred. Please try again.");
