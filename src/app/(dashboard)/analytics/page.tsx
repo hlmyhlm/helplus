@@ -43,11 +43,12 @@ const PRIORITY_COLORS: Record<string, string> = {
 };
 
 const STATUS_COLORS: Record<string, string> = {
-  open: "#F59E0B",
-  in_progress: "#4A7C9B",
-  resolved: "#22C55E",
-  closed: "#64748B",
-  escalated: "#EF4444",
+  new: "#3B82F6",
+  ai_suggested: "#7A5AF8",
+  answered: "#EAAA08",
+  reopened: "#D92D20",
+  working: "#F79009",
+  closed: "#12B76A",
 };
 
 const CHANNEL_COLORS: Record<string, string> = {

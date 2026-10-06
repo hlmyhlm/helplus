@@ -16,7 +16,7 @@ const ticket = {
 };
 
 beforeEach(() => {
-  for (const m of ["ticket", "projectAccess", "message", "internalNote", "admin"]) {
+  for (const m of ["ticket", "project", "projectAccess", "message", "internalNote", "admin"]) {
     for (const fn of Object.values(db[m])) fn.mockReset();
   }
   vi.mocked(requireAuth).mockResolvedValue({
@@ -46,6 +46,14 @@ describe("PATCH /api/tickets/:id", () => {
     const { PATCH } = await import("@/app/api/tickets/[id]/route");
     const res = await PATCH(createRequest("/api/tickets/t1", { method: "PATCH", body: { status: "answered" } }), ctx);
     expect(res.status).toBe(409);
+  });
+
+  it("rejects a projectId that doesn't exist, even for a role that sees every project", async () => {
+    db.project.findFirst.mockResolvedValue(null);
+    const { PATCH } = await import("@/app/api/tickets/[id]/route");
+    const res = await PATCH(createRequest("/api/tickets/t1", { method: "PATCH", body: { projectId: "ghost" } }), ctx);
+    expect(res.status).toBe(400);
+    expect(db.ticket.update).not.toHaveBeenCalled();
   });
 
   it("hides tickets in projects the staff member can't see", async () => {

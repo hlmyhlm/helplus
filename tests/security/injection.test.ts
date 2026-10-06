@@ -134,26 +134,16 @@ describe("Injection Attack Prevention", () => {
 
   describe("Oversized Payload Protection", () => {
     it("should handle large payloads without crashing", async () => {
-      mockPrisma.ticket.create.mockResolvedValue({
-        id: "ticket-large",
-        title: "A".repeat(500),
-        conversation: null,
-        department: null,
-        assignedTo: null,
-      });
-
       const { POST } = await import("@/app/api/tickets/route");
       const request = createRequest("/api/tickets", {
         method: "POST",
         body: {
-          title: "A".repeat(500),
-          description: "B".repeat(10000),
+          text: "B".repeat(25000),
         },
       });
 
-      const response = await POST(request);
-      // Should either accept (within limits) or reject gracefully
-      expect([201, 400, 413]).toContain(response.status);
+      const response = await POST(request, {} as never);
+      expect(response.status).toBe(400);
     });
   });
 

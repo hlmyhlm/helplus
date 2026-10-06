@@ -59,6 +59,8 @@ export const PATCH = withAuth("tickets:update", async (request: NextRequest, aut
       if (allowed !== null && !allowed.includes(projectId)) {
         return NextResponse.json({ error: "Not allowed for this project" }, { status: 403 });
       }
+      const project = await prisma.project.findFirst({ where: { id: projectId } });
+      if (!project) return NextResponse.json({ error: "Project not found" }, { status: 400 });
       data.projectId = projectId;
     }
 
