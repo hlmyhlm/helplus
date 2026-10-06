@@ -336,6 +336,21 @@ describe("AI Engine", () => {
     );
   }));
 
+  it("doesn't mark a ticket ai_suggested when the reply content is empty", inCompany(async () => {
+    mockPrisma.ticket.findFirst.mockResolvedValue({ id: "t1", status: "new", firstReplyAt: null, reopenCount: 0 });
+    mockPrisma.ticket.update.mockResolvedValue({ id: "t1", status: "new", firstReplyAt: null, reopenCount: 0 });
+    mockOpenAICreateFn.mockResolvedValue({
+      choices: [{ finish_reason: "stop", message: { content: "" } }],
+    });
+
+    const { chat } = await import("@/lib/ai/engine");
+    await chat("conv-1", "Hello");
+
+    expect(mockPrisma.ticket.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: "ai_suggested" }) })
+    );
+  }));
+
   it("doesn't mark a working ticket ai_suggested", inCompany(async () => {
     mockPrisma.ticket.findFirst.mockResolvedValue({ id: "t1", status: "working", firstReplyAt: null, reopenCount: 0 });
     mockPrisma.ticket.update.mockResolvedValue({ id: "t1", status: "working", firstReplyAt: null, reopenCount: 0 });

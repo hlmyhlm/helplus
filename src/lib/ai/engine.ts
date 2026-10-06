@@ -294,7 +294,10 @@ async function callAI(
     return callAI(config, messages, conversationId, depth + 1);
   }
 
-  return { text: choice.message.content || "I apologize, I could not generate a response.", ok: true };
+  if (!choice.message.content) {
+    return { text: "I apologize, I could not generate a response.", ok: false };
+  }
+  return { text: choice.message.content, ok: true };
 }
 
 export async function createNewConversation(
