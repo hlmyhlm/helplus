@@ -7,9 +7,10 @@ interface CompanyInfo {
   slug: string;
   projectLabel: string;
   canManageProjects: boolean;
+  autoCloseDays: number;
 }
 
-const EMPTY: CompanyInfo = { name: "", slug: "", projectLabel: "Clients", canManageProjects: false };
+const EMPTY: CompanyInfo = { name: "", slug: "", projectLabel: "Clients", canManageProjects: false, autoCloseDays: 0 };
 
 // shared by every caller, cleared on login and logout
 export const companyCache = { value: null as CompanyInfo | null };

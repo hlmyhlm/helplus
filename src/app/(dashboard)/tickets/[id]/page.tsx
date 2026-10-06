@@ -7,7 +7,9 @@ import { Header } from "@/components/layout/header";
 import { formatRelativeTime } from "@/lib/utils";
 import { unwrapList } from "@/lib/api-client";
 import { StatusDot, sourceLabel } from "@/components/tickets/status-dot";
+import { SlaBadge, closesOn } from "@/components/tickets/sla-badge";
 import { STATUS_LABELS, TICKET_STATUSES, canMove, isTicketStatus } from "@/lib/tickets/status";
+import { useCompany } from "@/lib/hooks/use-company";
 
 interface Msg {
   id: string;
@@ -30,6 +32,14 @@ interface Ticket {
   category: string;
   priority: string;
   createdAt: string;
+  answeredAt: string | null;
+  firstReplyAt: string | null;
+  closedAt: string | null;
+  slaPausedAt: string | null;
+  firstReplyWarnAt: string | null;
+  firstReplyDueAt: string | null;
+  resolveWarnAt: string | null;
+  resolveDueAt: string | null;
   project: { id: string; name: string };
   assignee: { id: string; name: string } | null;
   conversation: { customerName: string; customerContact: string; messages: Msg[]; notes: Note[] } | null;
@@ -44,6 +54,7 @@ const WHO: Record<string, string> = { customer: "Client", agent: "Support", admi
 
 export default function TicketDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const { autoCloseDays } = useCompany();
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [missing, setMissing] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -185,6 +196,12 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
   const assigneeOptions =
     ticket.assignee && !staff.some((p) => p.id === ticket.assignee!.id) ? [...staff, ticket.assignee] : staff;
 
+  const fmt = (iso: string) =>
+    new Date(iso).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" });
+  const hasSla = ticket.firstReplyDueAt || ticket.resolveDueAt;
+  const closeDate = ticket.status === "answered" && autoCloseDays > 0 ? closesOn(ticket.answeredAt, autoCloseDays) : null;
+  const closesTomorrow = closeDate ? closeDate.getTime() - Date.now() < 24 * 60 * 60 * 1000 : false;
+
   return (
     <>
       <Header
@@ -266,6 +283,25 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                   </option>
                 ))}
               </select>
+              <div className="space-y-1 pt-2 border-t border-helplus-border">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-helplus-text-light">SLA</span>
+                  <SlaBadge ticket={ticket} showPaused />
+                </div>
+                {!hasSla && !closeDate && <p className="text-xs text-helplus-text-light">No SLA rule</p>}
+                {ticket.firstReplyDueAt && !ticket.firstReplyAt && (
+                  <p className="text-xs text-helplus-text">First reply by {fmt(ticket.firstReplyDueAt)}</p>
+                )}
+                {ticket.resolveDueAt && ticket.status !== "closed" && (
+                  <p className="text-xs text-helplus-text">Solve by {fmt(ticket.resolveDueAt)}</p>
+                )}
+                {closeDate &&
+                  (closesTomorrow ? (
+                    <p className="text-xs text-helplus-warning">Closes tomorrow</p>
+                  ) : (
+                    <p className="text-xs text-helplus-text">Closes {fmt(closeDate.toISOString())} if the client doesn&apos;t reply</p>
+                  ))}
+              </div>
               <label className="block text-xs text-helplus-text-light">Handled by</label>
               {staff.length === 0 ? (
                 <div className={box}>{ticket.assignee?.name ?? "Unassigned"}</div>

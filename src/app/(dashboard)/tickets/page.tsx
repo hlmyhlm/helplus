@@ -11,10 +11,12 @@ import { QuickAddDialog } from "@/components/tickets/quick-add-dialog";
 import { OPEN_STATUSES, STATUS_LABELS, type TicketStatus } from "@/lib/tickets/status";
 import { useCompany } from "@/lib/hooks/use-company";
 
-const CHIPS: { key: string; label: string; status: string; assignee?: string }[] = [
+const CHIPS: { key: string; label: string; status: string; assignee?: string; sla?: "near" | "breached" }[] = [
   { key: "open", label: "Open", status: "open" },
   { key: "mine", label: "Mine", status: "open", assignee: "me" },
   { key: "unassigned", label: "Unassigned", status: "open", assignee: "unassigned" },
+  { key: "breached", label: "Overdue", status: "open", sla: "breached" },
+  { key: "near", label: "Due soon", status: "open", sla: "near" },
   { key: "ai", label: STATUS_LABELS.ai_suggested, status: "ai_suggested" },
   { key: "reopened", label: STATUS_LABELS.reopened, status: "reopened" },
   { key: "closed", label: STATUS_LABELS.closed, status: "closed" },
@@ -50,6 +52,7 @@ function TicketsPageInner() {
   const [q, setQ] = useState("");
   const [rows, setRows] = useState<TicketRow[]>([]);
   const [counts, setCounts] = useState<Partial<Record<TicketStatus, number>>>({});
+  const [slaCounts, setSlaCounts] = useState<{ near: number; breached: number }>({ near: 0, breached: 0 });
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -65,6 +68,7 @@ function TicketsPageInner() {
     const c = CHIPS.find((x) => x.key === chip)!;
     const params = new URLSearchParams({ status: c.status, page: String(page), limit: "25" });
     if (c.assignee) params.set("assignee", c.assignee);
+    if (c.sla) params.set("sla", c.sla);
     if (q.trim()) params.set("q", q.trim());
     if (projectId) params.set("projectId", projectId);
     try {
@@ -76,6 +80,7 @@ function TicketsPageInner() {
         setRows(unwrapList<TicketRow>(json));
         setPages(listMeta(json)?.totalPages || 1);
         setCounts(json.counts ?? {});
+        setSlaCounts(json.slaCounts ?? { near: 0, breached: 0 });
       } else {
         setLoadError("Couldn't load tickets.");
       }
@@ -125,7 +130,19 @@ function TicketsPageInner() {
 
   const openCount = OPEN_STATUSES.reduce((n, s) => n + (counts[s] ?? 0), 0);
   const chipCount = (key: string) =>
-    key === "open" ? openCount : key === "ai" ? counts.ai_suggested : key === "reopened" ? counts.reopened : key === "closed" ? counts.closed : undefined;
+    key === "open"
+      ? openCount
+      : key === "breached"
+        ? slaCounts.breached
+        : key === "near"
+          ? slaCounts.near
+          : key === "ai"
+            ? counts.ai_suggested
+            : key === "reopened"
+              ? counts.reopened
+              : key === "closed"
+                ? counts.closed
+                : undefined;
 
   return (
     <>

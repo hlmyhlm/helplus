@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { formatRelativeTime } from "@/lib/utils";
 import { StatusDot, sourceLabel } from "./status-dot";
+import { SlaBadge } from "./sla-badge";
 
 export interface TicketRow {
   id: string;
@@ -13,6 +14,13 @@ export interface TicketRow {
   category: string;
   aiMatch: number | null;
   updatedAt: string;
+  firstReplyAt: string | null;
+  closedAt: string | null;
+  slaPausedAt: string | null;
+  firstReplyWarnAt: string | null;
+  firstReplyDueAt: string | null;
+  resolveWarnAt: string | null;
+  resolveDueAt: string | null;
   project: { id: string; name: string };
   assignee: { id: string; name: string } | null;
   conversation: { customerName: string; customerContact: string } | null;
@@ -56,7 +64,10 @@ export function TicketList({ rows }: { rows: TicketRow[] }) {
                 <td className="px-3 py-3 text-helplus-text">{t.conversation?.customerName ?? "Unknown"}</td>
                 <td className="px-3 py-3 text-xs text-helplus-text-light">{sourceLabel(t.source)}</td>
                 <td className="px-3 py-3">
-                  <StatusDot status={t.status} />
+                  <div className="flex flex-col gap-1">
+                    <StatusDot status={t.status} />
+                    <SlaBadge ticket={t} />
+                  </div>
                 </td>
                 <td className="px-3 py-3 text-xs text-helplus-text">{t.assignee?.name ?? <span className="text-helplus-text-light">Unassigned</span>}</td>
                 <td className="px-3 py-3 text-xs text-helplus-text-light">{formatRelativeTime(t.updatedAt)}</td>
@@ -75,8 +86,9 @@ export function TicketList({ rows }: { rows: TicketRow[] }) {
               <span>{formatRelativeTime(t.updatedAt)}</span>
             </div>
             <div className="mt-1 mb-2 text-sm font-medium text-helplus-text">{t.title}</div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <StatusDot status={t.status} />
+              <SlaBadge ticket={t} />
               <span className="text-xs text-helplus-text-light">
                 {t.conversation?.customerName ?? "Unknown"} · {t.assignee?.name ?? "Unassigned"}
               </span>

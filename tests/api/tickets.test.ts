@@ -59,6 +59,25 @@ describe("GET /api/tickets", () => {
     await GET(createRequest("/api/tickets?assignee=me"), {} as never);
     expect(JSON.stringify(db.ticket.findMany.mock.calls[0][0].where)).toContain('"assigneeId":"u1"');
   });
+
+  it("sla=breached adds the sla where", async () => {
+    const { GET } = await import("@/app/api/tickets/route");
+    await GET(createRequest("/api/tickets?sla=breached"), {} as never);
+    expect(JSON.stringify(db.ticket.findMany.mock.calls[0][0].where)).toContain('"slaPausedAt":null');
+  });
+
+  it("returns slaCounts next to counts", async () => {
+    db.ticket.count.mockImplementation(async ({ where }: { where?: unknown } = {}) => {
+      const s = JSON.stringify(where ?? {});
+      if (s.includes("firstReplyWarnAt")) return 2;
+      if (s.includes("firstReplyDueAt")) return 3;
+      return 1;
+    });
+    const { GET } = await import("@/app/api/tickets/route");
+    const res = await GET(createRequest("/api/tickets"), {} as never);
+    const body = await parseJsonResponse(res);
+    expect(body.slaCounts).toEqual({ near: 2, breached: 3 });
+  });
 });
 
 describe("POST /api/tickets", () => {

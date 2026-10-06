@@ -100,16 +100,16 @@ describe("projects", () => {
 describe("company info", () => {
   it("returns the label and no manage permission for a viewer", async () => {
     asRole("viewer");
-    db.settings.upsert.mockResolvedValue({ projectLabel: "Projects", businessName: "Acme" });
+    db.settings.upsert.mockResolvedValue({ projectLabel: "Projects", businessName: "Acme", autoCloseDays: 3 });
     db.company.findFirst.mockResolvedValue({ name: "Acme Sdn Bhd", slug: "acme" });
     const { GET } = await import("@/app/api/company/route");
     const body = await parseJsonResponse(await GET(createRequest("/api/company"), {} as never));
-    expect(body).toEqual({ name: "Acme Sdn Bhd", slug: "acme", projectLabel: "Projects", canManageProjects: false });
+    expect(body).toEqual({ name: "Acme Sdn Bhd", slug: "acme", projectLabel: "Projects", canManageProjects: false, autoCloseDays: 3 });
   });
 
   it("returns canManageProjects true for an admin", async () => {
     asRole("admin");
-    db.settings.upsert.mockResolvedValue({ projectLabel: "Projects", businessName: "Acme" });
+    db.settings.upsert.mockResolvedValue({ projectLabel: "Projects", businessName: "Acme", autoCloseDays: 3 });
     db.company.findFirst.mockResolvedValue({ name: "Acme Sdn Bhd", slug: "acme" });
     const { GET } = await import("@/app/api/company/route");
     const body = await parseJsonResponse(await GET(createRequest("/api/company"), {} as never));
