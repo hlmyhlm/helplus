@@ -5,6 +5,8 @@ import { CrossCompanyLinkError } from "@/lib/tenant/links";
 
 const A = "it-2a-a";
 const B = "it-2a-b";
+let projA: string;
+let projB: string;
 
 beforeAll(async () => {
   await systemPrisma.company.deleteMany({ where: { id: { in: [A, B] } } });
@@ -14,6 +16,8 @@ beforeAll(async () => {
       { id: B, name: "B", slug: B },
     ],
   });
+  projA = (await runWithCompany(A, () => prisma.project.create({ data: { name: "General", isDefault: true } }))).id;
+  projB = (await runWithCompany(B, () => prisma.project.create({ data: { name: "General", isDefault: true } }))).id;
 });
 
 afterAll(async () => {
@@ -23,28 +27,34 @@ afterAll(async () => {
 
 describe("tickets core schema", () => {
   it("numbers are unique per company, not globally", async () => {
-    const make = (company: string) =>
-      runWithCompany(company, async () => {
-        const p = await prisma.project.create({ data: { name: "General", isDefault: true } });
-        return prisma.ticket.create({ data: { number: 1, title: "t", description: "", projectId: p.id } });
-      });
-    const a = await make(A);
-    const b = await make(B);
+    const a = await runWithCompany(A, () =>
+      prisma.ticket.create({ data: { number: 1, title: "t", description: "", projectId: projA } })
+    );
+    const b = await runWithCompany(B, () =>
+      prisma.ticket.create({ data: { number: 1, title: "t", description: "", projectId: projB } })
+    );
     expect([a.number, b.number]).toEqual([1, 1]);
   });
 
-  it("a ticket can't use another company's project", async () => {
-    const pA = await runWithCompany(A, () => prisma.project.findFirstOrThrow({ where: { isDefault: true } }));
+  it("refuses the same number twice in one company", async () => {
+    await runWithCompany(B, () =>
+      prisma.ticket.create({ data: { number: 10, title: "t", description: "", projectId: projB } })
+    );
     await expect(
-      runWithCompany(B, () => prisma.ticket.create({ data: { number: 2, title: "t", description: "", projectId: pA.id } }))
+      runWithCompany(B, () => prisma.ticket.create({ data: { number: 10, title: "t", description: "", projectId: projB } }))
+    ).rejects.toMatchObject({ code: "P2002" });
+  });
+
+  it("a ticket can't use another company's project", async () => {
+    await expect(
+      runWithCompany(B, () => prisma.ticket.create({ data: { number: 2, title: "t", description: "", projectId: projA } }))
     ).rejects.toThrow(CrossCompanyLinkError);
   });
 
   it("new tickets start as new", async () => {
-    const t = await runWithCompany(A, async () => {
-      const p = await prisma.project.findFirstOrThrow({ where: { isDefault: true } });
-      return prisma.ticket.create({ data: { number: 3, title: "t", description: "", projectId: p.id } });
-    });
+    const t = await runWithCompany(A, () =>
+      prisma.ticket.create({ data: { number: 3, title: "t", description: "", projectId: projA } })
+    );
     expect(t.status).toBe("new");
     expect(t.reopenCount).toBe(0);
   });

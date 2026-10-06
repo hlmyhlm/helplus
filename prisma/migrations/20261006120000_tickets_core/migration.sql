@@ -66,15 +66,20 @@ ALTER TABLE "Ticket"
   ADD COLUMN "reopenCount" INTEGER NOT NULL DEFAULT 0,
   ADD COLUMN "aiMatch" INTEGER;
 
--- every conversation without a ticket gets one, so nothing disappears from the inbox
-INSERT INTO "Ticket" ("id", "companyId", "conversationId", "title", "description", "status", "priority", "source", "createdAt", "updatedAt")
+-- every conversation without a ticket gets one, so nothing disappears from the inbox.
+-- IC numbers are masked before cutting the title, same pattern as src/lib/privacy/ic-mask.ts
+INSERT INTO "Ticket" ("id", "companyId", "conversationId", "title", "description", "status", "priority", "source", "closedAt", "createdAt", "updatedAt")
 SELECT gen_random_uuid()::text, cv."companyId", cv."id",
   COALESCE(
-    NULLIF(LEFT((SELECT m."content" FROM "Message" m WHERE m."conversationId" = cv."id" AND m."role" = 'customer' ORDER BY m."createdAt" LIMIT 1), 80), ''),
+    NULLIF(LEFT(regexp_replace(
+      (SELECT m."content" FROM "Message" m WHERE m."conversationId" = cv."id" AND m."role" = 'customer' ORDER BY m."createdAt" LIMIT 1),
+      '(?<!\d)\d{6}[\s-]?\d{2}[\s-]?\d{4}(?!\d)', '[IC HIDDEN]', 'g'), 80), ''),
     'Conversation with ' || cv."customerName"),
   '',
   CASE WHEN cv."status" IN ('resolved', 'closed') THEN 'closed' ELSE 'new' END,
-  'medium', cv."channel", cv."createdAt", CURRENT_TIMESTAMP
+  'medium', cv."channel",
+  CASE WHEN cv."status" IN ('resolved', 'closed') THEN cv."updatedAt" END,
+  cv."createdAt", CURRENT_TIMESTAMP
 FROM "Conversation" cv
 WHERE NOT EXISTS (SELECT 1 FROM "Ticket" t WHERE t."conversationId" = cv."id");
 
