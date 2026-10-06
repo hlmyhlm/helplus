@@ -7,6 +7,7 @@ import { loadSlaContext, saveTicket } from "./update";
 import { statusChange } from "./status";
 import { pickRule } from "@/lib/sla/rules";
 import { slaTimes } from "@/lib/sla/clock";
+import { notifyTicket } from "@/lib/notify/notify";
 
 export function titleFrom(text: string): string {
   const line = text.split("\n").find((l) => l.trim())?.trim() ?? "";
@@ -36,7 +37,7 @@ export async function openTicket(input: OpenTicketInput) {
     source: input.source,
   };
   const ctx = await loadSlaContext();
-  return prisma.ticket.create({
+  const ticket = await prisma.ticket.create({
     data: {
       number: await nextTicketNumber(),
       title,
@@ -48,6 +49,8 @@ export async function openTicket(input: OpenTicketInput) {
       ...slaTimes(now, 0, pickRule(ctx.rules, match), ctx.cal),
     },
   });
+  await notifyTicket("new_ticket", ticket);
+  return ticket;
 }
 
 export interface CreateTicketInput {

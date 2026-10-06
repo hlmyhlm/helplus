@@ -4,6 +4,7 @@ import { addBusinessMinutes, businessMinutesBetween, ALWAYS_OPEN, type BusinessC
 import { loadCalendar } from "@/lib/sla/load-calendar";
 import { pickRule } from "@/lib/sla/rules";
 import { slaState, slaTimes, type SlaTicket } from "@/lib/sla/clock";
+import { notifyTicket } from "@/lib/notify/notify";
 
 export interface SlaContext {
   rules: SLARule[];
@@ -72,5 +73,10 @@ export async function saveTicket(
   const needsCtx = "status" in data || SLA_INPUTS.some((k) => k in data);
   const ctx = opts.ctx ?? (needsCtx ? await loadSlaContext() : { rules: [], cal: ALWAYS_OPEN });
   const db = opts.db ?? prisma;
-  return db.ticket.update({ where: { id: before.id }, data: { ...data, ...slaChanges(before, data, ctx, now) } });
+  const updated = await db.ticket.update({ where: { id: before.id }, data: { ...data, ...slaChanges(before, data, ctx, now) } });
+  // notify always goes through the normal prisma, even inside a transaction
+  if (data.status === "reopened" && before.status !== "reopened") {
+    await notifyTicket("reopened", updated, { actorId: opts.actorId });
+  }
+  return updated;
 }
