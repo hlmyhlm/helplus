@@ -40,6 +40,7 @@ export const fixtures = {
     whatsappPhone: "+1234567890",
     telegramBotToken: "tg-token-12345",
     telegramWebhookSecret: "tg-webhook-secret",
+    projectLabel: "Clients",
     aiBaseUrl: "",
     embedProvider: "openai",
     embedModel: "text-embedding-3-small",

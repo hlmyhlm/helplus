@@ -56,6 +56,7 @@ interface SettingsData {
   whatsappMode: string;
   whatsappApiKey: string;
   whatsappPhone: string;
+  projectLabel: string;
 }
 
 type SectionKey =
@@ -87,7 +88,7 @@ const tabs: TabDef[] = [
 
 // Which fields belong to each section (used for partial saves)
 const sectionFields: Record<SectionKey, (keyof SettingsData)[]> = {
-  general: ["businessName", "businessDesc", "welcomeMessage", "tone", "language"],
+  general: ["businessName", "businessDesc", "welcomeMessage", "tone", "language", "projectLabel"],
   ai: [
     "aiProvider",
     "aiModel",
@@ -430,6 +431,16 @@ function GeneralSection({
             { value: "ar", label: "Arabic" },
             { value: "zh", label: "Chinese" },
             { value: "ja", label: "Japanese" },
+          ]}
+        />
+      </FormField>
+      <FormField label="Call client groups" description="What your team calls the groups tickets belong to.">
+        <SelectInput
+          value={data.projectLabel}
+          onChange={(v) => update("projectLabel", v)}
+          options={[
+            { value: "Clients", label: "Clients" },
+            { value: "Projects", label: "Projects" },
           ]}
         />
       </FormField>
@@ -784,6 +795,7 @@ const defaultSettings: SettingsData = {
   whatsappMode: "web",
   whatsappApiKey: "",
   whatsappPhone: "",
+  projectLabel: "Clients",
 };
 
 export default function SettingsPage() {

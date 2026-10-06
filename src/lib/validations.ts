@@ -191,6 +191,7 @@ export const updateSettingsSchema = z.object({
   whatsappPhone: z.string().max(50).optional(),
   // telegram only allows these characters in secret_token. "***" is the masked value coming back
   telegramWebhookSecret: z.string().max(256).regex(/^([A-Za-z0-9_-]*|\*\*\*)$/).optional(),
+  projectLabel: z.enum(["Clients", "Projects"]).optional(),
 }).strict();
 
 // Canned Responses
@@ -231,6 +232,13 @@ export const createNoteSchema = z.object({
   content: z.string().min(1, "Content is required").max(10000),
   authorName: z.string().max(200).optional(),
 });
+
+// Projects
+export const projectSchema = z.object({ name: z.string().trim().min(1, "Name is required").max(120) });
+export const updateProjectSchema = z
+  .object({ name: z.string().trim().min(1).max(120).optional(), archived: z.boolean().optional() })
+  .strict();
+export const projectAccessSchema = z.object({ adminIds: z.array(z.string().max(100)).max(500) });
 
 // Pagination helper
 export { paginationSchema };
