@@ -53,6 +53,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
   const [noteError, setNoteError] = useState("");
   const [sending, setSending] = useState(false);
   const [copyNotice, setCopyNotice] = useState("");
+  const [savingNote, setSavingNote] = useState(false);
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/tickets/${id}`);
@@ -86,8 +87,11 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
     if (!reply.trim() || sending) return;
     setError("");
     setCopyNotice("");
-    // clipboard write has to happen first, still inside the click's call stack,
-    // or iOS Safari refuses it once we've awaited a fetch in between
+    // mark busy synchronously, before anything is awaited, so a fast double
+    // tap sees the button already disabled instead of racing in behind it
+    setSending(true);
+    // clipboard write has to happen first await in this function, still inside
+    // the click's call stack, or iOS Safari refuses it once we've awaited a fetch
     if (markAnswered) {
       try {
         await navigator.clipboard.writeText(reply);
@@ -96,7 +100,6 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
         setCopyNotice("Couldn't copy, select the text and copy it yourself");
       }
     }
-    setSending(true);
     try {
       const res = await fetch(`/api/tickets/${id}/messages`, {
         method: "POST",
@@ -117,8 +120,9 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
   };
 
   const addNote = async () => {
-    if (!note.trim()) return;
+    if (!note.trim() || savingNote) return;
     setNoteError("");
+    setSavingNote(true);
     try {
       const res = await fetch(`/api/tickets/${id}/notes`, {
         method: "POST",
@@ -133,6 +137,8 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
       await load();
     } catch {
       setNoteError("Couldn't save the note");
+    } finally {
+      setSavingNote(false);
     }
   };
 
@@ -170,7 +176,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
       <div className="flex-1 overflow-y-auto p-4 md:p-6">
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4 items-start">
           <div className="space-y-4">
-            <h1 className="text-base font-semibold text-helplus-text break-words">
+            <h1 className="lg:hidden text-base font-semibold text-helplus-text break-words">
               #{ticket.number} {ticket.title}
             </h1>
             {ticket.conversation?.messages.map((m) => (
@@ -262,7 +268,11 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
             <div className="rounded-md border border-helplus-border bg-helplus-surface p-4 space-y-2">
               <h3 className="text-sm font-semibold text-helplus-text">Internal notes</h3>
               <textarea className={box} rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Only staff see this" />
-              <button onClick={addNote} className="h-8 px-3 rounded-md border border-helplus-border text-xs text-helplus-text">
+              <button
+                onClick={addNote}
+                disabled={savingNote || !note.trim()}
+                className="h-8 px-3 rounded-md border border-helplus-border text-xs text-helplus-text disabled:opacity-60"
+              >
                 Add note
               </button>
               {noteError && <p className="text-sm text-helplus-danger">{noteError}</p>}

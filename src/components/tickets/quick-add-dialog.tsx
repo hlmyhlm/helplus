@@ -54,6 +54,8 @@ export function QuickAddDialog({
       const d = await res.json().catch(() => ({}));
       if (d.title) setTitle(d.title);
       if (d.category) setCategory(d.category);
+    } catch {
+      // suggestion is a nice-to-have - if the network drops, just leave the fields as typed
     } finally {
       setBusy(false);
     }
@@ -89,6 +91,8 @@ export function QuickAddDialog({
       setCategory("");
       setCustomerName("");
       onCreated(ticket.id);
+    } catch {
+      setError("Couldn't create the ticket.");
     } finally {
       setBusy(false);
     }

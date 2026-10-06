@@ -38,9 +38,9 @@ export function Header({ title, description, actions }: HeaderProps) {
   };
 
   return (
-    <header className="flex items-center justify-between px-4 md:px-6 py-3 md:py-4 bg-helplus-surface border-b border-helplus-border transition-theme">
+    <header className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 px-4 md:px-6 py-3 md:py-4 bg-helplus-surface border-b border-helplus-border transition-theme">
       <div className="animate-fade-in min-w-0">
-        <h2 className="text-lg md:text-xl font-semibold text-helplus-text truncate">{title}</h2>
+        <h2 className="text-lg md:text-xl font-semibold text-helplus-text line-clamp-2 md:truncate">{title}</h2>
         {description && (
           <p className="text-sm text-helplus-text-light mt-0.5">{description}</p>
         )}
@@ -51,19 +51,22 @@ export function Header({ title, description, actions }: HeaderProps) {
           <input
             type="text"
             placeholder="Search..."
-            className="px-3 py-1.5 text-sm border border-helplus-border rounded-lg bg-helplus-surface text-helplus-text focus:outline-none focus:ring-2 focus:ring-helplus-primary/30 focus:border-helplus-primary w-64 animate-slide-in-down transition-theme"
+            className="hidden md:block px-3 py-1.5 text-sm border border-helplus-border rounded-lg bg-helplus-surface text-helplus-text focus:outline-none focus:ring-2 focus:ring-helplus-primary/30 focus:border-helplus-primary w-64 animate-slide-in-down transition-theme"
             autoFocus
             onBlur={() => setSearchOpen(false)}
           />
         )}
+        {/* search isn't wired to anything yet, and has no other entry point - but
+            it does nothing today, so hiding it on a phone costs nothing real */}
         <button
           onClick={() => setSearchOpen(!searchOpen)}
-          className="p-2 text-helplus-text-light hover:text-helplus-text hover:bg-helplus-primary-50 rounded-lg transition-colors"
+          className="hidden md:inline-flex p-2 text-helplus-text-light hover:text-helplus-text hover:bg-helplus-primary-50 rounded-lg transition-colors"
           title="Search"
         >
           <Search className="h-5 w-5" />
         </button>
 
+        {/* theme toggle has no other way in on phones (no toggle in settings), so it stays visible everywhere */}
         <button
           onClick={toggleTheme}
           className="p-2 text-helplus-text-light hover:text-helplus-text hover:bg-helplus-primary-50 rounded-lg transition-colors"
@@ -76,7 +79,8 @@ export function Header({ title, description, actions }: HeaderProps) {
           )}
         </button>
 
-        <button className="relative p-2 text-helplus-text-light hover:text-helplus-text hover:bg-helplus-primary-50 rounded-lg transition-colors">
+        {/* bell has no click handler at all yet - same case as search */}
+        <button className="hidden md:inline-flex relative p-2 text-helplus-text-light hover:text-helplus-text hover:bg-helplus-primary-50 rounded-lg transition-colors">
           <Bell className="h-5 w-5" />
           <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-helplus-danger rounded-full" />
         </button>
