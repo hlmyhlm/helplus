@@ -1,499 +1,511 @@
 "use client";
 
+import { useCallback, useEffect, useState } from "react";
 import { Header } from "@/components/layout/header";
-import {
-  Timer,
-  Plus,
-  X,
-  Pencil,
-  Trash2,
-  Info,
-  Clock,
-  CheckCircle2,
-} from "lucide-react";
-import { useState, useEffect, useCallback } from "react";
+import { Plus, X, Pencil, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { unwrapList } from "@/lib/api-client";
+import { formatMins } from "@/lib/sla/format";
 
-interface SLARuleData {
+interface Project {
   id: string;
   name: string;
-  description: string;
-  source: string;
+}
+
+interface SLARule {
+  id: string;
+  name: string;
+  projectId: string | null;
+  project: { id: string; name: string } | null;
   priority: string;
+  category: string;
+  source: string;
   firstResponseMins: number;
   resolutionMins: number;
   isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
 }
 
-const sourceOptions = [
-  { value: "all", label: "All Sources" },
-  { value: "whatsapp", label: "WhatsApp" },
-  { value: "email", label: "Email" },
-  { value: "phone", label: "Phone" },
-];
-
 const priorityOptions = [
-  { value: "all", label: "All Priorities" },
+  { value: "all", label: "All priorities" },
   { value: "low", label: "Low" },
   { value: "medium", label: "Medium" },
   { value: "high", label: "High" },
   { value: "urgent", label: "Urgent" },
 ];
 
-const defaultForm = {
+const sourceOptions = [
+  { value: "all", label: "All sources" },
+  { value: "whatsapp", label: "WhatsApp" },
+  { value: "email", label: "Email" },
+  { value: "phone", label: "Phone" },
+  { value: "sms", label: "SMS" },
+  { value: "telegram", label: "Telegram" },
+  { value: "web_form", label: "Web form" },
+  { value: "quick_add", label: "Quick add" },
+];
+
+const label = (options: { value: string; label: string }[], value: string) =>
+  options.find((o) => o.value === value)?.label ?? value;
+
+interface FormState {
+  name: string;
+  projectId: string;
+  priority: string;
+  category: string;
+  source: string;
+  firstAmount: number;
+  firstUnit: "minutes" | "hours";
+  solveAmount: number;
+  solveUnit: "minutes" | "hours";
+  isActive: boolean;
+}
+
+const defaultForm: FormState = {
   name: "",
-  description: "",
-  source: "all",
+  projectId: "all",
   priority: "all",
-  firstResponseMins: 30,
-  resolutionMins: 480,
+  category: "",
+  source: "all",
+  firstAmount: 30,
+  firstUnit: "minutes",
+  solveAmount: 8,
+  solveUnit: "hours",
   isActive: true,
 };
 
-function formatMinutes(mins: number): string {
-  if (mins < 60) return `${mins}m`;
-  const hours = Math.floor(mins / 60);
-  const remaining = mins % 60;
-  return remaining > 0 ? `${hours}h ${remaining}m` : `${hours}h`;
+function toForm(rule: SLARule): FormState {
+  const split = (mins: number) =>
+    mins >= 60 && mins % 60 === 0
+      ? { amount: mins / 60, unit: "hours" as const }
+      : { amount: mins, unit: "minutes" as const };
+  const first = split(rule.firstResponseMins);
+  const solve = split(rule.resolutionMins);
+  return {
+    name: rule.name,
+    projectId: rule.projectId ?? "all",
+    priority: rule.priority,
+    category: rule.category === "all" ? "" : rule.category,
+    source: rule.source,
+    firstAmount: first.amount,
+    firstUnit: first.unit,
+    solveAmount: solve.amount,
+    solveUnit: solve.unit,
+    isActive: rule.isActive,
+  };
+}
+
+function toMins(amount: number, unit: "minutes" | "hours") {
+  return unit === "hours" ? amount * 60 : amount;
 }
 
 export default function SLAPage() {
-  const [rules, setRules] = useState<SLARuleData[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
-  const [editingRule, setEditingRule] = useState<SLARuleData | null>(null);
-  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [rules, setRules] = useState<SLARule[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [loadError, setLoadError] = useState("");
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<SLARule | null>(null);
+  const [form, setForm] = useState<FormState>(defaultForm);
+  const [formError, setFormError] = useState("");
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState(defaultForm);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState("");
 
-  const fetchRules = useCallback(async () => {
+  const load = useCallback(async () => {
+    setLoadError("");
     try {
-      const res = await fetch("/api/sla?limit=100");
-      if (res.ok) {
-        const data = await res.json();
-        setRules(unwrapList(data));
-      }
-    } catch (error) {
-      console.error("Failed to fetch SLA rules:", error);
-    } finally {
-      setLoading(false);
+      const [rulesRes, projectsRes] = await Promise.all([
+        fetch("/api/sla?limit=100"),
+        fetch("/api/projects"),
+      ]);
+      if (rulesRes.ok) setRules(unwrapList<SLARule>(await rulesRes.json()));
+      else setLoadError("Couldn't load SLA rules.");
+      if (projectsRes.ok) setProjects(unwrapList<Project>(await projectsRes.json()));
+    } catch {
+      setLoadError("Couldn't load SLA rules.");
     }
   }, []);
 
   useEffect(() => {
-    fetchRules();
-  }, [fetchRules]);
+    load();
+  }, [load]);
 
-  const openCreateModal = () => {
-    setEditingRule(null);
+  const openCreate = () => {
+    setEditing(null);
     setForm(defaultForm);
-    setShowModal(true);
+    setFormError("");
+    setModalOpen(true);
   };
 
-  const openEditModal = (rule: SLARuleData) => {
-    setEditingRule(rule);
-    setForm({
-      name: rule.name,
-      description: rule.description,
-      source: rule.source,
-      priority: rule.priority,
-      firstResponseMins: rule.firstResponseMins,
-      resolutionMins: rule.resolutionMins,
-      isActive: rule.isActive,
-    });
-    setShowModal(true);
+  const openEdit = (rule: SLARule) => {
+    setEditing(rule);
+    setForm(toForm(rule));
+    setFormError("");
+    setModalOpen(true);
   };
 
-  const handleSave = async () => {
+  const save = async () => {
+    setFormError("");
     if (!form.name.trim()) return;
     setSaving(true);
     try {
-      const url = editingRule ? `/api/sla/${editingRule.id}` : "/api/sla";
-      const method = editingRule ? "PUT" : "POST";
+      const body = {
+        name: form.name.trim(),
+        projectId: form.projectId === "all" ? null : form.projectId,
+        priority: form.priority,
+        category: form.category.trim() || "all",
+        source: form.source,
+        firstResponseMins: toMins(form.firstAmount, form.firstUnit),
+        resolutionMins: toMins(form.solveAmount, form.solveUnit),
+        isActive: form.isActive,
+      };
+      const url = editing ? `/api/sla/${editing.id}` : "/api/sla";
       const res = await fetch(url, {
-        method,
+        method: editing ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify(body),
       });
-      if (res.ok) {
-        setShowModal(false);
-        setEditingRule(null);
-        setForm(defaultForm);
-        fetchRules();
+      if (!res.ok) {
+        setFormError((await res.json().catch(() => ({}))).error ?? "Couldn't save");
+        return;
       }
-    } catch (error) {
-      console.error("Failed to save SLA rule:", error);
+      setModalOpen(false);
+      await load();
+    } catch {
+      setFormError("Couldn't save");
     } finally {
       setSaving(false);
     }
   };
 
-  const handleDelete = async (id: string) => {
-    try {
-      const res = await fetch(`/api/sla/${id}`, { method: "DELETE" });
-      if (res.ok) {
-        setDeleteConfirm(null);
-        fetchRules();
-      }
-    } catch (error) {
-      console.error("Failed to delete SLA rule:", error);
-    }
-  };
-
-  const handleToggleActive = async (rule: SLARuleData) => {
+  const toggleActive = async (rule: SLARule) => {
     try {
       const res = await fetch(`/api/sla/${rule.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isActive: !rule.isActive }),
       });
-      if (res.ok) {
-        fetchRules();
-      }
-    } catch (error) {
-      console.error("Failed to toggle SLA rule:", error);
+      if (res.ok) await load();
+    } catch {
+      // next load will show the real state
     }
+  };
+
+  const remove = async (id: string) => {
+    setDeleteError("");
+    try {
+      const res = await fetch(`/api/sla/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        setDeleteError((await res.json().catch(() => ({}))).error ?? "Couldn't delete");
+        return;
+      }
+      setDeleteId(null);
+      await load();
+    } catch {
+      setDeleteError("Couldn't delete");
+    }
+  };
+
+  const chips = (rule: SLARule) => {
+    const items: string[] = [rule.project?.name ?? "All clients"];
+    if (rule.priority !== "all") items.push(label(priorityOptions, rule.priority));
+    if (rule.category && rule.category !== "all") items.push(rule.category);
+    if (rule.source !== "all") items.push(label(sourceOptions, rule.source));
+    return items;
   };
 
   return (
     <>
       <Header
-        title="SLA Rules"
-        description="Set response time goals for your team"
+        title="SLA rules"
+        description="How fast tickets should get a first reply and be solved"
         actions={
           <button
-            onClick={openCreateModal}
-            className="flex items-center gap-2 px-4 py-2 bg-helplus-primary text-white rounded-lg hover:bg-helplus-primary-dark transition-colors text-sm font-medium"
+            onClick={openCreate}
+            className="flex items-center gap-2 h-9 px-3 rounded-md bg-helplus-primary text-white text-sm font-medium"
           >
             <Plus className="h-4 w-4" />
-            Add Rule
+            Add rule
           </button>
         }
       />
 
-      <div className="flex-1 overflow-auto p-6 space-y-4">
-        {/* Info Section */}
-        <div className="bg-helplus-primary-50 rounded-xl border border-helplus-primary/20 p-4 flex items-start gap-3">
-          <Info className="h-5 w-5 text-helplus-link flex-shrink-0 mt-0.5" />
-          <div>
-            <p className="text-sm font-medium text-helplus-text">
-              What are SLA Rules?
-            </p>
-            <p className="text-sm text-helplus-text-light mt-1">
-              Service Level Agreement rules define response time targets for your
-              support team. Configure first response and resolution time goals
-              based on source and priority to ensure consistent service quality.
-            </p>
-          </div>
-        </div>
+      <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4">
+        {loadError && <p className="text-sm text-helplus-danger">{loadError}</p>}
 
-        {/* Rules Grid */}
-        {loading ? (
-          <div className="flex items-center justify-center h-40">
-            <div className="text-sm text-helplus-text-light">Loading...</div>
-          </div>
-        ) : rules.length === 0 ? (
-          <div className="bg-helplus-surface rounded-xl border border-helplus-border">
-            <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
-              <div className="p-4 rounded-full bg-helplus-primary-50 mb-4">
-                <Timer className="h-8 w-8 text-helplus-link" />
-              </div>
-              <p className="font-medium text-helplus-text">No SLA rules yet</p>
-              <p className="text-sm text-helplus-text-light mt-1">
-                Create your first SLA rule to set response time goals
-              </p>
-              <button
-                onClick={openCreateModal}
-                className="mt-4 flex items-center gap-2 px-4 py-2 bg-helplus-primary text-white rounded-lg hover:bg-helplus-primary-dark transition-colors text-sm font-medium"
-              >
-                <Plus className="h-4 w-4" />
-                Add Rule
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {rules.map((rule) => (
-              <div
-                key={rule.id}
-                className={cn(
-                  "bg-helplus-surface rounded-xl border border-helplus-border p-5 transition-colors",
-                  !rule.isActive && "opacity-60"
-                )}
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex-1 min-w-0">
-                    <h3 className="text-sm font-semibold text-helplus-text truncate">
-                      {rule.name}
-                    </h3>
-                    {rule.description && (
-                      <p className="text-xs text-helplus-text-light mt-0.5 line-clamp-2">
-                        {rule.description}
-                      </p>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1 ml-2">
-                    <button
-                      onClick={() => openEditModal(rule)}
-                      className="p-1.5 hover:bg-helplus-primary-50 rounded-lg transition-colors"
-                    >
-                      <Pencil className="h-3.5 w-3.5 text-helplus-text-light" />
-                    </button>
-                    <button
-                      onClick={() => setDeleteConfirm(rule.id)}
-                      className="p-1.5 hover:bg-red-50 rounded-lg transition-colors"
-                    >
-                      <Trash2 className="h-3.5 w-3.5 text-helplus-text-light" />
-                    </button>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="px-2 py-0.5 rounded text-xs font-medium bg-helplus-primary-50 text-helplus-link">
-                    {sourceOptions.find((c) => c.value === rule.source)?.label || rule.source}
-                  </span>
-                  <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-700">
-                    {priorityOptions.find((p) => p.value === rule.priority)?.label || rule.priority}
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3 mb-4">
-                  <div className="flex items-center gap-2">
-                    <Clock className="h-3.5 w-3.5 text-helplus-text-light" />
-                    <div>
-                      <p className="text-xs text-helplus-text-light">
-                        First Response
-                      </p>
-                      <p className="text-sm font-medium text-helplus-text">
-                        {formatMinutes(rule.firstResponseMins)}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 className="h-3.5 w-3.5 text-helplus-text-light" />
-                    <div>
-                      <p className="text-xs text-helplus-text-light">
-                        Resolution
-                      </p>
-                      <p className="text-sm font-medium text-helplus-text">
-                        {formatMinutes(rule.resolutionMins)}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between pt-3 border-t border-helplus-border">
-                  <span
-                    className={cn(
-                      "text-xs font-medium",
-                      rule.isActive ? "text-helplus-success" : "text-helplus-text-light"
-                    )}
-                  >
-                    {rule.isActive ? "Active" : "Inactive"}
-                  </span>
-                  <button
-                    onClick={() => handleToggleActive(rule)}
-                    className={cn(
-                      "relative inline-flex h-5 w-9 items-center rounded-full transition-colors",
-                      rule.isActive ? "bg-helplus-success" : "bg-gray-300"
-                    )}
-                  >
-                    <span
-                      className={cn(
-                        "inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform",
-                        rule.isActive ? "translate-x-4.5" : "translate-x-1"
-                      )}
-                    />
-                  </button>
-                </div>
-              </div>
-            ))}
+        {!rules.length && !loadError && (
+          <div className="rounded-md border border-helplus-border bg-helplus-surface p-6 text-center text-sm text-helplus-text-light">
+            No SLA rules yet. Add one to start timing tickets.
           </div>
         )}
+
+        {!!rules.length && (
+          <>
+            {/* desktop table */}
+            <div className="hidden md:block rounded-md border border-helplus-border bg-helplus-surface overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-helplus-border text-left text-xs text-helplus-text-light">
+                    <th className="px-4 py-2 font-medium">Name</th>
+                    <th className="px-4 py-2 font-medium">Applies to</th>
+                    <th className="px-4 py-2 font-medium">First reply</th>
+                    <th className="px-4 py-2 font-medium">Solve within</th>
+                    <th className="px-4 py-2 font-medium">Active</th>
+                    <th className="px-4 py-2 font-medium" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-helplus-border">
+                  {rules.map((rule) => (
+                    <tr key={rule.id}>
+                      <td className="px-4 py-3 text-helplus-text font-medium">{rule.name}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-wrap gap-1">
+                          {chips(rule).map((c, i) => (
+                            <span key={i} className="px-2 py-0.5 rounded text-xs bg-helplus-primary-50 text-helplus-link">
+                              {c}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-helplus-text">{formatMins(rule.firstResponseMins)}</td>
+                      <td className="px-4 py-3 text-helplus-text">{formatMins(rule.resolutionMins)}</td>
+                      <td className="px-4 py-3">
+                        <button
+                          onClick={() => toggleActive(rule)}
+                          className={cn(
+                            "relative inline-flex h-5 w-9 items-center rounded-full transition-colors",
+                            rule.isActive ? "bg-helplus-success" : "bg-helplus-border"
+                          )}
+                        >
+                          <span
+                            className={cn(
+                              "inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform",
+                              rule.isActive ? "translate-x-4.5" : "translate-x-1"
+                            )}
+                          />
+                        </button>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1">
+                          <button onClick={() => openEdit(rule)} className="p-1.5 hover:bg-helplus-primary-50 rounded-lg">
+                            <Pencil className="h-3.5 w-3.5 text-helplus-text-light" />
+                          </button>
+                          <button onClick={() => setDeleteId(rule.id)} className="p-1.5 hover:bg-helplus-primary-50 rounded-lg">
+                            <Trash2 className="h-3.5 w-3.5 text-helplus-text-light" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* phone cards */}
+            <div className="md:hidden space-y-3">
+              {rules.map((rule) => (
+                <div key={rule.id} className="rounded-md border border-helplus-border bg-helplus-surface p-4 space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <h3 className="text-sm font-semibold text-helplus-text">{rule.name}</h3>
+                    <button
+                      onClick={() => toggleActive(rule)}
+                      className={cn(
+                        "relative inline-flex h-5 w-9 items-center rounded-full transition-colors shrink-0",
+                        rule.isActive ? "bg-helplus-success" : "bg-helplus-border"
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform",
+                          rule.isActive ? "translate-x-4.5" : "translate-x-1"
+                        )}
+                      />
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {chips(rule).map((c, i) => (
+                      <span key={i} className="px-2 py-0.5 rounded text-xs bg-helplus-primary-50 text-helplus-link">
+                        {c}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="flex gap-4 text-xs text-helplus-text-light">
+                    <span>First reply: <span className="text-helplus-text">{formatMins(rule.firstResponseMins)}</span></span>
+                    <span>Solve within: <span className="text-helplus-text">{formatMins(rule.resolutionMins)}</span></span>
+                  </div>
+                  <div className="flex items-center gap-3 pt-1">
+                    <button onClick={() => openEdit(rule)} className="text-xs text-helplus-link">Edit</button>
+                    <button onClick={() => setDeleteId(rule.id)} className="text-xs text-helplus-danger">Delete</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        <p className="text-xs text-helplus-text-light">
+          Most specific rule wins: client, then priority, category, source. Changes apply to new tickets and to
+          tickets whose details change.
+        </p>
       </div>
 
-      {/* Create/Edit Modal */}
-      {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div
-            className="absolute inset-0 bg-black/30"
-            onClick={() => setShowModal(false)}
-          />
-          <div className="relative w-full max-w-md mx-4 bg-helplus-surface rounded-xl shadow-xl">
+      {modalOpen && (
+        <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center">
+          <div className="absolute inset-0 bg-black/30" onClick={() => setModalOpen(false)} />
+          <div className="relative w-full md:max-w-md md:mx-4 bg-helplus-surface rounded-t-xl md:rounded-xl shadow-xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between px-5 py-4 border-b border-helplus-border">
-              <h3 className="font-semibold text-helplus-text text-lg">
-                {editingRule ? "Edit SLA Rule" : "Create SLA Rule"}
-              </h3>
-              <button
-                onClick={() => setShowModal(false)}
-                className="p-1.5 hover:bg-helplus-primary-50 rounded-lg transition-colors"
-              >
+              <h3 className="font-semibold text-helplus-text text-lg">{editing ? "Edit SLA rule" : "Add SLA rule"}</h3>
+              <button onClick={() => setModalOpen(false)} className="p-1.5 hover:bg-helplus-primary-50 rounded-lg">
                 <X className="h-5 w-5 text-helplus-text-light" />
               </button>
             </div>
 
             <div className="px-5 py-4 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-helplus-text mb-1">
-                  Name
-                </label>
+                <label className="block text-sm font-medium text-helplus-text mb-1">Name</label>
                 <input
-                  type="text"
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  placeholder="e.g., Urgent WhatsApp SLA"
-                  className="w-full text-sm px-3 py-2 border border-helplus-border rounded-lg bg-helplus-bg focus:outline-none focus:ring-2 focus:ring-helplus-primary/30 focus:border-helplus-primary"
+                  placeholder="e.g. Urgent"
+                  className="w-full text-sm px-3 py-2 border border-helplus-border rounded-lg bg-helplus-bg text-helplus-text"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-helplus-text mb-1">
-                  Description
-                </label>
+                <label className="block text-sm font-medium text-helplus-text mb-1">Project</label>
+                <select
+                  value={form.projectId}
+                  onChange={(e) => setForm({ ...form, projectId: e.target.value })}
+                  className="w-full text-sm px-3 py-2 border border-helplus-border rounded-lg bg-helplus-bg text-helplus-text"
+                >
+                  <option value="all">All clients</option>
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-helplus-text mb-1">Priority</label>
+                  <select
+                    value={form.priority}
+                    onChange={(e) => setForm({ ...form, priority: e.target.value })}
+                    className="w-full text-sm px-3 py-2 border border-helplus-border rounded-lg bg-helplus-bg text-helplus-text"
+                  >
+                    {priorityOptions.map((p) => (
+                      <option key={p.value} value={p.value}>{p.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-helplus-text mb-1">Source</label>
+                  <select
+                    value={form.source}
+                    onChange={(e) => setForm({ ...form, source: e.target.value })}
+                    className="w-full text-sm px-3 py-2 border border-helplus-border rounded-lg bg-helplus-bg text-helplus-text"
+                  >
+                    {sourceOptions.map((s) => (
+                      <option key={s.value} value={s.value}>{s.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-helplus-text mb-1">Category</label>
                 <input
-                  type="text"
-                  value={form.description}
-                  onChange={(e) =>
-                    setForm({ ...form, description: e.target.value })
-                  }
-                  placeholder="Optional description..."
-                  className="w-full text-sm px-3 py-2 border border-helplus-border rounded-lg bg-helplus-bg focus:outline-none focus:ring-2 focus:ring-helplus-primary/30 focus:border-helplus-primary"
+                  value={form.category}
+                  onChange={(e) => setForm({ ...form, category: e.target.value })}
+                  placeholder="Empty means all categories"
+                  className="w-full text-sm px-3 py-2 border border-helplus-border rounded-lg bg-helplus-bg text-helplus-text"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-helplus-text mb-1">
-                    Source
-                  </label>
-                  <select
-                    value={form.source}
-                    onChange={(e) =>
-                      setForm({ ...form, source: e.target.value })
-                    }
-                    className="w-full text-sm px-3 py-2 border border-helplus-border rounded-lg bg-helplus-bg focus:outline-none focus:ring-2 focus:ring-helplus-primary/30 text-helplus-text"
-                  >
-                    {sourceOptions.map((c) => (
-                      <option key={c.value} value={c.value}>
-                        {c.label}
-                      </option>
-                    ))}
-                  </select>
+                  <label className="block text-sm font-medium text-helplus-text mb-1">First reply</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      min={1}
+                      value={form.firstAmount}
+                      onChange={(e) => setForm({ ...form, firstAmount: parseInt(e.target.value) || 1 })}
+                      className="w-full text-sm px-3 py-2 border border-helplus-border rounded-lg bg-helplus-bg text-helplus-text"
+                    />
+                    <select
+                      value={form.firstUnit}
+                      onChange={(e) => setForm({ ...form, firstUnit: e.target.value as "minutes" | "hours" })}
+                      className="text-sm px-2 py-2 border border-helplus-border rounded-lg bg-helplus-bg text-helplus-text"
+                    >
+                      <option value="minutes">min</option>
+                      <option value="hours">hr</option>
+                    </select>
+                  </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-helplus-text mb-1">
-                    Priority
-                  </label>
-                  <select
-                    value={form.priority}
-                    onChange={(e) =>
-                      setForm({ ...form, priority: e.target.value })
-                    }
-                    className="w-full text-sm px-3 py-2 border border-helplus-border rounded-lg bg-helplus-bg focus:outline-none focus:ring-2 focus:ring-helplus-primary/30 text-helplus-text"
-                  >
-                    {priorityOptions.map((p) => (
-                      <option key={p.value} value={p.value}>
-                        {p.label}
-                      </option>
-                    ))}
-                  </select>
+                  <label className="block text-sm font-medium text-helplus-text mb-1">Solve within</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      min={1}
+                      value={form.solveAmount}
+                      onChange={(e) => setForm({ ...form, solveAmount: parseInt(e.target.value) || 1 })}
+                      className="w-full text-sm px-3 py-2 border border-helplus-border rounded-lg bg-helplus-bg text-helplus-text"
+                    />
+                    <select
+                      value={form.solveUnit}
+                      onChange={(e) => setForm({ ...form, solveUnit: e.target.value as "minutes" | "hours" })}
+                      className="text-sm px-2 py-2 border border-helplus-border rounded-lg bg-helplus-bg text-helplus-text"
+                    >
+                      <option value="minutes">min</option>
+                      <option value="hours">hr</option>
+                    </select>
+                  </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-helplus-text mb-1">
-                    First Response (minutes)
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={form.firstResponseMins}
-                    onChange={(e) =>
-                      setForm({
-                        ...form,
-                        firstResponseMins: parseInt(e.target.value) || 1,
-                      })
-                    }
-                    className="w-full text-sm px-3 py-2 border border-helplus-border rounded-lg bg-helplus-bg focus:outline-none focus:ring-2 focus:ring-helplus-primary/30 focus:border-helplus-primary"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-helplus-text mb-1">
-                    Resolution (minutes)
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={form.resolutionMins}
-                    onChange={(e) =>
-                      setForm({
-                        ...form,
-                        resolutionMins: parseInt(e.target.value) || 1,
-                      })
-                    }
-                    className="w-full text-sm px-3 py-2 border border-helplus-border rounded-lg bg-helplus-bg focus:outline-none focus:ring-2 focus:ring-helplus-primary/30 focus:border-helplus-primary"
-                  />
-                </div>
-              </div>
+              <label className="flex items-center gap-2 text-sm text-helplus-text">
+                <input
+                  type="checkbox"
+                  checked={form.isActive}
+                  onChange={(e) => setForm({ ...form, isActive: e.target.checked })}
+                />
+                Active
+              </label>
+
+              {formError && <p className="text-sm text-helplus-danger">{formError}</p>}
             </div>
 
             <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-helplus-border">
-              <button
-                onClick={() => setShowModal(false)}
-                className="px-4 py-2 text-sm font-medium text-helplus-text hover:bg-helplus-primary-50 rounded-lg transition-colors"
-              >
+              <button onClick={() => setModalOpen(false)} className="px-4 py-2 text-sm font-medium text-helplus-text">
                 Cancel
               </button>
               <button
-                onClick={handleSave}
-                disabled={!form.name.trim() || saving}
-                className={cn(
-                  "px-4 py-2 text-sm font-medium rounded-lg transition-colors",
-                  form.name.trim() && !saving
-                    ? "bg-helplus-primary text-white hover:bg-helplus-primary-dark"
-                    : "bg-helplus-border text-helplus-text-light cursor-not-allowed"
-                )}
+                onClick={save}
+                disabled={saving || !form.name.trim()}
+                className="px-4 py-2 text-sm font-medium rounded-lg bg-helplus-primary text-white disabled:opacity-60"
               >
-                {saving
-                  ? "Saving..."
-                  : editingRule
-                  ? "Update Rule"
-                  : "Create Rule"}
+                {saving ? "Saving…" : editing ? "Save" : "Add rule"}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Delete Confirmation */}
-      {deleteConfirm && (
+      {deleteId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div
-            className="absolute inset-0 bg-black/30"
-            onClick={() => setDeleteConfirm(null)}
-          />
+          <div className="absolute inset-0 bg-black/30" onClick={() => setDeleteId(null)} />
           <div className="relative w-full max-w-sm mx-4 bg-helplus-surface rounded-xl shadow-xl p-5">
-            <h3 className="font-semibold text-helplus-text text-lg mb-2">
-              Delete SLA Rule
-            </h3>
-            <p className="text-sm text-helplus-text-light mb-4">
-              Are you sure you want to delete this SLA rule? This action cannot
-              be undone.
-            </p>
+            <h3 className="font-semibold text-helplus-text text-lg mb-2">Delete SLA rule</h3>
+            <p className="text-sm text-helplus-text-light mb-4">This can&apos;t be undone.</p>
+            {deleteError && <p className="text-sm text-helplus-danger mb-2">{deleteError}</p>}
             <div className="flex items-center justify-end gap-2">
-              <button
-                onClick={() => setDeleteConfirm(null)}
-                className="px-4 py-2 text-sm font-medium text-helplus-text hover:bg-helplus-primary-50 rounded-lg transition-colors"
-              >
+              <button onClick={() => setDeleteId(null)} className="px-4 py-2 text-sm font-medium text-helplus-text">
                 Cancel
               </button>
               <button
-                onClick={() => handleDelete(deleteConfirm)}
-                className="px-4 py-2 text-sm font-medium bg-helplus-danger text-white rounded-lg hover:bg-red-700 transition-colors"
+                onClick={() => remove(deleteId)}
+                className="px-4 py-2 text-sm font-medium bg-helplus-danger text-white rounded-lg"
               >
                 Delete
               </button>

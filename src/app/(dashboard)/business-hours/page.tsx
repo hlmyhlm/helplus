@@ -4,6 +4,7 @@ import { Header } from "@/components/layout/header";
 import { Save, Check, AlertTriangle } from "lucide-react";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { cn } from "@/lib/utils";
+import { HolidaysCard } from "@/components/settings/holidays-card";
 
 interface BusinessHoursData {
   id: string;
@@ -418,6 +419,8 @@ export default function BusinessHoursPage() {
               })}
             </div>
           </div>
+
+          <HolidaysCard />
 
           {/* Offline Message */}
           <div className="bg-helplus-surface border border-helplus-border rounded-xl p-5">
