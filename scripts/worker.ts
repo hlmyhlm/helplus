@@ -2,6 +2,7 @@
 import { runAllCompanies } from "../src/lib/jobs/run";
 import { systemPrisma } from "../src/lib/prisma";
 import { logger } from "../src/lib/logger";
+import { closeOcr } from "../src/lib/ocr/tesseract";
 
 const EVERY_MS = 60_000;
 let stopping = false;
@@ -27,6 +28,8 @@ async function main() {
     const wait = Math.max(0, EVERY_MS - (Date.now() - started));
     for (let waited = 0; waited < wait && !stopping; waited += 1000) await new Promise((r) => setTimeout(r, 1000));
   } while (!stopping);
+  // the ocr worker thread keeps node alive otherwise
+  await closeOcr();
   await systemPrisma.$disconnect();
   if (once && threw) process.exitCode = 1;
 }

@@ -23,7 +23,15 @@ const checker = (actor: { id: string }) => (actor.id.startsWith("api-key:") ? nu
 export async function processAttachment(id: string) {
   const a = await prisma.attachment.findUnique({ where: { id } });
   if (!a || a.status !== "pending" || !a.originalKey) return a;
-  const { png, width, height } = await originalPng(a.originalKey);
+  let image: Awaited<ReturnType<typeof originalPng>>;
+  try {
+    image = await originalPng(a.originalKey);
+  } catch (error) {
+    // leave it for staff, otherwise the worker retries it forever
+    logger.error("couldn't read attachment original", error);
+    return prisma.attachment.update({ where: { id }, data: { status: "needs_check", checkNote: "Couldn't read the original file." } });
+  }
+  const { png, width, height } = image;
   try {
     const result = await ocrImage(png);
     const boxes = findIcBoxes(result.lines);
