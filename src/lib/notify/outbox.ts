@@ -39,8 +39,7 @@ async function smtpSender(): Promise<Sender> {
   };
 }
 
-// a worker that crashed mid-send leaves a row stuck in "sending" forever, so
-// anything that's been due for more than STUCK_MINS goes back to "pending"
+// a crashed worker can leave a row stuck "sending" forever, so put it back after a while
 async function recoverStuckRows(now: Date) {
   const cutoff = new Date(now.getTime() - STUCK_MINS * 60_000);
   await prisma.emailOutbox.updateMany({
