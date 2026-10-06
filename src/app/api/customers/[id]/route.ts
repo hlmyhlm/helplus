@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { withAuth } from "@/lib/tenant/with-auth";
+import { allowedProjectIds, conversationWhere } from "@/lib/tickets/access";
 
 export const GET = withAuth(
   "customers:read",
-  async (_request: NextRequest, _auth, { params }: { params: Promise<{ id: string }> }) => {
+  async (_request: NextRequest, auth, { params }: { params: Promise<{ id: string }> }) => {
     try {
       const { id } = await params;
 
@@ -42,7 +43,7 @@ export const GET = withAuth(
       let conversations: unknown[] = [];
       if (contactFilters.length > 0) {
         conversations = await prisma.conversation.findMany({
-          where: { OR: contactFilters },
+          where: { OR: contactFilters, ...conversationWhere(await allowedProjectIds(auth)) },
           orderBy: { updatedAt: "desc" },
           include: {
             _count: { select: { messages: true } },

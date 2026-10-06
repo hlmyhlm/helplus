@@ -3,10 +3,11 @@ import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { parsePagination, paginatedResponse } from "@/lib/pagination";
 import { withAuth } from "@/lib/tenant/with-auth";
+import { allowedProjectIds, conversationWhere } from "@/lib/tickets/access";
 
 export const GET = withAuth(
   "customers:read",
-  async (request: NextRequest, _auth, { params }: { params: Promise<{ id: string }> }) => {
+  async (request: NextRequest, auth,{ params }: { params: Promise<{ id: string }> }) => {
     try {
       const { id } = await params;
       const { searchParams } = new URL(request.url);
@@ -40,7 +41,10 @@ export const GET = withAuth(
         contactFilters.push({ customerContact: customer.whatsapp });
       }
 
-      const where: Record<string, unknown> = { OR: contactFilters };
+      const where: Record<string, unknown> = {
+        OR: contactFilters,
+        ...conversationWhere(await allowedProjectIds(auth)),
+      };
 
       if (channel && channel !== "all") {
         where.channel = channel;

@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { runWithCompany } from "@/lib/tenant/context";
 import { OPEN_STATUSES } from "@/lib/tickets/status";
+import { allowedProjectIds, conversationWhere, projectWhere } from "@/lib/tickets/access";
 import { redirect } from "next/navigation";
 import {
   MessageSquare,
@@ -17,7 +18,12 @@ import {
 } from "lucide-react";
 import { formatRelativeTime, getChannelLabel, getStatusColor } from "@/lib/utils";
 
-async function getStats() {
+async function getStats(user: { id: string; role: string }) {
+  const ids = await allowedProjectIds({ role: user.role, userId: user.id });
+  const convScope = conversationWhere(ids);
+  const ticketScope = projectWhere(ids);
+  const messageScope = ids === null ? {} : { conversation: convScope };
+
   const [
     totalConversations,
     activeConversations,
@@ -26,12 +32,13 @@ async function getStats() {
     totalMessages,
     recentConversations,
   ] = await Promise.all([
-    prisma.conversation.count(),
-    prisma.conversation.count({ where: { status: "active" } }),
-    prisma.ticket.count(),
-    prisma.ticket.count({ where: { status: { in: OPEN_STATUSES } } }),
-    prisma.message.count(),
+    prisma.conversation.count({ where: convScope }),
+    prisma.conversation.count({ where: { ...convScope, status: "active" } }),
+    prisma.ticket.count({ where: ticketScope }),
+    prisma.ticket.count({ where: { ...ticketScope, status: { in: OPEN_STATUSES } } }),
+    prisma.message.count({ where: messageScope }),
     prisma.conversation.findMany({
+      where: convScope,
       take: 10,
       orderBy: { updatedAt: "desc" },
       include: {
@@ -42,7 +49,7 @@ async function getStats() {
   ]);
 
   const resolvedConversations = await prisma.conversation.count({
-    where: { status: "resolved" },
+    where: { ...convScope, status: "resolved" },
   });
 
   const resolutionRate =
@@ -72,7 +79,7 @@ export default async function DashboardPage() {
   if (!user) redirect("/login");
   // clients have no dashboard yet
   if (user.role === "client") redirect("/login");
-  const stats = await runWithCompany(user.companyId, getStats);
+  const stats = await runWithCompany(user.companyId, () => getStats(user));
 
   return (
     <>

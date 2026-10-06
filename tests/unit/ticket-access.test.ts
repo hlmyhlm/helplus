@@ -32,3 +32,15 @@ describe("projectWhere", () => {
     expect(projectWhere(["p1"])).toEqual({ projectId: { in: ["p1"] } });
   });
 });
+
+describe("conversationWhere", () => {
+  it("adds no filter for null", async () => {
+    const { conversationWhere } = await import("@/lib/tickets/access");
+    expect(conversationWhere(null)).toEqual({});
+  });
+
+  it("needs a ticket in one of the listed projects", async () => {
+    const { conversationWhere } = await import("@/lib/tickets/access");
+    expect(conversationWhere(["p1"])).toEqual({ tickets: { some: { projectId: { in: ["p1"] } } } });
+  });
+});

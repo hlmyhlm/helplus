@@ -14,3 +14,8 @@ export async function allowedProjectIds(auth: { role: string; userId: string }):
 export function projectWhere(ids: string[] | null): Record<string, unknown> {
   return ids === null ? {} : { projectId: { in: ids } };
 }
+
+// a conversation shows if any of its tickets is in an allowed project
+export function conversationWhere(ids: string[] | null): Record<string, unknown> {
+  return ids === null ? {} : { tickets: { some: { projectId: { in: ids } } } };
+}

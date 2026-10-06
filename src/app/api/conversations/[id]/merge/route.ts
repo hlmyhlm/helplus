@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { withAuth } from "@/lib/tenant/with-auth";
+import { loadConversationFor } from "@/lib/tickets/load";
 import { mergeConversations } from "@/lib/conversation-engine";
 import { logger } from "@/lib/logger";
 
 export const POST = withAuth(
   "conversations:update",
-  async (request: NextRequest, _auth, { params }: { params: Promise<{ id: string }> }) => {
+  async (request: NextRequest, auth, { params }: { params: Promise<{ id: string }> }) => {
     try {
       const { id } = await params;
+      if (!(await loadConversationFor(auth, id))) {
+        return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
+      }
       const body = await request.json();
       const { secondaryId } = body;
 
@@ -16,6 +20,10 @@ export const POST = withAuth(
           { error: "secondaryId is required" },
           { status: 400 }
         );
+      }
+
+      if (!(await loadConversationFor(auth, secondaryId))) {
+        return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
       }
 
       const success = await mergeConversations(id, secondaryId);

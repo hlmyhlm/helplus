@@ -113,3 +113,47 @@ describe("notes", () => {
     expect(db.internalNote.create.mock.calls[0][0].data).toEqual({ conversationId: "c1", content: "called her", authorName: "Aisyah" });
   });
 });
+
+describe("tickets outside the staff member's projects", () => {
+  beforeEach(() => {
+    vi.mocked(requireAuth).mockResolvedValue({
+      userId: "u2",
+      role: "staff",
+      username: "s",
+      name: "S",
+      authMethod: "cookie",
+      companyId: "test-company",
+    } as never);
+    db.projectAccess.findMany.mockResolvedValue([{ projectId: "other" }]);
+  });
+
+  it("DELETE gets 404", async () => {
+    // the mocked auth skips the role check, so this hits the project check inside the route
+    const { DELETE } = await import("@/app/api/tickets/[id]/route");
+    expect((await DELETE(createRequest("/api/tickets/t1", { method: "DELETE" }), ctx)).status).toBe(404);
+    expect(db.ticket.delete).not.toHaveBeenCalled();
+  });
+
+  it("notes GET and POST get 404", async () => {
+    const { GET, POST } = await import("@/app/api/tickets/[id]/notes/route");
+    expect((await GET(createRequest("/api/tickets/t1/notes"), ctx)).status).toBe(404);
+    const post = await POST(createRequest("/api/tickets/t1/notes", { method: "POST", body: { content: "x" } }), ctx);
+    expect(post.status).toBe(404);
+    expect(db.internalNote.create).not.toHaveBeenCalled();
+  });
+
+  it("messages POST gets 404", async () => {
+    const { POST } = await import("@/app/api/tickets/[id]/messages/route");
+    const res = await POST(createRequest("/api/tickets/t1/messages", { method: "POST", body: { content: "x" } }), ctx);
+    expect(res.status).toBe(404);
+    expect(db.message.create).not.toHaveBeenCalled();
+  });
+
+  it("PATCH to a project id they don't have gets 403, even if it doesn't exist", async () => {
+    db.projectAccess.findMany.mockResolvedValue([{ projectId: "p1" }]);
+    const { PATCH } = await import("@/app/api/tickets/[id]/route");
+    const res = await PATCH(createRequest("/api/tickets/t1", { method: "PATCH", body: { projectId: "ghost" } }), ctx);
+    expect(res.status).toBe(403);
+    expect(db.ticket.update).not.toHaveBeenCalled();
+  });
+});

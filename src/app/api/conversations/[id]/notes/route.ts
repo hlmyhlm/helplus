@@ -2,16 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { withAuth } from "@/lib/tenant/with-auth";
+import { loadConversationFor } from "@/lib/tickets/load";
 
 export const GET = withAuth(
   "messages:read",
-  async (_request: NextRequest, _auth, { params }: { params: Promise<{ id: string }> }) => {
+  async (_request: NextRequest, auth, { params }: { params: Promise<{ id: string }> }) => {
     try {
       const { id } = await params;
 
-      const conversation = await prisma.conversation.findUnique({
-        where: { id },
-      });
+      const conversation = await loadConversationFor(auth, id);
       if (!conversation) {
         return NextResponse.json(
           { error: "Conversation not found" },
@@ -37,7 +36,7 @@ export const GET = withAuth(
 
 export const POST = withAuth(
   "messages:create",
-  async (request: NextRequest, _auth, { params }: { params: Promise<{ id: string }> }) => {
+  async (request: NextRequest, auth, { params }: { params: Promise<{ id: string }> }) => {
     try {
       const { id } = await params;
       const body = await request.json();
@@ -50,9 +49,7 @@ export const POST = withAuth(
         );
       }
 
-      const conversation = await prisma.conversation.findUnique({
-        where: { id },
-      });
+      const conversation = await loadConversationFor(auth, id);
       if (!conversation) {
         return NextResponse.json(
           { error: "Conversation not found" },

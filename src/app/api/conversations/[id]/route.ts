@@ -3,15 +3,17 @@ import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { withAuth } from "@/lib/tenant/with-auth";
 import { emitConversationUpdate } from "@/lib/realtime";
+import { allowedProjectIds, conversationWhere } from "@/lib/tickets/access";
+import { loadConversationFor } from "@/lib/tickets/load";
 
 export const GET = withAuth(
   "conversations:read",
-  async (_request: NextRequest, _auth, { params }: { params: Promise<{ id: string }> }) => {
+  async (_request: NextRequest, auth, { params }: { params: Promise<{ id: string }> }) => {
     try {
       const { id } = await params;
 
       const conversation = await prisma.conversation.findUnique({
-        where: { id },
+        where: { id, ...conversationWhere(await allowedProjectIds(auth)) },
         include: {
           messages: {
             orderBy: { createdAt: "asc" },
@@ -52,7 +54,7 @@ export const GET = withAuth(
 
 export const PUT = withAuth(
   "conversations:update",
-  async (request: NextRequest, _auth, { params }: { params: Promise<{ id: string }> }) => {
+  async (request: NextRequest, auth, { params }: { params: Promise<{ id: string }> }) => {
     try {
       const { id } = await params;
       const body = await request.json();
@@ -75,7 +77,7 @@ export const PUT = withAuth(
         }
       }
 
-      const existing = await prisma.conversation.findUnique({ where: { id } });
+      const existing = await loadConversationFor(auth, id);
       if (!existing) {
         return NextResponse.json(
           { error: "Conversation not found" },
@@ -146,11 +148,11 @@ export const PUT = withAuth(
 
 export const DELETE = withAuth(
   "conversations:delete",
-  async (_request: NextRequest, _auth, { params }: { params: Promise<{ id: string }> }) => {
+  async (_request: NextRequest, auth, { params }: { params: Promise<{ id: string }> }) => {
     try {
       const { id } = await params;
 
-      const existing = await prisma.conversation.findUnique({ where: { id } });
+      const existing = await loadConversationFor(auth, id);
       if (!existing) {
         return NextResponse.json(
           { error: "Conversation not found" },

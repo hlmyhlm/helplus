@@ -2,12 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { withAuth } from "@/lib/tenant/with-auth";
+import { loadConversationFor } from "@/lib/tickets/load";
 
 export const POST = withAuth(
   "conversations:update",
-  async (request: NextRequest, _auth, { params }: { params: Promise<{ id: string }> }) => {
+  async (request: NextRequest, auth, { params }: { params: Promise<{ id: string }> }) => {
     try {
       const { id } = await params;
+      if (!(await loadConversationFor(auth, id))) {
+        return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
+      }
       const body = await request.json();
       const { rating } = body;
 
@@ -15,14 +19,6 @@ export const POST = withAuth(
         return NextResponse.json(
           { error: "Rating must be an integer between 1 and 5" },
           { status: 400 }
-        );
-      }
-
-      const existing = await prisma.conversation.findUnique({ where: { id } });
-      if (!existing) {
-        return NextResponse.json(
-          { error: "Conversation not found" },
-          { status: 404 }
         );
       }
 

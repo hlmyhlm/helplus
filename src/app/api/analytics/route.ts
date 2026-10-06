@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { withAuth } from "@/lib/tenant/with-auth";
+import { allowedProjectIds, projectWhere } from "@/lib/tickets/access";
 
 function getPeriodStart(period: string): Date {
   const now = new Date();
@@ -21,10 +22,12 @@ function formatDateKey(date: Date): string {
 
 export const GET = withAuth(
   "analytics:read",
-  async (request: NextRequest, _auth) => {
+  async (request: NextRequest, auth) => {
     const { searchParams } = new URL(request.url);
     const period = searchParams.get("period") || "7d";
     const periodStart = getPeriodStart(period);
+    // ticket figures follow project access, conversation and message totals stay company-wide
+    const ticketScope = projectWhere(await allowedProjectIds(auth));
 
     const [
       conversations,
@@ -57,14 +60,14 @@ export const GET = withAuth(
       // Tickets by priority in period
       prisma.ticket.groupBy({
         by: ["priority"],
-        where: { createdAt: { gte: periodStart } },
+        where: { ...ticketScope, createdAt: { gte: periodStart } },
         _count: { id: true },
       }),
 
       // Tickets by status in period
       prisma.ticket.groupBy({
         by: ["status"],
-        where: { createdAt: { gte: periodStart } },
+        where: { ...ticketScope, createdAt: { gte: periodStart } },
         _count: { id: true },
       }),
 
@@ -81,6 +84,7 @@ export const GET = withAuth(
           name: true,
           tickets: {
             where: {
+              ...ticketScope,
               createdAt: { gte: periodStart },
             },
             select: { status: true, createdAt: true, updatedAt: true },
