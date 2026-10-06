@@ -61,10 +61,12 @@ export async function drainOutbox(now = new Date(), send?: Sender): Promise<{ se
   let sent = 0;
   let failed = 0;
   for (const row of rows) {
-    // claim it first, so a second worker running the same batch can't send it twice
+    // claim it first, so a second worker running the same batch can't send it twice.
+    // nextAttemptAt moves to now so the stuck-row sweep measures time in "sending",
+    // not however overdue the row already was when we picked it up
     const claim = await prisma.emailOutbox.updateMany({
       where: { id: row.id, status: "pending" },
-      data: { status: "sending" },
+      data: { status: "sending", nextAttemptAt: now },
     });
     if (claim.count !== 1) continue;
 

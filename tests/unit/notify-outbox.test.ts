@@ -27,8 +27,68 @@ describe("drainOutbox", () => {
     // call 0 is the stuck-row recovery sweep, call 1 is the claim for this row
     expect(outbox.updateMany.mock.calls[1][0]).toEqual({
       where: { id: "e1", status: "pending" },
-      data: { status: "sending" },
+      data: { status: "sending", nextAttemptAt: now },
     });
+  });
+
+  it("doesn't reset a row claimed just now even though it was overdue when claimed", async () => {
+    // a row whose original nextAttemptAt was an hour ago - overdue well past the
+    // 10 minute stuck-row window before it was ever claimed
+    const dbRow = {
+      id: "e1",
+      to: "a@x.com",
+      subject: "s",
+      body: "b",
+      attempts: 0,
+      status: "pending" as string,
+      nextAttemptAt: new Date(now.getTime() - 60 * 60_000),
+    };
+
+    outbox.findMany.mockImplementation(async (args: { where: { nextAttemptAt: { lte: Date } } }) => {
+      if (dbRow.status !== "pending") return [];
+      if (dbRow.nextAttemptAt.getTime() > args.where.nextAttemptAt.lte.getTime()) return [];
+      return [{ ...dbRow }];
+    });
+
+    outbox.updateMany.mockImplementation(
+      async (args: { where: { id?: string; status: string; nextAttemptAt?: { lte: Date } }; data: { status: string; nextAttemptAt?: Date } }) => {
+        if (args.where.status === "sending") {
+          // the stuck-row recovery sweep
+          if (dbRow.status === "sending" && dbRow.nextAttemptAt.getTime() <= args.where.nextAttemptAt!.lte.getTime()) {
+            dbRow.status = "pending";
+            return { count: 1 };
+          }
+          return { count: 0 };
+        }
+        // the claim
+        if (args.where.id === dbRow.id && dbRow.status === "pending") {
+          dbRow.status = args.data.status;
+          if (args.data.nextAttemptAt) dbRow.nextAttemptAt = args.data.nextAttemptAt;
+          return { count: 1 };
+        }
+        return { count: 0 };
+      }
+    );
+
+    // the first send hangs, simulating one still in flight when the next drain
+    // starts; later sends (there should be none) resolve right away
+    let sendCalls = 0;
+    const send = vi.fn(() => {
+      sendCalls++;
+      return sendCalls === 1 ? new Promise<void>(() => {}) : Promise.resolve();
+    });
+
+    void drainOutbox(now, send);
+    await vi.waitFor(() => {
+      if (dbRow.status !== "sending") throw new Error("not claimed yet");
+    });
+
+    const oneMinuteLater = new Date(now.getTime() + 60_000);
+    await drainOutbox(oneMinuteLater, send);
+
+    // a second send here would mean the stuck-row sweep reset a row that was
+    // genuinely still being sent, and it went out twice
+    expect(sendCalls).toBe(1);
   });
 
   it("resets a stuck sending row older than 10 minutes", async () => {
