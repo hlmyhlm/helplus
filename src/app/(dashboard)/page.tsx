@@ -4,6 +4,7 @@ import { OnboardingChecklist } from "@/components/ui/onboarding-checklist";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { runWithCompany } from "@/lib/tenant/context";
+import { OPEN_STATUSES } from "@/lib/tickets/status";
 import { redirect } from "next/navigation";
 import {
   MessageSquare,
@@ -28,7 +29,7 @@ async function getStats() {
     prisma.conversation.count(),
     prisma.conversation.count({ where: { status: "active" } }),
     prisma.ticket.count(),
-    prisma.ticket.count({ where: { status: "open" } }),
+    prisma.ticket.count({ where: { status: { in: OPEN_STATUSES } } }),
     prisma.message.count(),
     prisma.conversation.findMany({
       take: 10,

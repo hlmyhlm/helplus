@@ -26,7 +26,7 @@ import { cn } from "@/lib/utils";
 // ---------------------------------------------------------------------------
 
 interface Endpoint {
-  method: "GET" | "POST" | "PUT" | "DELETE";
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   path: string;
   description: string;
   requestBody?: Record<string, unknown>;
@@ -192,13 +192,13 @@ const apiSections: ApiSection[] = [
           {
             id: "tkt_abc123",
             title: "Login issue",
-            status: "open",
+            status: "new",
             priority: "high",
             createdAt: "2026-04-01T10:00:00Z",
           },
         ],
         queryParams: [
-          { name: "status", type: "string", required: false, description: "Filter by status: open, in_progress, resolved, closed" },
+          { name: "status", type: "string", required: false, description: "Filter by status: new, ai_suggested, answered, reopened, working, closed (or 'open' for everything but closed)" },
           { name: "priority", type: "string", required: false, description: "Filter by priority: low, medium, high, urgent" },
         ],
       },
@@ -207,15 +207,14 @@ const apiSections: ApiSection[] = [
         path: "/api/tickets",
         description: "Create a new support ticket.",
         requestBody: {
+          text: "User reports 403 error when accessing the main dashboard.",
           title: "Cannot access dashboard",
-          description: "User reports 403 error when accessing the main dashboard.",
           priority: "high",
-          departmentId: "dept_abc",
         },
         responseExample: {
           id: "tkt_new456",
           title: "Cannot access dashboard",
-          status: "open",
+          status: "new",
           priority: "high",
           createdAt: "2026-04-01T10:00:00Z",
         },
@@ -227,27 +226,25 @@ const apiSections: ApiSection[] = [
         responseExample: {
           id: "tkt_abc123",
           title: "Login issue",
-          status: "open",
+          status: "new",
           priority: "high",
-          department: { id: "dept_1", name: "Engineering" },
-          assignedTo: { id: "mem_1", name: "Alice" },
+          project: { id: "proj_1", name: "General" },
+          assignee: { id: "admin_1", name: "Alice" },
         },
         params: [
           { name: "id", type: "string", required: true, description: "Ticket ID" },
         ],
       },
       {
-        method: "PUT",
+        method: "PATCH",
         path: "/api/tickets/:id",
-        description: "Update a ticket's status, priority, assignment, or resolution.",
+        description: "Update a ticket's status, priority, project, or assignee.",
         requestBody: {
-          status: "resolved",
-          resolution: "Fixed permission configuration for the user.",
+          status: "closed",
         },
         responseExample: {
           id: "tkt_abc123",
-          status: "resolved",
-          resolution: "Fixed permission configuration for the user.",
+          status: "closed",
           updatedAt: "2026-04-01T12:00:00Z",
         },
         params: [

@@ -59,9 +59,11 @@ interface DepartmentData {
 
 const ticketStatuses = [
   { value: "all", label: "All Status" },
-  { value: "open", label: "Open" },
-  { value: "in_progress", label: "In Progress" },
-  { value: "resolved", label: "Resolved" },
+  { value: "new", label: "New" },
+  { value: "ai_suggested", label: "AI Suggested" },
+  { value: "answered", label: "Answered" },
+  { value: "reopened", label: "Reopened" },
+  { value: "working", label: "Staff working" },
   { value: "closed", label: "Closed" },
 ];
 
@@ -74,9 +76,11 @@ const ticketPriorities = [
 ];
 
 const statusIcons: Record<string, React.ElementType> = {
-  open: CircleDot,
-  in_progress: Clock,
-  resolved: CheckCircle2,
+  new: CircleDot,
+  ai_suggested: CircleDot,
+  answered: CheckCircle2,
+  reopened: Clock,
+  working: Clock,
   closed: CheckCircle2,
 };
 
@@ -104,7 +108,7 @@ export default function TicketsPage() {
     title: "",
     description: "",
     priority: "medium",
-    status: "open",
+    status: "new",
     departmentId: "",
   });
 
@@ -167,7 +171,7 @@ export default function TicketsPage() {
           title: "",
           description: "",
           priority: "medium",
-          status: "open",
+          status: "new",
           departmentId: "",
         });
         fetchTickets();
@@ -211,11 +215,9 @@ export default function TicketsPage() {
     }
   };
 
-  const openCount = tickets.filter((t) => t.status === "open").length;
-  const inProgressCount = tickets.filter(
-    (t) => t.status === "in_progress"
-  ).length;
-  const resolvedCount = tickets.filter((t) => t.status === "resolved").length;
+  const openCount = tickets.filter((t) => t.status !== "closed").length;
+  const inProgressCount = tickets.filter((t) => t.status === "working").length;
+  const resolvedCount = tickets.filter((t) => t.status === "closed").length;
 
   return (
     <>

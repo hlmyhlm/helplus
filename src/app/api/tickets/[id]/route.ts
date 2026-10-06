@@ -2,148 +2,80 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { withAuth } from "@/lib/tenant/with-auth";
+import { updateTicketSchema, validateBody } from "@/lib/validations";
+import { allowedProjectIds } from "@/lib/tickets/access";
+import { loadTicketFor } from "@/lib/tickets/load";
+import { statusChange, InvalidTransitionError } from "@/lib/tickets/status";
+import { STAFF_ROLES } from "@/lib/rbac";
 
-export const GET = withAuth(
-  "tickets:read",
-  async (_request: NextRequest, _auth, { params }: { params: Promise<{ id: string }> }) => {
-    try {
-      const { id } = await params;
+type Ctx = { params: Promise<{ id: string }> };
+const notFound = () => NextResponse.json({ error: "Ticket not found" }, { status: 404 });
 
-      const ticket = await prisma.ticket.findUnique({
-        where: { id },
+export const GET = withAuth("tickets:read", async (_request: NextRequest, auth, { params }: Ctx) => {
+  const { id } = await params;
+  if (!(await loadTicketFor(auth, id))) return notFound();
+  const ticket = await prisma.ticket.findUnique({
+    where: { id },
+    include: {
+      project: { select: { id: true, name: true } },
+      assignee: { select: { id: true, name: true } },
+      conversation: {
         include: {
-          conversation: {
-            select: {
-              id: true,
-              customerName: true,
-              customerContact: true,
-              channel: true,
-              status: true,
-            },
-          },
-          department: {
-            select: { id: true, name: true },
-          },
-          assignedTo: {
-            select: { id: true, name: true, email: true },
-          },
+          messages: { orderBy: { createdAt: "asc" } },
+          notes: { orderBy: { createdAt: "desc" } },
+          customer: { select: { id: true, name: true, phone: true, email: true } },
         },
-      });
+      },
+    },
+  });
+  return NextResponse.json(ticket);
+});
 
-      if (!ticket) {
-        return NextResponse.json(
-          { error: "Ticket not found" },
-          { status: 404 }
-        );
+export const PATCH = withAuth("tickets:update", async (request: NextRequest, auth, { params }: Ctx) => {
+  try {
+    const { id } = await params;
+    const ticket = await loadTicketFor(auth, id);
+    if (!ticket) return notFound();
+
+    const validation = validateBody(updateTicketSchema, await request.json());
+    if (!validation.success) return NextResponse.json({ error: validation.error }, { status: 400 });
+    const { status, assigneeId, projectId, ...rest } = validation.data;
+
+    const data: Record<string, unknown> = { ...rest };
+    if (status) Object.assign(data, statusChange(ticket, status));
+
+    if (assigneeId !== undefined) {
+      if (assigneeId !== null) {
+        const user = await prisma.admin.findUnique({ where: { id: assigneeId }, select: { role: true } });
+        if (!user || !(STAFF_ROLES as readonly string[]).includes(user.role) || user.role === "viewer") {
+          return NextResponse.json({ error: "Can't assign to that user" }, { status: 400 });
+        }
       }
-
-      return NextResponse.json(ticket);
-    } catch (error) {
-      logger.error("Failed to fetch ticket:", error);
-      return NextResponse.json(
-        { error: "Failed to fetch ticket" },
-        { status: 500 }
-      );
+      data.assigneeId = assigneeId;
     }
-  }
-);
 
-export const PUT = withAuth(
-  "tickets:update",
-  async (request: NextRequest, _auth, { params }: { params: Promise<{ id: string }> }) => {
-    try {
-      const { id } = await params;
-      const body = await request.json();
-      const {
-        title,
-        description,
-        status,
-        priority,
-        resolution,
-        departmentId,
-        assignedToId,
-        conversationId,
-      } = body;
-
-      const existing = await prisma.ticket.findUnique({ where: { id } });
-      if (!existing) {
-        return NextResponse.json(
-          { error: "Ticket not found" },
-          { status: 404 }
-        );
+    if (projectId !== undefined) {
+      const allowed = await allowedProjectIds(auth);
+      if (allowed !== null && !allowed.includes(projectId)) {
+        return NextResponse.json({ error: "Not allowed for this project" }, { status: 403 });
       }
-
-      const ticket = await prisma.ticket.update({
-        where: { id },
-        data: {
-          ...(title !== undefined && { title: title.trim() }),
-          ...(description !== undefined && { description: description.trim() }),
-          ...(status !== undefined && { status }),
-          ...(priority !== undefined && { priority }),
-          ...(resolution !== undefined && { resolution: resolution.trim() }),
-          ...(departmentId !== undefined && {
-            departmentId: departmentId || null,
-          }),
-          ...(assignedToId !== undefined && {
-            assignedToId: assignedToId || null,
-          }),
-          ...(conversationId !== undefined && {
-            conversationId: conversationId || null,
-          }),
-        },
-        include: {
-          conversation: {
-            select: {
-              id: true,
-              customerName: true,
-              customerContact: true,
-              channel: true,
-              status: true,
-            },
-          },
-          department: {
-            select: { id: true, name: true },
-          },
-          assignedTo: {
-            select: { id: true, name: true, email: true },
-          },
-        },
-      });
-
-      return NextResponse.json(ticket);
-    } catch (error) {
-      logger.error("Failed to update ticket:", error);
-      return NextResponse.json(
-        { error: "Failed to update ticket" },
-        { status: 500 }
-      );
+      data.projectId = projectId;
     }
-  }
-);
 
-export const DELETE = withAuth(
-  "tickets:delete",
-  async (_request: NextRequest, _auth, { params }: { params: Promise<{ id: string }> }) => {
-    try {
-      const { id } = await params;
-
-      const existing = await prisma.ticket.findUnique({ where: { id } });
-      if (!existing) {
-        return NextResponse.json(
-          { error: "Ticket not found" },
-          { status: 404 }
-        );
-      }
-
-      await prisma.ticket.delete({ where: { id } });
-
-      return NextResponse.json({ success: true });
-    } catch (error) {
-      logger.error("Failed to delete ticket:", error);
-      return NextResponse.json(
-        { error: "Failed to delete ticket" },
-        { status: 500 }
-      );
+    const updated = await prisma.ticket.update({ where: { id }, data });
+    return NextResponse.json(updated);
+  } catch (error) {
+    if (error instanceof InvalidTransitionError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
     }
+    logger.error("Failed to update ticket:", error);
+    return NextResponse.json({ error: "Failed to update ticket" }, { status: 500 });
   }
-);
+});
+
+export const DELETE = withAuth("tickets:delete", async (_request: NextRequest, auth, { params }: Ctx) => {
+  const { id } = await params;
+  if (!(await loadTicketFor(auth, id))) return notFound();
+  await prisma.ticket.delete({ where: { id } });
+  return NextResponse.json({ success: true });
+});

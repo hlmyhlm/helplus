@@ -44,24 +44,37 @@ export const createMessageSchema = z.object({
 });
 
 // Tickets
+const PRIORITIES = ["low", "medium", "high", "urgent"] as const;
+const STATUSES = ["new", "ai_suggested", "answered", "reopened", "working", "closed"] as const;
+
 export const createTicketSchema = z.object({
-  title: z.string().min(1, "Title is required").max(500),
-  description: z.string().max(10000).optional(),
-  priority: z.enum(["low", "medium", "high", "urgent"]).default("medium"),
-  status: z.enum(["open", "in_progress", "resolved", "closed"]).default("open"),
-  conversationId: z.string().max(100).optional(),
-  departmentId: z.string().max(100).optional(),
-  assignedToId: z.string().max(100).optional(),
+  text: z.string().trim().min(1, "Describe the issue").max(20000),
+  title: z.string().max(200).optional(),
+  projectId: z.string().max(100).optional(),
+  customerName: z.string().max(200).optional(),
+  customerContact: z.string().max(200).optional(),
+  category: z.string().max(100).optional(),
+  priority: z.enum(PRIORITIES).optional(),
 });
 
-export const updateTicketSchema = z.object({
-  title: z.string().min(1).max(500).optional(),
-  description: z.string().max(10000).optional(),
-  priority: z.enum(["low", "medium", "high", "urgent"]).optional(),
-  status: z.enum(["open", "in_progress", "resolved", "closed"]).optional(),
-  resolution: z.string().max(10000).nullable().optional(),
-  departmentId: z.string().max(100).nullable().optional(),
-  assignedToId: z.string().max(100).nullable().optional(),
+export const updateTicketSchema = z
+  .object({
+    status: z.enum(STATUSES).optional(),
+    assigneeId: z.string().max(100).nullable().optional(),
+    priority: z.enum(PRIORITIES).optional(),
+    category: z.string().max(100).optional(),
+    projectId: z.string().max(100).optional(),
+    title: z.string().min(1).max(200).optional(),
+  })
+  .strict();
+
+export const ticketReplySchema = z.object({
+  content: z.string().trim().min(1).max(20000),
+  markAnswered: z.boolean().optional(),
+});
+
+export const ticketNoteSchema = z.object({
+  content: z.string().trim().min(1).max(10000),
 });
 
 // Knowledge

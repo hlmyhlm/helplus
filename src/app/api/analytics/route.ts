@@ -178,9 +178,7 @@ export const GET = withAuth(
     // -- Team performance --
     const teamPerformance = teamMembers
       .map((tm) => {
-        const resolvedTickets = tm.tickets.filter(
-          (t) => t.status === "resolved" || t.status === "closed"
-        );
+        const resolvedTickets = tm.tickets.filter((t) => t.status === "closed");
         const times = resolvedTickets.map(
           (t) =>
             (new Date(t.updatedAt).getTime() - new Date(t.createdAt).getTime()) /

@@ -63,7 +63,7 @@ export const POST = withAuth(
         );
       }
 
-      const validRoles = ["customer", "assistant", "system"];
+      const validRoles = ["customer", "assistant", "system", "agent"];
       const messageRole = validRoles.includes(role) ? role : "assistant";
 
       const message = await prisma.message.create({

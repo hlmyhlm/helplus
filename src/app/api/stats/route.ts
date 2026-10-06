@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { withAuth } from "@/lib/tenant/with-auth";
+import { OPEN_STATUSES } from "@/lib/tickets/status";
 
 export const GET = withAuth(
   "analytics:read",
@@ -18,7 +19,7 @@ export const GET = withAuth(
       prisma.conversation.count({ where: { status: "active" } }),
       prisma.conversation.count({ where: { status: "resolved" } }),
       prisma.ticket.count(),
-      prisma.ticket.count({ where: { status: "open" } }),
+      prisma.ticket.count({ where: { status: { in: OPEN_STATUSES } } }),
       prisma.message.count(),
       prisma.conversation.groupBy({
         by: ["channel"],

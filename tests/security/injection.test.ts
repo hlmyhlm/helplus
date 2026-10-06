@@ -119,13 +119,15 @@ describe("Injection Attack Prevention", () => {
 
     it("should safely handle SQL injection in ticket search", async () => {
       mockPrisma.ticket.findMany.mockResolvedValue([]);
+      mockPrisma.ticket.count.mockResolvedValue(0);
+      mockPrisma.ticket.groupBy.mockResolvedValue([]);
 
       const { GET } = await import("@/app/api/tickets/route");
       const request = createRequest("/api/tickets", {
-        searchParams: { search: "1 OR 1=1" },
+        searchParams: { q: "1 OR 1=1" },
       });
 
-      const response = await GET(request);
+      const response = await GET(request, {} as never);
       expect(response.status).toBe(200);
     });
   });
