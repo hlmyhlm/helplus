@@ -6,9 +6,10 @@ interface CompanyInfo {
   name: string;
   slug: string;
   projectLabel: string;
+  canManageProjects: boolean;
 }
 
-const EMPTY: CompanyInfo = { name: "", slug: "", projectLabel: "Clients" };
+const EMPTY: CompanyInfo = { name: "", slug: "", projectLabel: "Clients", canManageProjects: false };
 let cached: CompanyInfo | null = null;
 
 export function useCompany(): CompanyInfo {

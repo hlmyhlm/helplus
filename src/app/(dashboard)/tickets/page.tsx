@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
-import { Plus } from "lucide-react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Plus, X } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { cn } from "@/lib/utils";
 import { unwrapList, listMeta } from "@/lib/api-client";
@@ -21,7 +21,17 @@ const CHIPS: { key: string; label: string; status: string; assignee?: string }[]
 ];
 
 export default function TicketsPage() {
+  return (
+    <Suspense>
+      <TicketsPageInner />
+    </Suspense>
+  );
+}
+
+function TicketsPageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const projectId = searchParams.get("projectId") ?? "";
   const [chip, setChip] = useState("open");
   const [q, setQ] = useState("");
   const [rows, setRows] = useState<TicketRow[]>([]);
@@ -31,6 +41,7 @@ export default function TicketsPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [adding, setAdding] = useState(false);
+  const [projectName, setProjectName] = useState("");
   const requestId = useRef(0);
 
   const load = useCallback(async () => {
@@ -41,6 +52,7 @@ export default function TicketsPage() {
     const params = new URLSearchParams({ status: c.status, page: String(page), limit: "25" });
     if (c.assignee) params.set("assignee", c.assignee);
     if (q.trim()) params.set("q", q.trim());
+    if (projectId) params.set("projectId", projectId);
     try {
       const res = await fetch(`/api/tickets?${params}`);
       if (myRequest !== requestId.current) return; // a newer request started, drop this one
@@ -58,12 +70,37 @@ export default function TicketsPage() {
     } finally {
       if (myRequest === requestId.current) setLoading(false);
     }
-  }, [chip, q, page]);
+  }, [chip, q, page, projectId]);
 
   useEffect(() => {
     const t = setTimeout(load, q ? 250 : 0);
     return () => clearTimeout(t);
   }, [load, q]);
+
+  // chip needs a project name; the row list already carries it once loaded, else ask the projects list
+  useEffect(() => {
+    if (!projectId) {
+      setProjectName("");
+      return;
+    }
+    const fromRows = rows.find((r) => r.project?.id === projectId)?.project.name;
+    if (fromRows) {
+      setProjectName(fromRows);
+      return;
+    }
+    fetch("/api/projects?archived=1")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!d) return;
+        const match = unwrapList<{ id: string; name: string }>(d).find((p) => p.id === projectId);
+        if (match) setProjectName(match.name);
+      })
+      .catch(() => {});
+  }, [projectId, rows]);
+
+  const clearProject = () => {
+    router.push("/tickets");
+  };
 
   const openCount = (["new", "ai_suggested", "answered", "reopened", "working"] as TicketStatus[]).reduce(
     (n, s) => n + (counts[s] ?? 0),
@@ -87,6 +124,14 @@ export default function TicketsPage() {
         }
       />
       <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-3">
+        {projectId && (
+          <button
+            onClick={clearProject}
+            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-helplus-border bg-helplus-surface text-xs text-helplus-text"
+          >
+            Project: {projectName || "…"} <X className="h-3.5 w-3.5" />
+          </button>
+        )}
         <div className="flex flex-wrap items-center gap-2">
           <input
             value={q}

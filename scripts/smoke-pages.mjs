@@ -7,7 +7,7 @@ const USER = process.env.SMOKE_USER || "admin";
 const PASS = process.env.SMOKE_PASS || "admin123";
 
 const PAGES = [
-  "/", "/conversations", "/customers", "/tickets", "/knowledge",
+  "/", "/conversations", "/customers", "/tickets", "/projects", "/knowledge",
   "/knowledge/test", "/canned-responses", "/automation", "/business-hours",
   "/team", "/sla", "/channels", "/webhooks", "/analytics", "/activity",
   "/admin", "/api-docs", "/settings", "/more",
