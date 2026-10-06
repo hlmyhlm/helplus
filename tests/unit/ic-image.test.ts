@@ -40,6 +40,35 @@ describe("findIcBoxes", () => {
   it("finds several ICs on several lines", () => {
     expect(findIcBoxes([line("900101145678"), line("a", "850505-10-1234")])).toHaveLength(2);
   });
+
+  it.each([
+    ["|900101-14-5678", "leading pipe"],
+    ["|900101-14-5678|", "leading and trailing pipe"],
+    ["900101-14-5678l", "trailing l"],
+    ["900101145678s", "trailing s, no separators"],
+    ["ID900101145678", "ID label glued on"],
+    ["NO900101145678", "NO label glued on"],
+    ["900101--14--5678", "doubled dashes"],
+    ["MyKad:9OO1O1-14-5678", "label glued on with lookalikes"],
+    ["|9OO1O1-14-5678", "leading pipe with lookalikes"],
+    ["900101/14/5678", "slash separators"],
+    ["900101_14_5678", "underscore separators"],
+    ["900101,14,5678", "comma separators"],
+    ["g00101-14-5678", "g read as 9"],
+    ["q00101-14-5678", "q read as 9"],
+  ])("finds an IC glued or disguised as %s (%s)", (text) => {
+    expect(findIcBoxes([line(text)])).toHaveLength(1);
+  });
+
+  it.each([
+    [["900101-14", "-5678"], "split after the two-digit group"],
+    [["900101-", "14-5678"], "split before the two-digit group"],
+    [["900101", "-", "14", "-", "5678"], "every group and separator its own word"],
+    [["9001", "01-14-5678"], "split inside the six-digit group"],
+    [["900101", "14", "56", "78"], "split inside the four-digit group"],
+  ])("finds an IC split as %s (%s)", (words) => {
+    expect(findIcBoxes([line(...words)])).toHaveLength(1);
+  });
 });
 
 describe("needsCheck", () => {
@@ -56,6 +85,14 @@ describe("needsCheck", () => {
   });
   it("an image with no text is fine", () => {
     expect(needsCheck({ confidence: 0, lines: [] })).toBe(false);
+  });
+  it("fails closed on a missing confidence", () => {
+    expect(needsCheck({ confidence: NaN, lines: [line("hello")] })).toBe(true);
+  });
+  it("flags a low-confidence lookalike number hiding near a real one", () => {
+    x = 0;
+    const words = [word("900101-14-5678"), word("OlOl", 70)];
+    expect(needsCheck({ confidence: 90, lines: [{ words }] })).toBe(true);
   });
 });
 
@@ -80,7 +117,11 @@ describe("images", () => {
 
   it("clips boxes to the image", async () => {
     const { png } = await normalizeImage(await redPng());
-    await expect(coverBoxes(png, [{ x: 90, y: 40, w: 50, h: 50 }])).resolves.toBeInstanceOf(Buffer);
+    const out = await coverBoxes(png, [{ x: 90, y: 40, w: 50, h: 50 }]);
+    expect(out).toBeInstanceOf(Buffer);
+    const { data, info } = await sharp(out).raw().toBuffer({ resolveWithObject: true });
+    const at = (px: number, py: number) => Array.from(data.subarray((py * info.width + px) * info.channels, (py * info.width + px) * info.channels + 3));
+    expect(at(99, 49)).toEqual([0, 0, 0]);
   });
 
   it("only allows png, jpeg and webp", async () => {
