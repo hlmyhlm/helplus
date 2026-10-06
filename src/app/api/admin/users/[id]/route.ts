@@ -5,13 +5,19 @@ import { logger } from "@/lib/logger";
 import { withAuth } from "@/lib/tenant/with-auth";
 import { STAFF_ROLES } from "@/lib/rbac";
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export const PUT = withAuth(
   "admin:update",
   async (request: NextRequest, auth, { params }: { params: Promise<{ id: string }> }) => {
     try {
       const { id } = await params;
       const body = await request.json();
-      const { name, role, password } = body;
+      const { name, role, password, email, notifyNew } = body;
+
+      if (email !== undefined && typeof email === "string" && email.trim() && !EMAIL_RE.test(email.trim())) {
+        return NextResponse.json({ error: "Invalid email address" }, { status: 400 });
+      }
 
       const existing = await prisma.admin.findUnique({ where: { id } });
       if (!existing) {
@@ -54,6 +60,14 @@ export const PUT = withAuth(
         updateData.password = await hashPassword(password);
       }
 
+      if (email !== undefined && typeof email === "string") {
+        updateData.email = email.trim().toLowerCase();
+      }
+
+      if (notifyNew !== undefined) {
+        updateData.notifyNew = !!notifyNew;
+      }
+
       const user = await prisma.admin.update({
         where: { id },
         data: updateData,
@@ -62,6 +76,8 @@ export const PUT = withAuth(
           username: true,
           name: true,
           role: true,
+          email: true,
+          notifyNew: true,
           createdAt: true,
           updatedAt: true,
         },
