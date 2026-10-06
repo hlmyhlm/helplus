@@ -4,22 +4,27 @@ import { logger } from "@/lib/logger";
 import { parsePagination, paginatedResponse } from "@/lib/pagination";
 import { withAuth } from "@/lib/tenant/with-auth";
 import { createSLARuleSchema, validateBody } from "@/lib/validations";
+import { allowedProjectIds } from "@/lib/tickets/access";
 
 export const GET = withAuth(
   "sla:read",
-  async (request: NextRequest, _auth) => {
+  async (request: NextRequest, auth) => {
     try {
       const { searchParams } = new URL(request.url);
       const { page, limit, skip, take } = parsePagination(searchParams);
+      // project names are client names, limited users only see their own
+      const ids = await allowedProjectIds(auth);
+      const where = ids === null ? {} : { OR: [{ projectId: null }, { projectId: { in: ids } }] };
 
       const [rules, total] = await Promise.all([
         prisma.sLARule.findMany({
+          where,
           orderBy: { createdAt: "desc" },
           include: { project: { select: { id: true, name: true } } },
           skip,
           take,
         }),
-        prisma.sLARule.count(),
+        prisma.sLARule.count({ where }),
       ]);
 
       return NextResponse.json(paginatedResponse(rules, total, page, limit));

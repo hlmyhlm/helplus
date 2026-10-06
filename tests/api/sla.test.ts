@@ -7,7 +7,7 @@ const db = prisma as unknown as Record<string, Record<string, ReturnType<typeof 
 const params = { params: Promise.resolve({ id: "r1" }) };
 
 beforeEach(() => {
-  for (const m of ["sLARule", "project"]) {
+  for (const m of ["sLARule", "project", "projectAccess"]) {
     for (const fn of Object.values(db[m])) fn.mockReset();
   }
   vi.mocked(requireAuth).mockResolvedValue({
@@ -27,6 +27,27 @@ describe("sla rules", () => {
     const { GET } = await import("@/app/api/sla/route");
     await GET(createRequest("/api/sla"), {} as never);
     expect(db.sLARule.findMany.mock.calls[0][0].include).toEqual({ project: { select: { id: true, name: true } } });
+  });
+
+  it("shows admins every rule", async () => {
+    db.sLARule.findMany.mockResolvedValue([]);
+    db.sLARule.count.mockResolvedValue(0);
+    const { GET } = await import("@/app/api/sla/route");
+    await GET(createRequest("/api/sla"), {} as never);
+    expect(db.sLARule.findMany.mock.calls[0][0].where).toEqual({});
+    expect(db.sLARule.count.mock.calls[0][0]).toEqual({ where: {} });
+  });
+
+  it("shows staff only general rules and their own projects", async () => {
+    vi.mocked(requireAuth).mockResolvedValue({ userId: "u2", role: "staff", username: "s", name: "S", authMethod: "cookie", companyId: "test-company" } as never);
+    db.projectAccess.findMany.mockResolvedValue([{ projectId: "p1" }]);
+    db.sLARule.findMany.mockResolvedValue([]);
+    db.sLARule.count.mockResolvedValue(0);
+    const { GET } = await import("@/app/api/sla/route");
+    await GET(createRequest("/api/sla"), {} as never);
+    const where = { OR: [{ projectId: null }, { projectId: { in: ["p1"] } }] };
+    expect(db.sLARule.findMany.mock.calls[0][0].where).toEqual(where);
+    expect(db.sLARule.count.mock.calls[0][0]).toEqual({ where });
   });
 
   it("creates a rule with source, project and category", async () => {
