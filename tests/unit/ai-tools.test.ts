@@ -38,11 +38,15 @@ describe("AI Tools", () => {
         id: "dept-1",
         name: "Support",
       });
+      mockPrisma.ticketCounter.upsert.mockResolvedValue({ next: 2 });
+      mockPrisma.project.findFirst.mockResolvedValue({ id: "p1" });
       mockPrisma.ticket.create.mockResolvedValue({
         id: "ticket-1",
+        number: 1,
         title: "Login issue",
         priority: "high",
       });
+      mockPrisma.ticket.update.mockResolvedValue({});
 
       const result = JSON.parse(
         await executeToolCall(
@@ -66,16 +70,23 @@ describe("AI Tools", () => {
             description: "Cannot login",
             priority: "high",
             conversationId: "conv-1",
-            departmentId: "dept-1",
+            source: "ai",
           }),
         })
       );
+      expect(mockPrisma.ticket.update).toHaveBeenCalledWith({
+        where: { id: "ticket-1" },
+        data: { departmentId: "dept-1" },
+      });
     }));
 
     it("should create ticket without department when not found", inCompany(async () => {
       mockPrisma.department.findFirst.mockResolvedValue(null);
+      mockPrisma.ticketCounter.upsert.mockResolvedValue({ next: 2 });
+      mockPrisma.project.findFirst.mockResolvedValue({ id: "p1" });
       mockPrisma.ticket.create.mockResolvedValue({
         id: "ticket-2",
+        number: 1,
         title: "Issue",
         priority: "medium",
       });
@@ -85,10 +96,23 @@ describe("AI Tools", () => {
           title: "Issue",
           description: "Details",
           priority: "medium",
-        })
+        }, "conv-1")
       );
 
       expect(result.success).toBe(true);
+    }));
+
+    it("should fail without a conversation to attach to", inCompany(async () => {
+      const result = JSON.parse(
+        await executeToolCall("create_ticket", {
+          title: "Issue",
+          description: "Details",
+          priority: "medium",
+        })
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.message).toContain("No conversation");
     }));
   });
 
@@ -112,7 +136,7 @@ describe("AI Tools", () => {
       expect(result.assignedTo).toBe("Jane");
       expect(mockPrisma.ticket.update).toHaveBeenCalledWith({
         where: { id: "ticket-1" },
-        data: { assignedToId: "member-1", status: "in_progress" },
+        data: { assignedToId: "member-1", status: "working" },
       });
     }));
 

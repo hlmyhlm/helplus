@@ -1,6 +1,7 @@
 import { ToolDefinition } from "./types";
 import { prisma } from "@/lib/prisma";
 import { getSettings } from "@/lib/settings";
+import { openTicket } from "@/lib/tickets/service";
 import nodemailer from "nodemailer";
 
 export const helplusTools: ToolDefinition[] = [
@@ -193,21 +194,24 @@ async function createTicket(
       })
     : null;
 
-  const ticket = await prisma.ticket.create({
-    // @ts-expect-error fixed in the next task
-    data: {
-      title: args.title as string,
-      description: args.description as string,
-      priority: (args.priority as string) || "medium",
-      conversationId: conversationId || null,
-      departmentId: department?.id || null,
-    },
+  if (!conversationId) {
+    return JSON.stringify({ success: false, message: "No conversation to attach the ticket to." });
+  }
+  const ticket = await openTicket({
+    conversationId,
+    title: args.title as string,
+    description: (args.description as string) ?? "",
+    source: "ai",
+    priority: (args.priority as string) || "medium",
   });
+  if (department) {
+    await prisma.ticket.update({ where: { id: ticket.id }, data: { departmentId: department.id } });
+  }
 
   return JSON.stringify({
     success: true,
     ticketId: ticket.id,
-    message: `Ticket created: ${ticket.title} (Priority: ${ticket.priority})`,
+    message: `Ticket #${ticket.number} created: ${ticket.title} (Priority: ${ticket.priority})`,
   });
 }
 
@@ -232,7 +236,7 @@ async function assignToPerson(args: Record<string, unknown>): Promise<string> {
 
   await prisma.ticket.update({
     where: { id: ticketId },
-    data: { assignedToId: member.id, status: "in_progress" },
+    data: { assignedToId: member.id, status: "working" },
   });
 
   return JSON.stringify({
