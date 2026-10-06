@@ -39,10 +39,10 @@ export function Header({ title, description, actions }: HeaderProps) {
 
   return (
     <header className="flex items-center justify-between px-4 md:px-6 py-3 md:py-4 bg-helplus-surface border-b border-helplus-border transition-theme">
-      <div className="animate-fade-in">
-        <h2 className="text-lg md:text-xl font-semibold text-helplus-text">{title}</h2>
+      <div className="animate-fade-in min-w-0">
+        <h2 className="text-lg md:text-xl font-semibold text-helplus-text truncate">{title}</h2>
         {description && (
-          <p className="text-sm text-helplus-text-light mt-0.5">{description}</p>
+          <p className="text-sm text-helplus-text-light mt-0.5 truncate">{description}</p>
         )}
       </div>
 

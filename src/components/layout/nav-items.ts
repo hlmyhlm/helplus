@@ -2,7 +2,6 @@ import {
   BookOpen,
   Building2,
   LayoutDashboard,
-  MessagesSquare,
   RadioTower,
   Settings,
   Ticket,
@@ -43,6 +42,13 @@ export const sectionGroups: SectionGroup[] = [
     ],
   },
   {
+    name: "Clients",
+    items: [
+      { name: "Projects", href: "/projects" },
+      { name: "People", href: "/customers" },
+    ],
+  },
+  {
     name: "Settings",
     items: [
       { name: "General & AI", href: "/settings" },
@@ -61,12 +67,10 @@ export const sectionGroups: SectionGroup[] = [
 const hrefsOf = (group: string) =>
   sectionGroups.find((g) => g.name === group)!.items.map((i) => i.href);
 
-// "Inbox" is the old conversations page, it goes away once chats live inside tickets
 export const mainNav: NavItem[] = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard, match: hrefsOf("Dashboard") },
   { name: "Tickets", href: "/tickets", icon: Ticket },
-  { name: "Inbox", href: "/conversations", icon: MessagesSquare },
-  { name: "Clients", href: "/customers", icon: Building2 },
+  { name: "Clients", href: "/projects", icon: Building2, match: hrefsOf("Clients") },
   { name: "Library", href: "/knowledge", icon: BookOpen, match: hrefsOf("Library") },
   { name: "Sources", href: "/channels", icon: RadioTower },
   { name: "Settings", href: "/settings", icon: Settings, match: hrefsOf("Settings") },

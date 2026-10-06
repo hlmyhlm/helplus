@@ -52,7 +52,7 @@ describe("section groups", () => {
 
 describe("phone nav", () => {
   it("shows four tabs plus More", () => {
-    expect(phoneTabs.map((i) => i.name)).toEqual(["Dashboard", "Tickets", "Inbox", "Clients"]);
+    expect(phoneTabs.map((i) => i.name)).toEqual(["Dashboard", "Tickets", "Clients", "Library"]);
   });
 
   it("lights up More for pages that live behind it", () => {
@@ -60,5 +60,11 @@ describe("phone nav", () => {
     expect(moreActive("/channels")).toBe(true);
     expect(moreActive("/team")).toBe(true);
     expect(moreActive("/tickets")).toBe(false);
+  });
+});
+
+describe("clients group", () => {
+  it("finds the clients group for a customer page", () => {
+    expect(groupFor("/customers")?.name).toBe("Clients");
   });
 });
