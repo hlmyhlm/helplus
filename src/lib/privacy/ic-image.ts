@@ -24,47 +24,81 @@ export const MIN_NUMBER_CONFIDENCE = 80;
 const PAD = 6;
 const ALLOWED = new Set(["png", "jpeg", "webp"]);
 
-// chars allowed between or inside ic groups: space, dashes, dot, tilde, slash, comma, underscore
-const SEP_CLASS = String.raw`\s\-–—.~/,_`;
+// chars allowed between or inside ic groups: space, dashes, dot, tilde, slash, comma, underscore, colon
+const SEP_CLASS = String.raw`\s\-–—.~/,_:`;
 const SEP_RE = new RegExp(`[${SEP_CLASS}]`);
-// six digits, 0-3 separators, two digits, 0-3 separators, four digits; one space may sit inside a group
-const IMAGE_IC = new RegExp(
-  String.raw`(?<!\d)\d(?:\s?\d){5}[${SEP_CLASS}]{0,3}\d\s?\d[${SEP_CLASS}]{0,3}\d(?:\s?\d){3}(?!\d)`,
-  "g",
-);
+// a colon is usually a label's trailing punctuation, so expansion doesn't cross it like other separators
+const EXPAND_SEP_RE = new RegExp(String.raw`[\s\-–—.~/,_]`);
+// six digits, 0-5 separators, two digits, 0-5 separators, four digits; one space may sit inside a group
+const IMAGE_IC_SRC = String.raw`(?<!\d)\d(?:\s?\d){5}[${SEP_CLASS}]{0,5}\d\s?\d[${SEP_CLASS}]{0,5}\d(?:\s?\d){3}(?!\d)`;
+// zero-width lookahead so every starting position is tried, not just the leftmost non-overlapping match
+const IMAGE_IC_OVERLAP = new RegExp(`(?=(${IMAGE_IC_SRC}))`, "g");
 const LOOKALIKE: Record<string, string> = {
-  O: "0", o: "0", D: "0", I: "1", l: "1", "|": "1", S: "5", s: "5", B: "8", Z: "2", g: "9", q: "9",
+  O: "0", o: "0", D: "0", I: "1", l: "1", "|": "1", S: "5", s: "5", B: "8", Z: "2", g: "9", q: "9", T: "7",
 };
 
-const digits = (t: string) => (t.match(/\d/g) ?? []).length;
 const isDigit = (c: string) => c >= "0" && c <= "9";
 const isLookalike = (c: string) => LOOKALIKE[c] !== undefined;
 const isSep = (c: string) => SEP_RE.test(c);
+const isRunChar = (c: string) => isDigit(c) || isLookalike(c) || isSep(c);
 
-// a lookalike becomes a digit when its run of digits/lookalikes/separators is at least half real digits
-function allVariant(text: string): string {
-  const chars = [...text];
-  const out = chars.slice();
+interface Run {
+  start: number;
+  end: number;
+  firstDigit: number;
+  lastDigit: number;
+  qualifies: boolean;
+}
+
+// a run is a maximal stretch of digit, lookalike and separator characters
+function scanRuns(chars: string[]): Run[] {
+  const runs: Run[] = [];
   let i = 0;
   while (i < chars.length) {
-    if (!isDigit(chars[i]) && !isLookalike(chars[i]) && !isSep(chars[i])) {
+    if (!isRunChar(chars[i])) {
       i++;
       continue;
     }
     let j = i;
     let nonSep = 0;
     let real = 0;
-    while (j < chars.length && (isDigit(chars[j]) || isLookalike(chars[j]) || isSep(chars[j]))) {
+    let firstDigit = -1;
+    let lastDigit = -1;
+    while (j < chars.length && isRunChar(chars[j])) {
       if (!isSep(chars[j])) {
         nonSep++;
-        if (isDigit(chars[j])) real++;
+        if (isDigit(chars[j])) {
+          real++;
+          if (firstDigit === -1) firstDigit = j;
+          lastDigit = j;
+        }
       }
       j++;
     }
-    if (nonSep > 0 && real * 2 >= nonSep) {
-      for (let k = i; k < j; k++) if (isLookalike(chars[k])) out[k] = LOOKALIKE[chars[k]];
-    }
+    runs.push({ start: i, end: j, firstDigit, lastDigit, qualifies: nonSep > 0 && real * 2 >= nonSep });
     i = j;
+  }
+  return runs;
+}
+
+// a lookalike becomes a digit when its run is at least half real digits already
+function allVariant(text: string): string {
+  const chars = [...text];
+  const out = chars.slice();
+  for (const r of scanRuns(chars)) {
+    if (!r.qualifies) continue;
+    for (let k = r.start; k < r.end; k++) if (isLookalike(chars[k])) out[k] = LOOKALIKE[chars[k]];
+  }
+  return out.join("");
+}
+
+// like all, but a run's leading and trailing lookalikes stay as they are, outside its real digits
+function trimmedVariant(text: string): string {
+  const chars = [...text];
+  const out = chars.slice();
+  for (const r of scanRuns(chars)) {
+    if (!r.qualifies || r.firstDigit === -1) continue;
+    for (let k = r.firstDigit; k <= r.lastDigit; k++) if (isLookalike(chars[k])) out[k] = LOOKALIKE[chars[k]];
   }
   return out.join("");
 }
@@ -114,6 +148,19 @@ interface Rect {
 
 const rectsOverlap = (a: Rect, b: Rect) => a.x0 < b.x1 && a.x1 > b.x0 && a.y0 < b.y1 && a.y1 > b.y0;
 
+// a lookalike letter is already resolved by the variant, so expansion only chases digits and separators
+const isExpandChar = (c: string) => isDigit(c) || EXPAND_SEP_RE.test(c);
+
+// widen a match to its whole surrounding run, checked against the raw text so a variant's own
+// converted lookalikes don't pull in a neighbouring word that was never part of a number
+function expandRun(raw: string, from: number, to: number): { from: number; to: number } {
+  let a = from;
+  while (a > 0 && isExpandChar(raw[a - 1])) a--;
+  let b = to;
+  while (b < raw.length && isExpandChar(raw[b])) b++;
+  return { from: a, to: b };
+}
+
 // merge overlapping or identical rects until none are left touching
 function mergeRects(rects: Rect[]): Rect[] {
   let merged = rects.slice();
@@ -146,10 +193,12 @@ export function findIcBoxes(lines: OcrLine[], pad = PAD): Box[] {
   for (const line of lines) {
     const { raw, spans } = buildLine(line.words);
     const rects: Rect[] = [];
-    for (const text of [raw, allVariant(raw), interiorVariant(raw)]) {
-      for (const m of text.matchAll(IMAGE_IC)) {
-        const from = m.index ?? 0;
-        const to = from + m[0].length;
+    for (const text of [raw, allVariant(raw), interiorVariant(raw), trimmedVariant(raw)]) {
+      for (const m of text.matchAll(IMAGE_IC_OVERLAP)) {
+        const matched = m[1];
+        if (!matched) continue;
+        const start = m.index ?? 0;
+        const { from, to } = expandRun(raw, start, start + matched.length);
         const hit = spans.filter((s) => s.start < to && s.end > from).map((s) => s.word.bbox);
         if (!hit.length) continue;
         rects.push({
@@ -167,19 +216,15 @@ export function findIcBoxes(lines: OcrLine[], pad = PAD): Box[] {
   return boxes;
 }
 
+const digitish = (t: string) => [...t].filter((c) => isDigit(c) || isLookalike(c)).length;
+
 export function needsCheck(result: OcrResult): boolean {
   const words = result.lines.flatMap((l) => l.words);
   if (!words.length) return false;
-  // fail closed: a missing or NaN confidence counts as low
+  // fail closed: a missing or NaN page confidence counts as low
   if (!(result.confidence >= MIN_PAGE_CONFIDENCE)) return true;
-  for (const line of result.lines) {
-    const { raw, spans } = buildLine(line.words);
-    const all = allVariant(raw);
-    for (const s of spans) {
-      if (digits(all.slice(s.start, s.end)) >= 4 && s.word.confidence < MIN_NUMBER_CONFIDENCE) return true;
-    }
-  }
-  return false;
+  // fail closed on word confidence too, and count digits and lookalikes together
+  return words.some((w) => digitish(w.text) >= 4 && !(w.confidence >= MIN_NUMBER_CONFIDENCE));
 }
 
 // rotate by exif, drop metadata, png so box coordinates always match

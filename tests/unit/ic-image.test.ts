@@ -12,6 +12,9 @@ const line = (...texts: string[]): OcrLine => {
   x = 0;
   return { words: texts.map((t) => word(t)) };
 };
+// a word is covered when some returned box fully contains its bbox
+const coveredBy = (boxes: { x: number; y: number; w: number; h: number }[], bbox: { x0: number; y0: number; x1: number; y1: number }) =>
+  boxes.some((b) => bbox.x0 >= b.x && bbox.x1 <= b.x + b.w && bbox.y0 >= b.y && bbox.y1 <= b.y + b.h);
 
 describe("findIcBoxes", () => {
   it("finds an IC written as one word", () => {
@@ -56,6 +59,10 @@ describe("findIcBoxes", () => {
     ["900101,14,5678", "comma separators"],
     ["g00101-14-5678", "g read as 9"],
     ["q00101-14-5678", "q read as 9"],
+    ["900101:14:5678", "colon separators"],
+    ["900101-14-567T", "T read as 7"],
+    ["|l9OO1O1-14-5678", "two stacked leading lookalikes"],
+    ["IS9OO1O1-14-5678", "label letters that are themselves lookalikes"],
   ])("finds an IC glued or disguised as %s (%s)", (text) => {
     expect(findIcBoxes([line(text)])).toHaveLength(1);
   });
@@ -66,8 +73,39 @@ describe("findIcBoxes", () => {
     [["900101", "-", "14", "-", "5678"], "every group and separator its own word"],
     [["9001", "01-14-5678"], "split inside the six-digit group"],
     [["900101", "14", "56", "78"], "split inside the four-digit group"],
+    [["900101", "--", "14", "--", "5678"], "doubled dash words either side"],
+    [["900101", "-", "-", "14", "5678"], "lone dash words either side"],
   ])("finds an IC split as %s (%s)", (words) => {
-    expect(findIcBoxes([line(...words)])).toHaveLength(1);
+    const l = line(...words);
+    const boxes = findIcBoxes([l]);
+    expect(boxes).toHaveLength(1);
+    for (const w of l.words) expect(coveredBy(boxes, w.bbox)).toBe(true);
+  });
+
+  it("covers every word of a split IC even when a short number sits right before it", () => {
+    const l = line("12", "900101", "14", "56", "78");
+    const boxes = findIcBoxes([l]);
+    for (const w of l.words.slice(1)) expect(coveredBy(boxes, w.bbox)).toBe(true);
+  });
+
+  it.each([
+    ["2026-10-08", "a date"],
+    ["1234567890123", "a 13-digit reference number"],
+    ["INV-2026-000123", "an invoice number"],
+  ])("leaves %s alone (%s)", (text) => {
+    expect(findIcBoxes([line(text)])).toHaveLength(0);
+  });
+
+  it("leaves a mobile number alone", () => {
+    expect(findIcBoxes([line("012-345", "6789")])).toHaveLength(0);
+  });
+
+  it("leaves an international mobile number alone", () => {
+    expect(findIcBoxes([line("+60", "12", "345", "6789")])).toHaveLength(0);
+  });
+
+  it("leaves an ordinary sentence alone", () => {
+    expect(findIcBoxes([line("Please", "reset", "my", "password", "today")])).toHaveLength(0);
   });
 });
 
@@ -93,6 +131,14 @@ describe("needsCheck", () => {
     x = 0;
     const words = [word("900101-14-5678"), word("OlOl", 70)];
     expect(needsCheck({ confidence: 90, lines: [{ words }] })).toBe(true);
+  });
+  it.each([
+    ["OlOl", 50, "a standalone lookalike number"],
+    ["SOOlOl-l4-S67B", 50, "a lookalike-heavy ic shape"],
+    ["900101", NaN, "a missing word confidence"],
+  ])("flags %s at confidence %s (%s)", (text, confidence) => {
+    x = 0;
+    expect(needsCheck({ confidence: 90, lines: [{ words: [word(text, confidence)] }] })).toBe(true);
   });
 });
 
