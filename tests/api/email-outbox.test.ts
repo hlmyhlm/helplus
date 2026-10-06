@@ -64,40 +64,45 @@ describe("GET /api/email-outbox", () => {
     );
     expect(body.stalePending).toBe(2);
     expect(db.emailOutbox.count).toHaveBeenNthCalledWith(2, {
-      where: { status: "pending", nextAttemptAt: { lt: expect.any(Date) } },
+      where: { status: { in: ["pending", "sending"] }, nextAttemptAt: { lt: expect.any(Date) } },
     });
   });
 });
 
 describe("POST /api/email-outbox/:id/retry", () => {
-  it("resets status, attempts and nextAttemptAt", async () => {
-    db.emailOutbox.findUnique.mockResolvedValue({ id: "e1", status: "failed" });
-    db.emailOutbox.update.mockResolvedValue({ id: "e1", status: "pending", attempts: 0 });
+  it("resets status, attempts and nextAttemptAt only from pending or failed", async () => {
+    db.emailOutbox.updateMany.mockResolvedValue({ count: 1 });
+    db.emailOutbox.findUnique.mockResolvedValue({ id: "e1", status: "pending", attempts: 0 });
     const { POST } = await import("@/app/api/email-outbox/[id]/retry/route");
     const res = await POST(createRequest("/api/email-outbox/e1/retry", { method: "POST" }), { params: Promise.resolve({ id: "e1" }) });
     expect(res.status).toBe(200);
-    expect(db.emailOutbox.update).toHaveBeenCalledWith({
-      where: { id: "e1" },
+    expect(db.emailOutbox.updateMany).toHaveBeenCalledWith({
+      where: { id: "e1", status: { in: ["pending", "failed"] } },
       data: expect.objectContaining({ status: "pending", attempts: 0 }),
     });
+    expect((await parseJsonResponse(res)).status).toBe("pending");
     expect(requireAuth).toHaveBeenCalledWith(expect.anything(), "emails:manage");
   });
 
   it("refuses a row that's already sent", async () => {
+    db.emailOutbox.updateMany.mockResolvedValue({ count: 0 });
     db.emailOutbox.findUnique.mockResolvedValue({ id: "e1", status: "sent" });
     const { POST } = await import("@/app/api/email-outbox/[id]/retry/route");
     const res = await POST(createRequest("/api/email-outbox/e1/retry", { method: "POST" }), { params: Promise.resolve({ id: "e1" }) });
     expect(res.status).toBe(409);
   });
 
-  it("refuses a row that's currently sending", async () => {
+  it("refuses a row the worker claimed in the meantime", async () => {
+    db.emailOutbox.updateMany.mockResolvedValue({ count: 0 });
     db.emailOutbox.findUnique.mockResolvedValue({ id: "e1", status: "sending" });
     const { POST } = await import("@/app/api/email-outbox/[id]/retry/route");
     const res = await POST(createRequest("/api/email-outbox/e1/retry", { method: "POST" }), { params: Promise.resolve({ id: "e1" }) });
     expect(res.status).toBe(409);
+    expect(db.emailOutbox.update).not.toHaveBeenCalled();
   });
 
   it("404s when the row doesn't exist", async () => {
+    db.emailOutbox.updateMany.mockResolvedValue({ count: 0 });
     db.emailOutbox.findUnique.mockResolvedValue(null);
     const { POST } = await import("@/app/api/email-outbox/[id]/retry/route");
     const res = await POST(createRequest("/api/email-outbox/e1/retry", { method: "POST" }), { params: Promise.resolve({ id: "e1" }) });

@@ -1,17 +1,25 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { prisma } from "@/lib/prisma";
-import { drainOutbox, nextAttemptAt, MAX_ATTEMPTS } from "@/lib/notify/outbox";
+import { drainOutbox, nextAttemptAt, MAX_ATTEMPTS, STUCK_MINS } from "@/lib/notify/outbox";
 
 const outbox = (prisma as unknown as { emailOutbox: Record<string, ReturnType<typeof vi.fn>> }).emailOutbox;
 const now = new Date("2026-10-08T00:00:00Z");
 const row = { id: "e1", to: "a@x.com", subject: "s", body: "b", attempts: 0 };
 
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(now);
   for (const fn of Object.values(outbox)) fn.mockReset();
   outbox.findMany.mockResolvedValue([row]);
   outbox.update.mockResolvedValue({});
   outbox.updateMany.mockResolvedValue({ count: 1 });
 });
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+const fiveMinLater = new Date(now.getTime() + 5 * 60_000);
 
 describe("drainOutbox", () => {
   it("marks sent emails", async () => {
@@ -24,16 +32,22 @@ describe("drainOutbox", () => {
   it("claims a row before sending it", async () => {
     const send = vi.fn().mockResolvedValue(undefined);
     await drainOutbox(now, send);
-    // call 0 is the stuck-row recovery sweep, call 1 is the claim for this row
+    // call 0 is the stuck-row sweep
     expect(outbox.updateMany.mock.calls[1][0]).toEqual({
       where: { id: "e1", status: "pending" },
       data: { status: "sending", nextAttemptAt: now },
     });
   });
 
+  it("stamps the claim and the send with the clock, not the pass start", async () => {
+    vi.setSystemTime(fiveMinLater);
+    await drainOutbox(now, vi.fn().mockResolvedValue(undefined));
+    expect(outbox.updateMany.mock.calls[1][0].data.nextAttemptAt).toEqual(fiveMinLater);
+    expect(outbox.update.mock.calls[0][0].data.sentAt).toEqual(fiveMinLater);
+  });
+
   it("doesn't reset a row claimed just now even though it was overdue when claimed", async () => {
-    // a row whose original nextAttemptAt was an hour ago - overdue well past the
-    // 10 minute stuck-row window before it was ever claimed
+    // due an hour ago, well past the stuck window
     const dbRow = {
       id: "e1",
       to: "a@x.com",
@@ -53,7 +67,7 @@ describe("drainOutbox", () => {
     outbox.updateMany.mockImplementation(
       async (args: { where: { id?: string; status: string; nextAttemptAt?: { lte: Date } }; data: { status: string; nextAttemptAt?: Date } }) => {
         if (args.where.status === "sending") {
-          // the stuck-row recovery sweep
+          // stuck-row sweep
           if (dbRow.status === "sending" && dbRow.nextAttemptAt.getTime() <= args.where.nextAttemptAt!.lte.getTime()) {
             dbRow.status = "pending";
             return { count: 1 };
@@ -70,8 +84,7 @@ describe("drainOutbox", () => {
       }
     );
 
-    // the first send hangs, simulating one still in flight when the next drain
-    // starts; later sends (there should be none) resolve right away
+    // first send hangs, still in flight on the next pass
     let sendCalls = 0;
     const send = vi.fn(() => {
       sendCalls++;
@@ -84,10 +97,10 @@ describe("drainOutbox", () => {
     });
 
     const oneMinuteLater = new Date(now.getTime() + 60_000);
+    vi.setSystemTime(oneMinuteLater);
     await drainOutbox(oneMinuteLater, send);
 
-    // a second send here would mean the stuck-row sweep reset a row that was
-    // genuinely still being sent, and it went out twice
+    // a second send means the sweep reset a row still in flight
     expect(sendCalls).toBe(1);
   });
 
@@ -95,7 +108,7 @@ describe("drainOutbox", () => {
     outbox.findMany.mockResolvedValue([]);
     await drainOutbox(now);
     expect(outbox.updateMany.mock.calls[0][0]).toEqual({
-      where: { status: "sending", nextAttemptAt: { lte: new Date(now.getTime() - 10 * 60_000) } },
+      where: { status: "sending", nextAttemptAt: { lte: new Date(now.getTime() - STUCK_MINS * 60_000) } },
       data: { status: "pending" },
     });
   });

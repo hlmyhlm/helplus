@@ -6,7 +6,7 @@ import type { EmailKind } from "./templates";
 
 export const MAX_ATTEMPTS = 5;
 const BATCH = 50;
-const STUCK_MINS = 10;
+export const STUCK_MINS = 10;
 
 export type Sender = (msg: { to: string; subject: string; text: string }) => Promise<void>;
 
@@ -60,23 +60,20 @@ export async function drainOutbox(now = new Date(), send?: Sender): Promise<{ se
   let sent = 0;
   let failed = 0;
   for (const row of rows) {
-    // claim it first, so a second worker running the same batch can't send it twice.
-    // nextAttemptAt moves to now so the stuck-row sweep measures time in "sending",
-    // not however overdue the row already was when we picked it up
+    // claim first so a second worker skips it
     const claim = await prisma.emailOutbox.updateMany({
       where: { id: row.id, status: "pending" },
-      data: { status: "sending", nextAttemptAt: now },
+      data: { status: "sending", nextAttemptAt: new Date() },
     });
     if (claim.count !== 1) continue;
 
     try {
       await sender({ to: row.to, subject: row.subject, text: row.body });
       try {
-        await prisma.emailOutbox.update({ where: { id: row.id }, data: { status: "sent", sentAt: now, lastError: "" } });
+        await prisma.emailOutbox.update({ where: { id: row.id }, data: { status: "sent", sentAt: new Date(), lastError: "" } });
         sent++;
       } catch (markError) {
-        // the send went out but we couldn't record it; leave it "sending" and
-        // let recoverStuckRows retry it later. rare, and better than a failed attempt
+        // sent but not recorded, the stuck-row sweep picks it up later
         logger.error(`sent email ${row.id} but couldn't mark it sent`, markError);
       }
     } catch (error) {
