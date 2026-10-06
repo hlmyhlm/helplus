@@ -80,6 +80,27 @@ export async function ticketForIncomingMessage(conversationId: string, text: str
   if (open) {
     return prisma.ticket.update({ where: { id: open.id }, data: { updatedAt: new Date() } });
   }
-  const conversation = await prisma.conversation.findUnique({ where: { id: conversationId }, select: { channel: true } });
-  return openTicket({ conversationId, description: text, source: conversation?.channel ?? "api" });
+  const conversation = await prisma.conversation.findUnique({
+    where: { id: conversationId },
+    select: { channel: true, customerId: true },
+  });
+  return openTicket({
+    conversationId,
+    description: text,
+    source: conversation?.channel ?? "api",
+    projectId: await followUpProjectId(conversationId, conversation?.customerId ?? null),
+  });
+}
+
+// keep the thread in the project it was already in
+async function followUpProjectId(conversationId: string, customerId: string | null): Promise<string | undefined> {
+  const last = await prisma.ticket.findFirst({
+    where: { conversationId },
+    orderBy: { createdAt: "desc" },
+    select: { projectId: true },
+  });
+  if (last) return last.projectId;
+  if (!customerId) return undefined;
+  const customer = await prisma.customer.findUnique({ where: { id: customerId }, select: { projectId: true } });
+  return customer?.projectId ?? undefined;
 }

@@ -85,3 +85,29 @@ describe("ticketForIncomingMessage", () => {
     expect(t.projectId).toBe(p.id);
   });
 });
+
+describe("project of a follow-up ticket", () => {
+  it("stays in the project of the last ticket on the conversation", async () => {
+    const p = await asA(() => prisma.project.create({ data: { name: "Restricted" } }));
+    const conv = await asA(() => prisma.conversation.create({ data: { channel: "whatsapp" } }));
+    const first = await asA(() => openTicket({ conversationId: conv.id, description: "one", source: "whatsapp", projectId: p.id }));
+    await asA(() => prisma.ticket.update({ where: { id: first.id }, data: { status: "closed" } }));
+    const next = await asA(() => ticketForIncomingMessage(conv.id, "two"));
+    expect(next.id).not.toBe(first.id);
+    expect(next.projectId).toBe(p.id);
+  });
+
+  it("uses the customer's project when the conversation has no ticket yet", async () => {
+    const p = await asA(() => prisma.project.create({ data: { name: "Client X" } }));
+    const cust = await asA(() => prisma.customer.create({ data: { name: "Siti", projectId: p.id } }));
+    const conv = await asA(() => prisma.conversation.create({ data: { channel: "whatsapp", customerId: cust.id } }));
+    const t = await asA(() => ticketForIncomingMessage(conv.id, "hello"));
+    expect(t.projectId).toBe(p.id);
+  });
+
+  it("falls back to the default project", async () => {
+    const conv = await asA(() => prisma.conversation.create({ data: { channel: "whatsapp" } }));
+    const t = await asA(() => ticketForIncomingMessage(conv.id, "hello"));
+    expect(t.projectId).toBe(await asA(defaultProjectId));
+  });
+});

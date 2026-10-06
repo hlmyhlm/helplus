@@ -56,6 +56,19 @@ describe("PATCH /api/tickets/:id", () => {
     expect(db.ticket.update).not.toHaveBeenCalled();
   });
 
+  it("moves the other tickets on the same conversation along with it", async () => {
+    db.project.findFirst.mockResolvedValue({ id: "p2", archived: false });
+    db.ticket.updateMany.mockResolvedValue({ count: 1 });
+    const { PATCH } = await import("@/app/api/tickets/[id]/route");
+    const res = await PATCH(createRequest("/api/tickets/t1", { method: "PATCH", body: { projectId: "p2" } }), ctx);
+    expect(res.status).toBe(200);
+    expect(db.ticket.update.mock.calls[0][0].data.projectId).toBe("p2");
+    expect(db.ticket.updateMany).toHaveBeenCalledWith({
+      where: { conversationId: "c1", id: { not: "t1" } },
+      data: { projectId: "p2" },
+    });
+  });
+
   it("hides tickets in projects the staff member can't see", async () => {
     vi.mocked(requireAuth).mockResolvedValue({
       userId: "u2",

@@ -65,6 +65,13 @@ export const PATCH = withAuth("tickets:update", async (request: NextRequest, aut
     }
 
     const updated = await prisma.ticket.update({ where: { id }, data });
+    // the thread is shared, so its other tickets move too
+    if (projectId !== undefined && ticket.conversationId) {
+      await prisma.ticket.updateMany({
+        where: { conversationId: ticket.conversationId, id: { not: id } },
+        data: { projectId },
+      });
+    }
     return NextResponse.json(updated);
   } catch (error) {
     if (error instanceof InvalidTransitionError) {
