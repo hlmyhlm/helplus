@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useCallback, useEffect, useState } from "react";
+import { use, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { Header } from "@/components/layout/header";
@@ -56,8 +56,10 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
   const { id } = use(params);
   const { autoCloseDays } = useCompany();
   const [ticket, setTicket] = useState<Ticket | null>(null);
+  const ticketRef = useRef<Ticket | null>(null);
   const [missing, setMissing] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
+  const [staleError, setStaleError] = useState(false);
   const [staff, setStaff] = useState<Person[]>([]);
   const [reply, setReply] = useState("");
   const [note, setNote] = useState("");
@@ -68,7 +70,9 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
   const [savingNote, setSavingNote] = useState(false);
 
   const load = useCallback(async () => {
-    setLoadFailed(false);
+    // a ticket already on screen means this is a reload, not the first load
+    const hadTicket = ticketRef.current !== null;
+    if (!hadTicket) setLoadFailed(false);
     try {
       const res = await fetch(`/api/tickets/${id}`);
       if (res.status === 404) {
@@ -76,14 +80,21 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
         return;
       }
       if (!res.ok) {
-        setLoadFailed(true);
+        if (hadTicket) setStaleError(true);
+        else setLoadFailed(true);
         return;
       }
       setTicket(await res.json());
+      setStaleError(false);
     } catch {
-      setLoadFailed(true);
+      if (hadTicket) setStaleError(true);
+      else setLoadFailed(true);
     }
   }, [id]);
+
+  useEffect(() => {
+    ticketRef.current = ticket;
+  }, [ticket]);
 
   useEffect(() => {
     load();
@@ -219,6 +230,17 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
             <h1 className="lg:hidden text-base font-semibold text-helplus-text break-words">
               #{ticket.number} {ticket.title}
             </h1>
+            {staleError && (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm text-helplus-danger">Couldn&apos;t refresh. Showing what was loaded before.</span>
+                <button
+                  onClick={() => load()}
+                  className="h-8 px-3 rounded-md border border-helplus-border text-xs text-helplus-text"
+                >
+                  Retry
+                </button>
+              </div>
+            )}
             {ticket.conversation?.messages.map((m) => (
               <div key={m.id} className="flex gap-3">
                 <div className="h-7 w-7 shrink-0 rounded-full bg-helplus-primary-50 text-helplus-link text-[11px] font-semibold grid place-items-center">
