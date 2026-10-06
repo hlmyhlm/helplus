@@ -204,18 +204,25 @@ export const createCannedResponseSchema = z.object({
 });
 
 // SLA
-export const createSLARuleSchema = z.object({
+// no defaults here, zod 4 would fill them in on partial updates too
+const slaRuleBase = z.object({
   name: z.string().trim().min(1, "Name is required").max(200),
   description: z.string().max(1000).optional(),
   projectId: z.string().max(100).nullable().optional(),
-  priority: z.enum(["all", "low", "medium", "high", "urgent"]).default("all"),
-  category: z.string().trim().max(100).default("all"),
-  source: z.string().trim().max(50).default("all"),
+  priority: z.enum(["all", "low", "medium", "high", "urgent"]),
+  category: z.string().trim().max(100),
+  source: z.string().trim().max(50),
   firstResponseMins: z.number().int().min(1).max(10080),
   resolutionMins: z.number().int().min(1).max(43200),
-  isActive: z.boolean().default(true),
+  isActive: z.boolean(),
 });
-export const updateSLARuleSchema = createSLARuleSchema.partial();
+export const createSLARuleSchema = slaRuleBase.extend({
+  priority: slaRuleBase.shape.priority.default("all"),
+  category: slaRuleBase.shape.category.default("all"),
+  source: slaRuleBase.shape.source.default("all"),
+  isActive: slaRuleBase.shape.isActive.default(true),
+});
+export const updateSLARuleSchema = slaRuleBase.partial();
 
 // Admin Users
 export const createAdminSchema = z.object({

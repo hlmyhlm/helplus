@@ -9,16 +9,11 @@ export const PUT = withAuth(
   async (request: NextRequest, _auth, { params }: { params: Promise<{ id: string }> }) => {
     try {
       const { id } = await params;
-      const body = await request.json();
-      const parsed = validateBody(updateSLARuleSchema, body);
+      const parsed = validateBody(updateSLARuleSchema, await request.json());
       if (!parsed.success) {
         return NextResponse.json({ error: parsed.error }, { status: 400 });
       }
-      // zod fills defaults even in partial(), so only keep keys the client sent
-      const sent = body && typeof body === "object" ? body : {};
-      const d = Object.fromEntries(
-        Object.entries(parsed.data).filter(([k]) => k in sent)
-      ) as typeof parsed.data;
+      const d = parsed.data;
 
       const existing = await prisma.sLARule.findUnique({ where: { id } });
       if (!existing) {

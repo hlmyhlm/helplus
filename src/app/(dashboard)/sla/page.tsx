@@ -29,7 +29,7 @@ interface SLARuleData {
 }
 
 const sourceOptions = [
-  { value: "all", label: "All Channels" },
+  { value: "all", label: "All Sources" },
   { value: "whatsapp", label: "WhatsApp" },
   { value: "email", label: "Email" },
   { value: "phone", label: "Phone" },
@@ -185,7 +185,7 @@ export default function SLAPage() {
             <p className="text-sm text-helplus-text-light mt-1">
               Service Level Agreement rules define response time targets for your
               support team. Configure first response and resolution time goals
-              based on channel and priority to ensure consistent service quality.
+              based on source and priority to ensure consistent service quality.
             </p>
           </div>
         </div>
@@ -367,7 +367,7 @@ export default function SLAPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-helplus-text mb-1">
-                    Channel
+                    Source
                   </label>
                   <select
                     value={form.source}
