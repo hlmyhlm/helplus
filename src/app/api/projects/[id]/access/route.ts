@@ -7,6 +7,9 @@ type Ctx = { params: Promise<{ id: string }> };
 
 export const GET = withAuth("projects:manage", async (_request: NextRequest, _auth, { params }: Ctx) => {
   const { id } = await params;
+  if (!(await prisma.project.findUnique({ where: { id } }))) {
+    return NextResponse.json({ error: "Project not found" }, { status: 404 });
+  }
   const rows = await prisma.projectAccess.findMany({ where: { projectId: id }, select: { adminId: true } });
   return NextResponse.json({ adminIds: rows.map((r) => r.adminId) });
 });
@@ -24,9 +27,12 @@ export const PUT = withAuth("projects:manage", async (request: NextRequest, _aut
     where: { id: { in: validation.data.adminIds }, role: { in: ["staff", "viewer"] } },
     select: { id: true },
   });
-  await prisma.projectAccess.deleteMany({ where: { projectId: id } });
-  if (users.length) {
-    await prisma.projectAccess.createMany({ data: users.map((u) => ({ projectId: id, adminId: u.id })) });
-  }
+  // delete and recreate together, so a failure in between can't leave a project with no access rows
+  await prisma.$transaction(async (tx) => {
+    await tx.projectAccess.deleteMany({ where: { projectId: id } });
+    if (users.length) {
+      await tx.projectAccess.createMany({ data: users.map((u) => ({ projectId: id, adminId: u.id })) });
+    }
+  });
   return NextResponse.json({ adminIds: users.map((u) => u.id) });
 });

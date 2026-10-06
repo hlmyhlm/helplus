@@ -5,10 +5,10 @@ import { withAuth } from "@/lib/tenant/with-auth";
 import { projectSchema, validateBody } from "@/lib/validations";
 import { allowedProjectIds } from "@/lib/tickets/access";
 import { OPEN_STATUSES } from "@/lib/tickets/status";
-import { hasPermission } from "@/lib/rbac";
 
 export const GET = withAuth("projects:read", async (request: NextRequest, auth) => {
   const allowed = await allowedProjectIds(auth);
+  // ?archived=1 includes archived projects alongside active ones (the project detail page needs this)
   const showArchived = request.nextUrl.searchParams.get("archived") === "1";
   const where = {
     ...(allowed === null ? {} : { id: { in: allowed } }),
@@ -35,12 +35,7 @@ export const GET = withAuth("projects:read", async (request: NextRequest, auth) 
   });
 });
 
-export const POST = withAuth("projects:manage", async (request: NextRequest, auth) => {
-  // requireAuth already checks this in production; recheck here so a mocked
-  // auth context in tests can't bypass it either
-  if (!hasPermission(auth.role, "projects:manage")) {
-    return NextResponse.json({ error: { code: "FORBIDDEN", message: "Insufficient permissions" } }, { status: 403 });
-  }
+export const POST = withAuth("projects:manage", async (request: NextRequest) => {
   const validation = validateBody(projectSchema, await request.json());
   if (!validation.success) return NextResponse.json({ error: validation.error }, { status: 400 });
   try {

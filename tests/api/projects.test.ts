@@ -18,6 +18,7 @@ beforeEach(() => {
   for (const m of ["project", "projectAccess", "ticket", "customer", "admin", "settings"]) {
     for (const fn of Object.values(db[m])) fn.mockReset();
   }
+  (db as unknown as { $transaction: ReturnType<typeof vi.fn> }).$transaction.mockReset();
   asRole("admin");
 });
 
@@ -29,6 +30,7 @@ describe("projects", () => {
     const { GET } = await import("@/app/api/projects/route");
     const body = await parseJsonResponse(await GET(createRequest("/api/projects"), {} as never));
     expect(body.data[0]).toMatchObject({ id: "p1", openTickets: 3, people: 2 });
+    expect(requireAuth).toHaveBeenCalledWith(expect.anything(), "projects:read");
   });
 
   it("staff only see their projects", async () => {
@@ -42,11 +44,10 @@ describe("projects", () => {
     expect(JSON.stringify(db.project.findMany.mock.calls[0][0].where)).toContain('"id":{"in":["p1"]}');
   });
 
-  it("staff can't create projects", async () => {
-    asRole("staff");
+  it("checks the manage permission before creating", async () => {
     const { POST } = await import("@/app/api/projects/route");
-    const res = await POST(createRequest("/api/projects", { method: "POST", body: { name: "Alpha" } }), {} as never);
-    expect(res.status).toBe(403);
+    await POST(createRequest("/api/projects", { method: "POST", body: { name: "Alpha" } }), {} as never);
+    expect(requireAuth).toHaveBeenCalledWith(expect.anything(), "projects:manage");
   });
 
   it("a duplicate name is a 409", async () => {
@@ -64,17 +65,20 @@ describe("projects", () => {
       { params: Promise.resolve({ id: "p1" }) }
     );
     expect(res.status).toBe(400);
+    expect(requireAuth).toHaveBeenCalledWith(expect.anything(), "projects:manage");
   });
 
   it("replaces the staff list of a project", async () => {
     db.project.findUnique.mockResolvedValue({ id: "p1" });
     db.admin.findMany.mockResolvedValue([{ id: "a1" }, { id: "a2" }]);
+    db.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => fn(db));
     const { PUT } = await import("@/app/api/projects/[id]/access/route");
     const res = await PUT(
       createRequest("/api/projects/p1/access", { method: "PUT", body: { adminIds: ["a1", "a2"] } }),
       { params: Promise.resolve({ id: "p1" }) }
     );
     expect(res.status).toBe(200);
+    expect(requireAuth).toHaveBeenCalledWith(expect.anything(), "projects:manage");
     expect(db.projectAccess.deleteMany).toHaveBeenCalledWith({ where: { projectId: "p1" } });
     expect(db.projectAccess.createMany).toHaveBeenCalledWith({
       data: [
@@ -82,6 +86,14 @@ describe("projects", () => {
         { projectId: "p1", adminId: "a2" },
       ],
     });
+  });
+
+  it("access list 404s when the project doesn't exist", async () => {
+    db.project.findUnique.mockResolvedValue(null);
+    const { GET } = await import("@/app/api/projects/[id]/access/route");
+    const res = await GET(createRequest("/api/projects/p1/access"), { params: Promise.resolve({ id: "p1" }) });
+    expect(res.status).toBe(404);
+    expect(requireAuth).toHaveBeenCalledWith(expect.anything(), "projects:manage");
   });
 });
 
