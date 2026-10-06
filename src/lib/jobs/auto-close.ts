@@ -31,7 +31,7 @@ export async function runAutoClose(now: Date): Promise<{ closed: number; warned:
   let closed = 0;
   for (const t of due) {
     try {
-      // the list above can be stale by the time we get here, a client reply moves the ticket on
+      // re-read, the client may have replied since the list
       const fresh = await prisma.ticket.findFirst({ where: { id: t.id, ...closeWhere } });
       if (!fresh) continue;
       await saveTicket(fresh, statusChange(fresh, "closed", now), { now, ctx });

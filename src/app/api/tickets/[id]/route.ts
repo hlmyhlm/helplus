@@ -9,6 +9,7 @@ import { statusChange, InvalidTransitionError } from "@/lib/tickets/status";
 import { saveTicket, loadSlaContext } from "@/lib/tickets/update";
 import { STAFF_ROLES } from "@/lib/rbac";
 import { projectProblem } from "@/lib/projects/usable";
+import { notifyTicket } from "@/lib/notify/notify";
 
 type Ctx = { params: Promise<{ id: string }> };
 const notFound = () => NextResponse.json({ error: "Ticket not found" }, { status: 404 });
@@ -75,19 +76,23 @@ export const PATCH = withAuth("tickets:update", async (request: NextRequest, aut
       }
     }
 
-    // sla context loaded up front so saveTicket doesn't query inside the transaction
+    const conversationId = ticket.conversationId;
+    if (projectId === undefined || projectId === ticket.projectId || !conversationId) {
+      return NextResponse.json(await saveTicket(ticket, data, { now, actorId: auth.userId }));
+    }
+
+    // the thread is shared, so its other tickets move too, all in one go
     const ctx = await loadSlaContext();
     const updated = await prisma.$transaction(async (tx) => {
-      const saved = await saveTicket(ticket, data, { now, ctx, actorId: auth.userId, db: tx });
-      // the thread is shared, so its other tickets move too
-      if (projectId !== undefined && ticket.conversationId) {
-        await tx.ticket.updateMany({
-          where: { conversationId: ticket.conversationId, id: { not: id } },
-          data: { projectId },
-        });
-      }
+      const saved = await saveTicket(ticket, data, { now, ctx, db: tx, notify: false });
+      const open = await tx.ticket.findMany({ where: { conversationId, id: { not: id }, status: { not: "closed" } } });
+      for (const sibling of open) await saveTicket(sibling, { projectId }, { db: tx, ctx, now, notify: false });
+      await tx.ticket.updateMany({ where: { conversationId, id: { not: id }, status: "closed" }, data: { projectId } });
       return saved;
     });
+    if (data.status === "reopened" && ticket.status !== "reopened") {
+      await notifyTicket("reopened", updated, { actorId: auth.userId });
+    }
     return NextResponse.json(updated);
   } catch (error) {
     if (error instanceof InvalidTransitionError) {

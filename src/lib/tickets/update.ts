@@ -68,7 +68,7 @@ export function slaChanges(before: Ticket, data: Record<string, unknown>, ctx: S
 export async function saveTicket(
   before: Ticket,
   data: Record<string, unknown>,
-  opts: { now?: Date; ctx?: SlaContext; actorId?: string; db?: Pick<typeof prisma, "ticket"> } = {}
+  opts: { now?: Date; ctx?: SlaContext; actorId?: string; db?: Pick<typeof prisma, "ticket">; notify?: boolean } = {}
 ): Promise<Ticket> {
   const now = opts.now ?? new Date();
   // no status or sla input means no rules or calendar needed, skip the db round trip
@@ -76,8 +76,8 @@ export async function saveTicket(
   const ctx = opts.ctx ?? (needsCtx ? await loadSlaContext() : { rules: [], cal: ALWAYS_OPEN });
   const db = opts.db ?? prisma;
   const updated = await db.ticket.update({ where: { id: before.id }, data: { ...data, ...slaChanges(before, data, ctx, now) } });
-  // notify always goes through the normal prisma, even inside a transaction
-  if (data.status === "reopened" && before.status !== "reopened") {
+  // inside a transaction the caller passes notify: false and emails after commit
+  if (opts.notify !== false && data.status === "reopened" && before.status !== "reopened") {
     await notifyTicket("reopened", updated, { actorId: opts.actorId });
   }
   return updated;

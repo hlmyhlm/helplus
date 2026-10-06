@@ -19,6 +19,7 @@ vi.mock("@/lib/route-auth", () => ({
 let from = "";
 let to = "";
 let conv = "";
+let rule = "";
 
 beforeAll(async () => {
   await systemPrisma.company.deleteMany({ where: { id: C } });
@@ -30,8 +31,10 @@ beforeAll(async () => {
     data: [
       { id: "it-2a-move-old", companyId: C, number: 1, title: "old", description: "x", projectId: from, conversationId: conv, status: "closed" },
       { id: "it-2a-move-new", companyId: C, number: 2, title: "new", description: "x", projectId: from, conversationId: conv },
+      { id: "it-2a-move-open", companyId: C, number: 3, title: "open", description: "x", projectId: from, conversationId: conv, status: "working" },
     ],
   });
+  rule = (await systemPrisma.sLARule.create({ data: { companyId: C, name: "to", projectId: to, firstResponseMins: 30, resolutionMins: 600 } })).id;
 });
 
 afterAll(async () => {
@@ -50,6 +53,15 @@ describe("moving a ticket to another project", () => {
     const res = await PATCH(req, { params: Promise.resolve({ id: "it-2a-move-new" }) });
     expect(res.status).toBe(200);
     const rows = await systemPrisma.ticket.findMany({ where: { conversationId: conv }, select: { projectId: true } });
-    expect(rows.map((r) => r.projectId)).toEqual([to, to]);
+    expect(rows.map((r) => r.projectId)).toEqual([to, to, to]);
+  });
+
+  it("gives open siblings the new project's rule and leaves closed ones alone", async () => {
+    const [open, closed] = await Promise.all(
+      ["it-2a-move-open", "it-2a-move-old"].map((id) => systemPrisma.ticket.findUniqueOrThrow({ where: { id } }))
+    );
+    expect(open.slaRuleId).toBe(rule);
+    expect(open.resolveDueAt).not.toBeNull();
+    expect(closed.slaRuleId).toBeNull();
   });
 });

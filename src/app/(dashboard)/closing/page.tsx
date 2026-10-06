@@ -2,19 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { Header } from "@/components/layout/header";
-
-const options = [
-  { value: 0, label: "Off (staff close only)" },
-  { value: 1, label: "1 day" },
-  { value: 2, label: "2 days" },
-  { value: 3, label: "3 days" },
-  { value: 5, label: "5 days" },
-  { value: 7, label: "7 days" },
-  { value: 14, label: "14 days" },
-];
+import { clearCompanyCache } from "@/lib/hooks/use-company";
+import { closingOptions } from "@/lib/sla/closing-options";
 
 export default function ClosingPage() {
   const [days, setDays] = useState(3);
+  const [stored, setStored] = useState(3);
   const [loadError, setLoadError] = useState("");
   const [saveError, setSaveError] = useState("");
   const [saved, setSaved] = useState(false);
@@ -23,7 +16,10 @@ export default function ClosingPage() {
   useEffect(() => {
     fetch("/api/settings")
       .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((d) => setDays(d.autoCloseDays ?? 3))
+      .then((d) => {
+        setDays(d.autoCloseDays ?? 3);
+        setStored(d.autoCloseDays ?? 3);
+      })
       .catch(() => setLoadError("Couldn't load settings."));
   }, []);
 
@@ -41,6 +37,8 @@ export default function ClosingPage() {
         setSaveError((await res.json().catch(() => ({}))).error ?? "Couldn't save");
         return;
       }
+      // the ticket page reads the days from the company cache
+      clearCompanyCache();
       setSaved(true);
     } catch {
       setSaveError("Couldn't save");
@@ -68,7 +66,7 @@ export default function ClosingPage() {
               }}
               className="w-full text-sm px-3 py-2 border border-helplus-border rounded-lg bg-helplus-bg text-helplus-text"
             >
-              {options.map((o) => (
+              {closingOptions(stored).map((o) => (
                 <option key={o.value} value={o.value}>{o.label}</option>
               ))}
             </select>

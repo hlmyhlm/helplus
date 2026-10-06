@@ -1,8 +1,11 @@
 import { describe, it, expect, vi } from "vitest";
 import { prisma } from "@/lib/prisma";
 import { slaChanges, saveTicket, type SlaContext } from "@/lib/tickets/update";
+import { notifyTicket } from "@/lib/notify/notify";
 import { ALWAYS_OPEN, businessMinutesBetween, type BusinessCalendar } from "@/lib/sla/calendar";
 import { slaTimes } from "@/lib/sla/clock";
+
+vi.mock("@/lib/notify/notify", () => ({ notifyTicket: vi.fn() }));
 
 const created = new Date("2026-10-05T00:00:00Z");
 const min = (n: number) => new Date(created.getTime() + n * 60_000);
@@ -150,5 +153,16 @@ describe("saveTicket", () => {
     await saveTicket(waiting, { firstReplyAt: min(120) }, { now: min(120) });
     expect(db.sLARule.findMany).not.toHaveBeenCalled();
     expect(db.ticket.update.mock.calls[0][0].data).toMatchObject({ firstReplyAt: min(120), slaWarnedAt: null, slaBreachedAt: null });
+  });
+
+  it("leaves the reopen email to the caller when notify is off", async () => {
+    const db = prisma as unknown as Record<string, Record<string, ReturnType<typeof vi.fn>>>;
+    db.ticket.update.mockReset().mockResolvedValue({ id: "t1" });
+    vi.mocked(notifyTicket).mockReset();
+    const closed = { ...(ticket as object), status: "closed", closedAt: min(400) } as never;
+    await saveTicket(closed, { status: "reopened", closedAt: null }, { now: min(600), ctx, notify: false });
+    expect(notifyTicket).not.toHaveBeenCalled();
+    await saveTicket(closed, { status: "reopened", closedAt: null }, { now: min(600), ctx });
+    expect(notifyTicket).toHaveBeenCalledTimes(1);
   });
 });

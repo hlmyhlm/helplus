@@ -1,7 +1,7 @@
 export interface BusinessCalendar {
   enabled: boolean;
   timezone: string;
-  // index 0 is sunday. minutes from local midnight, null when closed
+  // index 0 is sunday, minutes from local midnight, null when closed
   week: ([number, number] | null)[];
   holidays: Set<string>; // YYYY-MM-DD, local
 }
@@ -21,9 +21,31 @@ export function parseHours(value: string): [number, number] | null {
   return [start, end];
 }
 
+// one formatter per zone, building them is slow
+const formats = new Map<string, Intl.DateTimeFormat>();
+
+function formatFor(tz: string): Intl.DateTimeFormat {
+  let f = formats.get(tz);
+  if (!f) {
+    f = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      hourCycle: "h23",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      weekday: "short",
+    });
+    formats.set(tz, f);
+  }
+  return f;
+}
+
 function safeZone(tz: string): string {
   try {
-    new Intl.DateTimeFormat("en-US", { timeZone: tz });
+    formatFor(tz);
     return tz;
   } catch {
     return "UTC";
@@ -38,17 +60,7 @@ interface LocalDay {
 }
 
 function localParts(t: number, tz: string) {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: tz,
-    hourCycle: "h23",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    weekday: "short",
-  }).formatToParts(new Date(t));
+  const parts = formatFor(tz).formatToParts(new Date(t));
   const p = Object.fromEntries(parts.map((x) => [x.type, x.value]));
   return {
     y: Number(p.year),

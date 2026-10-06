@@ -52,7 +52,7 @@ export const GET = withAuth("tickets:read", async (request: NextRequest, auth) =
 
     const countWhere = { AND: filters };
 
-    // compute before the sla filter joins filters, or an active filter would change its own count
+    // count before the sla filter is added, so it never counts itself
     const now = new Date();
     const [near, breached] = await Promise.all([
       prisma.ticket.count({ where: { AND: [...filters, slaWhere("near", now)] } }),
