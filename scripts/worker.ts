@@ -1,4 +1,4 @@
-// background jobs: auto-close, sla alerts, email. run next to the app with npm run worker
+// run next to the app: npm run worker
 import { runAllCompanies } from "../src/lib/jobs/run";
 import { systemPrisma } from "../src/lib/prisma";
 import { logger } from "../src/lib/logger";
@@ -14,18 +14,24 @@ process.on("SIGTERM", stop);
 async function main() {
   const once = process.argv.includes("--once");
   logger.info(once ? "worker: one run" : "worker: started");
+  let threw = false;
   do {
     const started = Date.now();
     try {
-      await runAllCompanies(new Date());
+      await runAllCompanies(new Date(), () => stopping);
     } catch (error) {
       logger.error("worker run failed", error);
+      threw = true;
     }
     if (once) break;
     const wait = Math.max(0, EVERY_MS - (Date.now() - started));
     for (let waited = 0; waited < wait && !stopping; waited += 1000) await new Promise((r) => setTimeout(r, 1000));
   } while (!stopping);
   await systemPrisma.$disconnect();
+  if (once && threw) process.exitCode = 1;
 }
 
-main();
+main().catch((error) => {
+  logger.error("worker crashed", error);
+  process.exit(1);
+});

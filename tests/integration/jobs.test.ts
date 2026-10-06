@@ -54,12 +54,21 @@ describe("auto-close", () => {
     expect(await asA(() => prisma.emailOutbox.count({ where: { ticketId: t.id, kind: "close_warning" } }))).toBe(1);
   });
 
+  it("sends no warning when the only contact we have is a phone number", async () => {
+    const t = await asA(() => answeredTicket(2.5, "+15551234567"));
+    await asA(() => runAutoClose(new Date()));
+    expect(await asA(() => prisma.emailOutbox.count({ where: { ticketId: t.id, kind: "close_warning" } }))).toBe(0);
+  });
+
   it("does nothing when the company closes tickets by hand", async () => {
     await asA(() => prisma.settings.updateMany({ data: { autoCloseDays: 0 } }));
-    const t = await asA(() => answeredTicket(10));
-    await asA(() => runAutoClose(new Date()));
-    expect((await asA(() => prisma.ticket.findUniqueOrThrow({ where: { id: t.id } }))).status).toBe("answered");
-    await asA(() => prisma.settings.updateMany({ data: { autoCloseDays: 3 } }));
+    try {
+      const t = await asA(() => answeredTicket(10));
+      await asA(() => runAutoClose(new Date()));
+      expect((await asA(() => prisma.ticket.findUniqueOrThrow({ where: { id: t.id } }))).status).toBe("answered");
+    } finally {
+      await asA(() => prisma.settings.updateMany({ data: { autoCloseDays: 3 } }));
+    }
   });
 });
 

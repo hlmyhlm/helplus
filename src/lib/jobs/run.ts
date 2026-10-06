@@ -22,7 +22,10 @@ export async function runJobsForCompany(now: Date): Promise<void> {
   }
 }
 
-export async function runAllCompanies(now = new Date()): Promise<void> {
+export async function runAllCompanies(now = new Date(), shouldStop: () => boolean = () => false): Promise<void> {
   const companies = await systemPrisma.company.findMany({ select: { id: true } });
-  for (const c of companies) await runWithCompany(c.id, () => runJobsForCompany(now));
+  for (const c of companies) {
+    if (shouldStop()) break;
+    await runWithCompany(c.id, () => runJobsForCompany(now));
+  }
 }

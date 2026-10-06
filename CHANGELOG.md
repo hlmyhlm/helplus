@@ -29,6 +29,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Run `npx prisma migrate deploy`. The tickets migration gives every conversation without a ticket its own ticket, numbers all tickets, maps the old statuses (open to New, in progress to Staff working, resolved to Closed) and puts everything in a "General" project. Back up first.
 - Existing staff and viewer accounts get access to "General" only. Give them other projects under Clients.
 - Run the worker next to the app: `npm run worker`. Without it, nothing closes by itself and no emails go out.
+- Run one worker per database.
 - Add an email address to each user who should get alerts (Users & roles).
 - SLA times apply to tickets created after the upgrade, and to older tickets once their priority, project, category or source changes.
 
