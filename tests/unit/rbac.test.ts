@@ -89,6 +89,14 @@ describe("RBAC System", () => {
     expect(getPermissionsForRole("client")).toEqual([]);
   });
 
+  it("only see-all roles get the realtime stream", () => {
+    expect(hasPermission("viewer", "realtime:read")).toBe(false);
+    expect(hasPermission("staff", "realtime:read")).toBe(false);
+    expect(hasPermission("supervisor", "realtime:read")).toBe(true);
+    expect(hasPermission("admin", "realtime:read")).toBe(true);
+    expect(hasPermission("owner", "realtime:read")).toBe(true);
+  });
+
   it("only admins and owners manage projects", () => {
     expect(hasPermission("staff", "projects:read")).toBe(true);
     expect(hasPermission("staff", "projects:manage")).toBe(false);

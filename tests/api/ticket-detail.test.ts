@@ -106,6 +106,19 @@ describe("PATCH /api/tickets/:id", () => {
     expect(db.projectAccess.findFirst.mock.calls[0][0].where).toEqual({ adminId: "s9", projectId: "p2" });
   });
 
+  it("won't move a ticket to a project its current assignee can't see", async () => {
+    db.ticket.findUnique.mockResolvedValue({ ...ticket, assigneeId: "s9" });
+    db.admin.findUnique.mockResolvedValue({ role: "staff" });
+    db.projectAccess.findFirst.mockResolvedValue(null);
+    db.project.findFirst.mockResolvedValue({ id: "p2", archived: false });
+    const { PATCH } = await import("@/app/api/tickets/[id]/route");
+    const res = await PATCH(createRequest("/api/tickets/t1", { method: "PATCH", body: { projectId: "p2" } }), ctx);
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("That person can't see this project");
+    expect(db.projectAccess.findFirst.mock.calls[0][0].where).toEqual({ adminId: "s9", projectId: "p2" });
+    expect(db.ticket.update).not.toHaveBeenCalled();
+  });
+
   it("hides tickets in projects the staff member can't see", async () => {
     vi.mocked(requireAuth).mockResolvedValue({
       userId: "u2",

@@ -11,6 +11,13 @@ export async function allowedProjectIds(auth: { role: string; userId: string }):
   return rows.map((r) => r.projectId);
 }
 
+// whether this user is listed on the project, or sees them all
+export async function canSeeProject(user: { id: string; role: string }, projectId: string): Promise<boolean> {
+  if (SEE_ALL.has(user.role)) return true;
+  if (!LIMITED.has(user.role)) return false;
+  return !!(await prisma.projectAccess.findFirst({ where: { adminId: user.id, projectId } }));
+}
+
 export function projectWhere(ids: string[] | null): Record<string, unknown> {
   return ids === null ? {} : { projectId: { in: ids } };
 }

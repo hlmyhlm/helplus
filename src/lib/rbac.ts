@@ -68,6 +68,8 @@ export const PERMISSIONS = {
 
   // Analytics
   "analytics:read": ["viewer", "staff", "supervisor", "admin", "owner"],
+  // project-aware stream comes later, see-all roles only for now
+  "realtime:read": ["supervisor", "admin", "owner"],
   "analytics:export": ["supervisor", "admin", "owner"],
 
   // Activity Log

@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { withAuth } from "@/lib/tenant/with-auth";
 import { updateTicketSchema, validateBody } from "@/lib/validations";
-import { allowedProjectIds } from "@/lib/tickets/access";
+import { allowedProjectIds, canSeeProject } from "@/lib/tickets/access";
 import { loadTicketFor } from "@/lib/tickets/load";
 import { statusChange, InvalidTransitionError } from "@/lib/tickets/status";
 import { STAFF_ROLES } from "@/lib/rbac";
@@ -11,6 +11,7 @@ import { projectProblem } from "@/lib/projects/usable";
 
 type Ctx = { params: Promise<{ id: string }> };
 const notFound = () => NextResponse.json({ error: "Ticket not found" }, { status: 404 });
+const cantSee = () => NextResponse.json({ error: "That person can't see this project" }, { status: 400 });
 
 export const GET = withAuth("tickets:read", async (_request: NextRequest, auth, { params }: Ctx) => {
   const { id } = await params;
@@ -51,11 +52,8 @@ export const PATCH = withAuth("tickets:update", async (request: NextRequest, aut
         if (!user || !(STAFF_ROLES as readonly string[]).includes(user.role) || user.role === "viewer") {
           return NextResponse.json({ error: "Can't assign to that user" }, { status: 400 });
         }
-        if (user.role === "staff") {
-          const access = await prisma.projectAccess.findFirst({
-            where: { adminId: assigneeId, projectId: projectId ?? ticket.projectId },
-          });
-          if (!access) return NextResponse.json({ error: "That person can't see this project" }, { status: 400 });
+        if (!(await canSeeProject({ id: assigneeId, role: user.role }, projectId ?? ticket.projectId))) {
+          return cantSee();
         }
       }
       data.assigneeId = assigneeId;
@@ -69,6 +67,10 @@ export const PATCH = withAuth("tickets:update", async (request: NextRequest, aut
       const problem = await projectProblem(projectId);
       if (problem) return NextResponse.json({ error: problem }, { status: 400 });
       data.projectId = projectId;
+      if (assigneeId === undefined && ticket.assigneeId) {
+        const current = await prisma.admin.findUnique({ where: { id: ticket.assigneeId }, select: { role: true } });
+        if (current && !(await canSeeProject({ id: ticket.assigneeId, role: current.role }, projectId))) return cantSee();
+      }
     }
 
     const updated = await prisma.ticket.update({ where: { id }, data });

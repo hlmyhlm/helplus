@@ -4,7 +4,7 @@ import { withAuth } from "@/lib/tenant/with-auth";
 
 export const dynamic = "force-dynamic";
 
-export const GET = withAuth(undefined, async (request: NextRequest, _auth) => {
+export const GET = withAuth("realtime:read", async (request: NextRequest, _auth) => {
   const channel = request.nextUrl.searchParams.get("channel") || "global";
 
   const stream = new ReadableStream({
