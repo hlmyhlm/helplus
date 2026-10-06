@@ -32,7 +32,10 @@ export function slaChanges(before: Ticket, data: Record<string, unknown>, ctx: S
   if (before.status === "closed" && next.status !== "closed" && before.closedAt) {
     pausedMins += businessMinutesBetween(before.closedAt, now, ctx.cal);
   }
-  if (next.status === "answered" && before.status !== "answered") out.slaPausedAt = now;
+  if (next.status === "answered" && before.status !== "answered") {
+    out.slaPausedAt = now;
+    out.closeWarnedAt = null;
+  }
 
   // rules aren't retroactive: only a changed sla input re-picks one
   const inputsChanged = SLA_INPUTS.some((k) => k in data && data[k] !== before[k]);

@@ -46,6 +46,32 @@ describe("runAutoClose", () => {
 
     expect(result.warned).toBe(0);
     expect(queueEmail).not.toHaveBeenCalled();
-    expect(ticket.update).not.toHaveBeenCalled();
+    expect(ticket.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("only closes tickets warned at least a day ago", async () => {
+    await runAutoClose(now);
+    const where = ticket.findMany.mock.calls[0][0].where;
+    expect(where.closeWarnedAt).toEqual({ lte: new Date(now.getTime() - 86_400_000) });
+  });
+
+  it("closes without a warning when set to one day", async () => {
+    vi.mocked(getSettings).mockResolvedValue({ autoCloseDays: 1 } as never);
+    await runAutoClose(now);
+    expect(ticket.findMany.mock.calls[0][0].where.closeWarnedAt).toBeUndefined();
+  });
+
+  it("doesn't email when the ticket moved on before the stamp", async () => {
+    ticket.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: "t3", conversation: { customerContact: "a@b.test", customer: null } }]);
+    ticket.findFirst.mockResolvedValueOnce({ id: "t3", status: "answered" });
+    ticket.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    const result = await runAutoClose(now);
+
+    expect(ticket.updateMany).toHaveBeenCalledWith({ where: { id: "t3", status: "answered", closeWarnedAt: null }, data: { closeWarnedAt: now } });
+    expect(queueEmail).not.toHaveBeenCalled();
+    expect(result.warned).toBe(0);
   });
 });

@@ -32,6 +32,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Run one worker per database.
 - Add an email address to each user who should get alerts (Users & roles).
 - SLA times apply to tickets created after the upgrade, and to older tickets once their priority, project, category or source changes.
+- After the upgrade, old Answered tickets get the warning first and close a day later.
 
 ## [0.2.2] - 2026-04-08
 

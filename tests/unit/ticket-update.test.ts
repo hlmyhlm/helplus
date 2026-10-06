@@ -45,6 +45,11 @@ describe("slaChanges", () => {
     expect(slaChanges(ticket, { status: "answered" }, ctx, min(200))).toMatchObject({ slaPausedAt: min(200) });
   });
 
+  it("drops an old close warning when the ticket is answered again", () => {
+    const warned = { ...(ticket as object), closeWarnedAt: min(100) } as never;
+    expect(slaChanges(warned, { status: "answered" }, ctx, min(200))).toMatchObject({ closeWarnedAt: null });
+  });
+
   it("adds the paused time when the ticket leaves answered", () => {
     const answered = { ...(ticket as object), status: "answered", slaPausedAt: min(200) } as never;
     const out = slaChanges(answered, { status: "working" }, ctx, min(500));

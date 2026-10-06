@@ -15,6 +15,11 @@ describe("closesOn", () => {
   it("adds the days to the answer time", () => {
     expect(closesOn("2026-10-05T00:00:00Z", 3)).toEqual(new Date("2026-10-08T00:00:00Z"));
   });
+  it("waits a full day after the warning", () => {
+    expect(closesOn("2026-10-05T00:00:00Z", 3, "2026-10-10T06:00:00Z")).toEqual(new Date("2026-10-11T06:00:00Z"));
+    expect(closesOn("2026-10-05T00:00:00Z", 3, "2026-10-06T00:00:00Z")).toEqual(new Date("2026-10-08T00:00:00Z"));
+    expect(closesOn("2026-10-05T00:00:00Z", 3, null)).toEqual(new Date("2026-10-08T00:00:00Z"));
+  });
   it("is null when auto-close is off or the ticket isn't answered", () => {
     expect(closesOn("2026-10-05T00:00:00Z", 0)).toBeNull();
     expect(closesOn(null, 3)).toBeNull();

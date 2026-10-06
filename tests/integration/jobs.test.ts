@@ -36,11 +36,26 @@ describe("auto-close", () => {
     const old = await asA(() => answeredTicket(4));
     const fresh = await asA(() => answeredTicket(1));
     await asA(() => runAutoClose(new Date()));
+    await asA(() => runAutoClose(new Date(Date.now() + DAY + 60_000)));
     const [a, b] = await asA(() => Promise.all([old, fresh].map((t) => prisma.ticket.findUniqueOrThrow({ where: { id: t.id } }))));
     expect(a.status).toBe("closed");
     expect(b.status).toBe("answered");
     const notes = await asA(() => prisma.internalNote.findMany({ where: { conversationId: a.conversationId! } }));
     expect(notes[0].content).toContain("3 days");
+  });
+
+  it("warns an old unwarned ticket first and closes it a day later", async () => {
+    const t = await asA(() => answeredTicket(10));
+    const read = () => asA(() => prisma.ticket.findUniqueOrThrow({ where: { id: t.id } }));
+    const first = new Date();
+    await asA(() => runAutoClose(first));
+    const warned = await read();
+    expect(warned.status).toBe("answered");
+    expect(warned.closeWarnedAt).toEqual(first);
+    await asA(() => runAutoClose(new Date(first.getTime() + 12 * 3_600_000)));
+    expect((await read()).status).toBe("answered");
+    await asA(() => runAutoClose(new Date(first.getTime() + DAY + 60_000)));
+    expect((await read()).status).toBe("closed");
   });
 
   it("warns the client a day before when we have their email", async () => {

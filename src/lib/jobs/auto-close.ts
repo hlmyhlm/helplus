@@ -6,18 +6,25 @@ import { buildEmail } from "@/lib/notify/templates";
 import { queueEmail } from "@/lib/notify/outbox";
 import { companyName } from "@/lib/notify/notify";
 import { logger } from "@/lib/logger";
+import { EMAIL_RE } from "@/lib/validations";
 
 const DAY = 86_400_000;
 const BATCH = 200;
-const looksLikeEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+const looksLikeEmail = (v: string) => EMAIL_RE.test(v);
 
 export async function runAutoClose(now: Date): Promise<{ closed: number; warned: number }> {
   const days = (await getSettings()).autoCloseDays;
   if (!days || days < 1) return { closed: 0, warned: 0 };
 
   const closeCutoff = new Date(now.getTime() - days * DAY);
+  // with a warning step, close only a full day after the warning
+  const closeWhere = {
+    status: "answered",
+    answeredAt: { lte: closeCutoff },
+    ...(days >= 2 ? { closeWarnedAt: { lte: new Date(now.getTime() - DAY) } } : {}),
+  };
   const due = await prisma.ticket.findMany({
-    where: { status: "answered", answeredAt: { lte: closeCutoff } },
+    where: closeWhere,
     take: BATCH,
   });
   const ctx = due.length ? await loadSlaContext() : undefined;
@@ -25,7 +32,7 @@ export async function runAutoClose(now: Date): Promise<{ closed: number; warned:
   for (const t of due) {
     try {
       // the list above can be stale by the time we get here, a client reply moves the ticket on
-      const fresh = await prisma.ticket.findFirst({ where: { id: t.id, status: "answered", answeredAt: { lte: closeCutoff } } });
+      const fresh = await prisma.ticket.findFirst({ where: { id: t.id, ...closeWhere } });
       if (!fresh) continue;
       await saveTicket(fresh, statusChange(fresh, "closed", now), { now, ctx });
       if (fresh.conversationId) {
@@ -56,6 +63,9 @@ export async function runAutoClose(now: Date): Promise<{ closed: number; warned:
       try {
         const fresh = await prisma.ticket.findFirst({ where: { id: t.id, status: "answered", closeWarnedAt: null } });
         if (!fresh) continue;
+        // stamp first so a ticket that just moved on gets no email
+        const stamped = await prisma.ticket.updateMany({ where: { id: t.id, status: "answered", closeWarnedAt: null }, data: { closeWarnedAt: now } });
+        if (!stamped.count) continue;
         const contact = t.conversation?.customerContact ?? "";
         const customerEmail = t.conversation?.customer?.email ?? "";
         const to = looksLikeEmail(customerEmail) ? customerEmail : looksLikeEmail(contact) ? contact : "";
@@ -63,7 +73,6 @@ export async function runAutoClose(now: Date): Promise<{ closed: number; warned:
           await queueEmail({ to, ...buildEmail("close_warning", t, { companyName: name, days }), kind: "close_warning", ticketId: t.id });
           warned++;
         }
-        await prisma.ticket.update({ where: { id: t.id }, data: { closeWarnedAt: now } });
       } catch (error) {
         logger.error(`auto-close couldn't warn ticket ${t.id}`, error);
       }

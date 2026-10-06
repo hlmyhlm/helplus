@@ -33,6 +33,7 @@ interface Ticket {
   priority: string;
   createdAt: string;
   answeredAt: string | null;
+  closeWarnedAt: string | null;
   firstReplyAt: string | null;
   closedAt: string | null;
   slaPausedAt: string | null;
@@ -210,7 +211,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
   const fmt = (iso: string) =>
     new Date(iso).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" });
   const hasSla = ticket.firstReplyDueAt || ticket.resolveDueAt;
-  const closeDate = ticket.status === "answered" && autoCloseDays > 0 ? closesOn(ticket.answeredAt, autoCloseDays) : null;
+  const closeDate = ticket.status === "answered" && autoCloseDays > 0 ? closesOn(ticket.answeredAt, autoCloseDays, ticket.closeWarnedAt) : null;
   const closesTomorrow = closeDate ? closeDate.getTime() - Date.now() < 24 * 60 * 60 * 1000 : false;
 
   return (

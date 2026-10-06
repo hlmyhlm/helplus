@@ -10,9 +10,11 @@ export function slaLabel(state: SlaState): { text: string; tone: string } | null
   return LABELS[state] ?? null;
 }
 
-export function closesOn(answeredAt: string | null, days: number): Date | null {
+export function closesOn(answeredAt: string | null, days: number, closeWarnedAt?: string | null): Date | null {
   if (!answeredAt || days < 1) return null;
-  return new Date(new Date(answeredAt).getTime() + days * 86_400_000);
+  const byDays = new Date(answeredAt).getTime() + days * 86_400_000;
+  const byWarning = closeWarnedAt ? new Date(closeWarnedAt).getTime() + 86_400_000 : 0;
+  return new Date(Math.max(byDays, byWarning));
 }
 
 type Dates = Record<keyof Omit<SlaTicket, "status">, string | null>;
