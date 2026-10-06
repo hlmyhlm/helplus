@@ -140,6 +140,10 @@ export async function deleteCustomerData(
         where: { conversationId: conv.id },
         data: { content: "[REDACTED - GDPR]" },
       });
+      await prisma.ticket.updateMany({
+        where: { conversationId: conv.id },
+        data: { title: "[REDACTED - GDPR]", description: "[REDACTED - GDPR]" },
+      });
       deletedRecords++;
     }
 
