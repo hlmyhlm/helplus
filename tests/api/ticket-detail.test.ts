@@ -32,6 +32,8 @@ beforeEach(() => {
   db.sLARule.findMany.mockResolvedValue([]);
   db.businessHours.findUnique.mockResolvedValue(null);
   db.holiday.findMany.mockResolvedValue([]);
+  (db as unknown as { $transaction: ReturnType<typeof vi.fn> }).$transaction.mockReset();
+  (db as unknown as { $transaction: ReturnType<typeof vi.fn> }).$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => fn(db));
 });
 
 describe("PATCH /api/tickets/:id", () => {
@@ -70,6 +72,8 @@ describe("PATCH /api/tickets/:id", () => {
       where: { conversationId: "c1", id: { not: "t1" } },
       data: { projectId: "p2" },
     });
+    // the ticket save and the sibling move run as one unit
+    expect(db.$transaction).toHaveBeenCalledTimes(1);
   });
 
   it("refuses to move a ticket into an archived project", async () => {

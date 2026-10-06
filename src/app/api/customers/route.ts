@@ -3,24 +3,29 @@ import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { parsePagination, paginatedResponse } from "@/lib/pagination";
 import { withAuth } from "@/lib/tenant/with-auth";
+import { allowedProjectIds, customerWhere } from "@/lib/tickets/access";
 
 export const GET = withAuth(
   "customers:read",
-  async (request: NextRequest, _auth) => {
+  async (request: NextRequest, auth) => {
     try {
       const { searchParams } = new URL(request.url);
       const { page, limit, skip, take } = parsePagination(searchParams);
       const search = searchParams.get("search");
       const isBlocked = searchParams.get("isBlocked");
 
-      const where: Record<string, unknown> = {};
+      const scope = customerWhere(await allowedProjectIds(auth));
+      const where: Record<string, unknown> = { ...scope };
 
       if (search && search.trim()) {
-        where.OR = [
+        const searchOr = [
           { name: { contains: search.trim(), mode: "insensitive" } },
           { email: { contains: search.trim(), mode: "insensitive" } },
           { phone: { contains: search.trim(), mode: "insensitive" } },
         ];
+        // two ORs can't share a where, combine them with AND
+        where.AND = [{ OR: searchOr }, scope];
+        delete where.OR;
       }
 
       if (isBlocked === "true") {

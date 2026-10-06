@@ -2,14 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { withAuth } from "@/lib/tenant/with-auth";
+import { allowedProjectIds, customerWhere } from "@/lib/tickets/access";
 
 export const GET = withAuth(
   "customers:read",
-  async (_request: NextRequest, _auth, { params }: { params: Promise<{ id: string }> }) => {
+  async (_request: NextRequest, auth, { params }: { params: Promise<{ id: string }> }) => {
     try {
       const { id } = await params;
 
-      const customer = await prisma.customer.findUnique({ where: { id } });
+      const customer = await prisma.customer.findFirst({ where: { id, ...customerWhere(await allowedProjectIds(auth)) } });
       if (!customer) {
         return NextResponse.json(
           { error: "Customer not found" },
@@ -35,7 +36,7 @@ export const GET = withAuth(
 
 export const POST = withAuth(
   "customers:update",
-  async (request: NextRequest, _auth, { params }: { params: Promise<{ id: string }> }) => {
+  async (request: NextRequest, auth, { params }: { params: Promise<{ id: string }> }) => {
     try {
       const { id } = await params;
       const body = await request.json();
@@ -48,7 +49,7 @@ export const POST = withAuth(
         );
       }
 
-      const customer = await prisma.customer.findUnique({ where: { id } });
+      const customer = await prisma.customer.findFirst({ where: { id, ...customerWhere(await allowedProjectIds(auth)) } });
       if (!customer) {
         return NextResponse.json(
           { error: "Customer not found" },

@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { parsePagination, paginatedResponse } from "@/lib/pagination";
 import { withAuth } from "@/lib/tenant/with-auth";
-import { allowedProjectIds, conversationWhere } from "@/lib/tickets/access";
+import { allowedProjectIds, conversationWhere, customerWhere } from "@/lib/tickets/access";
 
 export const GET = withAuth(
   "customers:read",
@@ -13,9 +13,10 @@ export const GET = withAuth(
       const { searchParams } = new URL(request.url);
       const { page, limit, skip, take } = parsePagination(searchParams);
       const channel = searchParams.get("channel");
+      const allowed = await allowedProjectIds(auth);
 
-      const customer = await prisma.customer.findUnique({
-        where: { id },
+      const customer = await prisma.customer.findFirst({
+        where: { id, ...customerWhere(allowed) },
         select: { id: true, email: true, phone: true, whatsapp: true },
       });
 
@@ -43,7 +44,7 @@ export const GET = withAuth(
 
       const where: Record<string, unknown> = {
         OR: contactFilters,
-        ...conversationWhere(await allowedProjectIds(auth)),
+        ...conversationWhere(allowed),
       };
 
       if (channel && channel !== "all") {

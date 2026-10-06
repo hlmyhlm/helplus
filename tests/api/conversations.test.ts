@@ -1,9 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { prisma } from "@/lib/prisma";
+import { requireAuth } from "@/lib/route-auth";
 import { createRequest, parseJsonResponse } from "../helpers/request";
 import { fixtures } from "../helpers/fixtures";
 
 const mockPrisma = prisma as unknown as Record<string, Record<string, ReturnType<typeof vi.fn>>>;
+const asRole = (role: string) =>
+  vi.mocked(requireAuth).mockResolvedValue({
+    userId: "u1",
+    role,
+    username: "u",
+    name: "U",
+    authMethod: "cookie",
+    companyId: "test-company",
+  } as never);
 
 describe("GET /api/conversations", () => {
   beforeEach(() => {
@@ -147,6 +157,39 @@ describe("POST /api/conversations", () => {
 
     const response = await POST(request);
     expect(response.status).toBe(400);
+  });
+
+  it("refuses staff limited to specific projects", async () => {
+    asRole("staff");
+    mockPrisma.conversation.create.mockClear();
+    mockPrisma.projectAccess.findMany.mockResolvedValue([{ projectId: "p1" }]);
+
+    const { POST } = await import("@/app/api/conversations/route");
+    const request = createRequest("/api/conversations", {
+      method: "POST",
+      body: { channel: "whatsapp", customerName: "John Doe", customerContact: "+1555000111" },
+    });
+    const response = await POST(request);
+    expect(response.status).toBe(403);
+    expect(mockPrisma.conversation.create).not.toHaveBeenCalled();
+  });
+
+  it("still lets an admin create a conversation", async () => {
+    asRole("admin");
+    mockPrisma.conversation.create.mockResolvedValue({
+      ...fixtures.conversation,
+      messages: [],
+      _count: { messages: 0 },
+      tags: [],
+    });
+
+    const { POST } = await import("@/app/api/conversations/route");
+    const request = createRequest("/api/conversations", {
+      method: "POST",
+      body: { channel: "whatsapp", customerName: "John Doe", customerContact: "+1555000111" },
+    });
+    const response = await POST(request);
+    expect(response.status).toBe(201);
   });
 
   it("should default customerName to 'Unknown'", async () => {

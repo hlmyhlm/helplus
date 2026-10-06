@@ -70,7 +70,7 @@ describe("staff limited to p1", () => {
   });
 
   it("only lists a customer's conversations in p1", async () => {
-    db.customer.findUnique.mockResolvedValue({ id: "cu1", email: "a@b.c", phone: null, whatsapp: null });
+    db.customer.findFirst.mockResolvedValue({ id: "cu1", email: "a@b.c", phone: null, whatsapp: null });
     const { GET } = await import("@/app/api/customers/[id]/conversations/route");
     await GET(createRequest("/api/customers/cu1/conversations"), { params: Promise.resolve({ id: "cu1" }) });
     expect(db.conversation.findMany.mock.calls[0][0].where).toMatchObject(scoped);
