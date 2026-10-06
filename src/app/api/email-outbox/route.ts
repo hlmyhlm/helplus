@@ -10,7 +10,8 @@ export const GET = withAuth("emails:manage", async (request: NextRequest) => {
   const { page, limit, skip, take } = parsePagination(params);
   const status = params.get("status") ?? "all";
   const where = STATUSES.has(status) ? { status } : {};
-  const [rows, total] = await Promise.all([
+  const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+  const [rows, total, stalePending] = await Promise.all([
     prisma.emailOutbox.findMany({
       where,
       orderBy: { createdAt: "desc" },
@@ -30,6 +31,8 @@ export const GET = withAuth("emails:manage", async (request: NextRequest) => {
       },
     }),
     prisma.emailOutbox.count({ where }),
+    // counted across all rows, not just the current filter, so the hint shows on any view
+    prisma.emailOutbox.count({ where: { status: "pending", nextAttemptAt: { lt: tenMinutesAgo } } }),
   ]);
-  return NextResponse.json(paginatedResponse(rows, total, page, limit));
+  return NextResponse.json({ ...paginatedResponse(rows, total, page, limit), stalePending });
 });

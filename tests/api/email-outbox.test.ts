@@ -54,6 +54,19 @@ describe("GET /api/email-outbox", () => {
     expect(db.emailOutbox.findMany.mock.calls[0][0].where).toEqual({});
     expect(body.data).toEqual([]);
   });
+
+  it("counts stalePending across all rows, regardless of the current filter", async () => {
+    db.emailOutbox.findMany.mockResolvedValue([]);
+    db.emailOutbox.count.mockResolvedValueOnce(5).mockResolvedValueOnce(2);
+    const { GET } = await import("@/app/api/email-outbox/route");
+    const body = await parseJsonResponse(
+      await GET(createRequest("/api/email-outbox", { searchParams: { status: "failed" } }), {} as never)
+    );
+    expect(body.stalePending).toBe(2);
+    expect(db.emailOutbox.count).toHaveBeenNthCalledWith(2, {
+      where: { status: "pending", nextAttemptAt: { lt: expect.any(Date) } },
+    });
+  });
 });
 
 describe("POST /api/email-outbox/:id/retry", () => {

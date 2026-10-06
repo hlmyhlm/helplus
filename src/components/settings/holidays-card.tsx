@@ -16,6 +16,7 @@ export function HolidaysCard() {
   const [loadError, setLoadError] = useState("");
   const [formError, setFormError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [removingId, setRemovingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoadError("");
@@ -58,6 +59,7 @@ export function HolidaysCard() {
 
   const remove = async (id: string) => {
     setFormError("");
+    setRemovingId(id);
     try {
       const res = await fetch(`/api/holidays/${id}`, { method: "DELETE" });
       if (!res.ok) {
@@ -67,6 +69,8 @@ export function HolidaysCard() {
       await load();
     } catch {
       setFormError("Couldn't remove holiday");
+    } finally {
+      setRemovingId(null);
     }
   };
 
@@ -90,8 +94,9 @@ export function HolidaysCard() {
             </span>
             <button
               onClick={() => remove(h.id)}
+              disabled={removingId === h.id}
               aria-label="Remove holiday"
-              className="p-1.5 hover:bg-helplus-primary-50 rounded-lg transition-colors"
+              className="p-1.5 hover:bg-helplus-primary-50 rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-60"
             >
               <Trash2 className="h-3.5 w-3.5 text-helplus-text-light" />
             </button>

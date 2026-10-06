@@ -51,7 +51,7 @@ export default function ClosingPage() {
 
   return (
     <>
-      <Header title="Closing tickets" description="When answered tickets close themselves" />
+      <Header title="Closing tickets" />
       <div className="flex-1 overflow-y-auto p-4 md:p-6">
         <div className="max-w-xl bg-helplus-surface border border-helplus-border rounded-xl p-5 space-y-4">
           {loadError && <p className="text-sm text-helplus-danger">{loadError}</p>}

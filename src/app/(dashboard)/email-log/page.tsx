@@ -48,6 +48,7 @@ export default function EmailLogPage() {
   const [loadError, setLoadError] = useState("");
   const [retryError, setRetryError] = useState("");
   const [retryingId, setRetryingId] = useState<string | null>(null);
+  const [stalePending, setStalePending] = useState(0);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -58,6 +59,7 @@ export default function EmailLogPage() {
         const json = await res.json();
         setRows(unwrapList<EmailRow>(json));
         setPages(listMeta(json)?.totalPages || 1);
+        setStalePending(json.stalePending ?? 0);
       } else {
         setLoadError("Couldn't load the email log.");
       }
@@ -89,10 +91,6 @@ export default function EmailLogPage() {
     }
   };
 
-  const stalePending = rows.some(
-    (r) => r.status === "pending" && Date.now() - new Date(r.createdAt).getTime() > 10 * 60 * 1000
-  );
-
   return (
     <>
       <Header title="Email log" description="Alerts sent by the worker. Failed emails retry 5 times." />
@@ -117,7 +115,7 @@ export default function EmailLogPage() {
           ))}
         </div>
 
-        {stalePending && (
+        {stalePending > 0 && (
           <p className="text-sm text-helplus-warning">
             Worker not running? Some pending emails are over 10 minutes old.
           </p>

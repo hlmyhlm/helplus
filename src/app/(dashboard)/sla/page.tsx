@@ -98,6 +98,26 @@ function toMins(amount: number, unit: "minutes" | "hours") {
   return unit === "hours" ? amount * 60 : amount;
 }
 
+function ActiveToggle({ active, onClick, className }: { active: boolean; onClick: () => void; className?: string }) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "relative inline-flex h-5 w-9 items-center rounded-full transition-colors",
+        active ? "bg-helplus-success" : "bg-helplus-border",
+        className
+      )}
+    >
+      <span
+        className={cn(
+          "inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform",
+          active ? "translate-x-4.5" : "translate-x-1"
+        )}
+      />
+    </button>
+  );
+}
+
 export default function SLAPage() {
   const [rules, setRules] = useState<SLARule[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -109,6 +129,8 @@ export default function SLAPage() {
   const [saving, setSaving] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [toggleError, setToggleError] = useState("");
 
   const load = useCallback(async () => {
     setLoadError("");
@@ -178,20 +200,27 @@ export default function SLAPage() {
   };
 
   const toggleActive = async (rule: SLARule) => {
+    setToggleError("");
     try {
       const res = await fetch(`/api/sla/${rule.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isActive: !rule.isActive }),
       });
-      if (res.ok) await load();
+      if (!res.ok) {
+        setToggleError((await res.json().catch(() => ({}))).error ?? "Couldn't update");
+      }
+      // reload either way, so the toggle reflects what's actually saved
+      await load();
     } catch {
-      // next load will show the real state
+      setToggleError("Couldn't update");
+      await load();
     }
   };
 
   const remove = async (id: string) => {
     setDeleteError("");
+    setDeleting(true);
     try {
       const res = await fetch(`/api/sla/${id}`, { method: "DELETE" });
       if (!res.ok) {
@@ -202,6 +231,8 @@ export default function SLAPage() {
       await load();
     } catch {
       setDeleteError("Couldn't delete");
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -231,6 +262,7 @@ export default function SLAPage() {
 
       <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4">
         {loadError && <p className="text-sm text-helplus-danger">{loadError}</p>}
+        {toggleError && <p className="text-sm text-helplus-danger">{toggleError}</p>}
 
         {!rules.length && !loadError && (
           <div className="rounded-md border border-helplus-border bg-helplus-surface p-6 text-center text-sm text-helplus-text-light">
@@ -269,27 +301,18 @@ export default function SLAPage() {
                       <td className="px-4 py-3 text-helplus-text">{formatMins(rule.firstResponseMins)}</td>
                       <td className="px-4 py-3 text-helplus-text">{formatMins(rule.resolutionMins)}</td>
                       <td className="px-4 py-3">
-                        <button
-                          onClick={() => toggleActive(rule)}
-                          className={cn(
-                            "relative inline-flex h-5 w-9 items-center rounded-full transition-colors",
-                            rule.isActive ? "bg-helplus-success" : "bg-helplus-border"
-                          )}
-                        >
-                          <span
-                            className={cn(
-                              "inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform",
-                              rule.isActive ? "translate-x-4.5" : "translate-x-1"
-                            )}
-                          />
-                        </button>
+                        <ActiveToggle active={rule.isActive} onClick={() => toggleActive(rule)} />
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1">
                           <button onClick={() => openEdit(rule)} className="p-1.5 hover:bg-helplus-primary-50 rounded-lg">
                             <Pencil className="h-3.5 w-3.5 text-helplus-text-light" />
                           </button>
-                          <button onClick={() => setDeleteId(rule.id)} className="p-1.5 hover:bg-helplus-primary-50 rounded-lg">
+                          <button
+                            onClick={() => setDeleteId(rule.id)}
+                            disabled={deleting}
+                            className="p-1.5 hover:bg-helplus-primary-50 rounded-lg disabled:opacity-60"
+                          >
                             <Trash2 className="h-3.5 w-3.5 text-helplus-text-light" />
                           </button>
                         </div>
@@ -306,20 +329,7 @@ export default function SLAPage() {
                 <div key={rule.id} className="rounded-md border border-helplus-border bg-helplus-surface p-4 space-y-2">
                   <div className="flex items-start justify-between gap-2">
                     <h3 className="text-sm font-semibold text-helplus-text">{rule.name}</h3>
-                    <button
-                      onClick={() => toggleActive(rule)}
-                      className={cn(
-                        "relative inline-flex h-5 w-9 items-center rounded-full transition-colors shrink-0",
-                        rule.isActive ? "bg-helplus-success" : "bg-helplus-border"
-                      )}
-                    >
-                      <span
-                        className={cn(
-                          "inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform",
-                          rule.isActive ? "translate-x-4.5" : "translate-x-1"
-                        )}
-                      />
-                    </button>
+                    <ActiveToggle active={rule.isActive} onClick={() => toggleActive(rule)} className="shrink-0" />
                   </div>
                   <div className="flex flex-wrap gap-1">
                     {chips(rule).map((c, i) => (
@@ -334,7 +344,13 @@ export default function SLAPage() {
                   </div>
                   <div className="flex items-center gap-3 pt-1">
                     <button onClick={() => openEdit(rule)} className="text-xs text-helplus-link">Edit</button>
-                    <button onClick={() => setDeleteId(rule.id)} className="text-xs text-helplus-danger">Delete</button>
+                    <button
+                      onClick={() => setDeleteId(rule.id)}
+                      disabled={deleting}
+                      className="text-xs text-helplus-danger disabled:opacity-60"
+                    >
+                      Delete
+                    </button>
                   </div>
                 </div>
               ))}
@@ -485,7 +501,7 @@ export default function SLAPage() {
                 disabled={saving || !form.name.trim()}
                 className="px-4 py-2 text-sm font-medium rounded-lg bg-helplus-primary text-white disabled:opacity-60"
               >
-                {saving ? "Saving…" : editing ? "Save" : "Add rule"}
+                {saving ? "Saving…" : "Save rule"}
               </button>
             </div>
           </div>
@@ -500,14 +516,19 @@ export default function SLAPage() {
             <p className="text-sm text-helplus-text-light mb-4">This can&apos;t be undone.</p>
             {deleteError && <p className="text-sm text-helplus-danger mb-2">{deleteError}</p>}
             <div className="flex items-center justify-end gap-2">
-              <button onClick={() => setDeleteId(null)} className="px-4 py-2 text-sm font-medium text-helplus-text">
+              <button
+                onClick={() => setDeleteId(null)}
+                disabled={deleting}
+                className="px-4 py-2 text-sm font-medium text-helplus-text disabled:opacity-60"
+              >
                 Cancel
               </button>
               <button
                 onClick={() => remove(deleteId)}
-                className="px-4 py-2 text-sm font-medium bg-helplus-danger text-white rounded-lg"
+                disabled={deleting}
+                className="px-4 py-2 text-sm font-medium bg-helplus-danger text-white rounded-lg disabled:opacity-60"
               >
-                Delete
+                {deleting ? "Deleting…" : "Delete"}
               </button>
             </div>
           </div>
