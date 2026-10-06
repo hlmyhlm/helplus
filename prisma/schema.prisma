@@ -46,6 +46,7 @@ model Company {
   ticketCounters    TicketCounter[]
   holidays          Holiday[]
   emailOutbox       EmailOutbox[]
+  attachments       Attachment[]
 }
 
 model Project {
@@ -131,6 +132,7 @@ model Settings {
   telegramWebhookSecret String   @default("")
   projectLabel          String   @default("Clients")
   autoCloseDays         Int      @default(3)
+  originalRetentionDays Int      @default(90)
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 }
@@ -152,6 +154,7 @@ model Admin {
 
   assignedTickets Ticket[]
   projectAccess   ProjectAccess[]
+  attachments     Attachment[]    @relation("AttachmentCheckedBy")
 
   @@index([companyId])
 }
@@ -273,6 +276,7 @@ model Message {
   mediaUrl       String?
   toolCalls      Json?
   createdAt      DateTime     @default(now())
+  attachments    Attachment[]
 
   @@index([conversationId])
   @@index([conversationId, createdAt])
@@ -320,6 +324,7 @@ model Ticket {
   slaBreachedAt    DateTime?
   closeWarnedAt    DateTime?
   emails           EmailOutbox[]
+  attachments      Attachment[]
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
 
@@ -705,4 +710,35 @@ model Flow {
   updatedAt    DateTime @updatedAt
 
   @@index([companyId])
+}
+
+model Attachment {
+  id                String    @id @default(uuid())
+  companyId         String    @default("")
+  company           Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  ticketId          String
+  ticket            Ticket    @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  messageId         String?
+  message           Message?  @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  fileName          String    @default("screenshot.png")
+  status            String    @default("pending") // pending, clean, masked, needs_check
+  originalKey       String?
+  maskedKey         String?
+  width             Int       @default(0)
+  height            Int       @default(0)
+  icCount           Int       @default(0)
+  ocrConfidence     Int?
+  autoBoxes         Json      @default("[]")
+  manualBoxes       Json      @default("[]")
+  checkNote         String    @default("")
+  checkedById       String?
+  checkedBy         Admin?    @relation("AttachmentCheckedBy", fields: [checkedById], references: [id], onDelete: SetNull)
+  checkedAt         DateTime?
+  originalDeletedAt DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([companyId, status])
+  @@index([ticketId])
+  @@index([messageId])
 }

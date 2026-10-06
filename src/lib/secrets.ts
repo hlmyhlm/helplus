@@ -1,6 +1,7 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "crypto";
 
 const PREFIX = "enc:v1:";
+const FILE_MAGIC = Buffer.from("HPE1");
 
 export class SecretKeyError extends Error {
   constructor() {
@@ -40,4 +41,18 @@ export function decryptSecret(value: string): string {
   const decipher = createDecipheriv("aes-256-gcm", key(), raw.subarray(0, 12));
   decipher.setAuthTag(raw.subarray(12, 28));
   return Buffer.concat([decipher.update(raw.subarray(28)), decipher.final()]).toString("utf8");
+}
+
+export function encryptBuffer(data: Buffer): Buffer {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", key(), iv);
+  const body = Buffer.concat([cipher.update(data), cipher.final()]);
+  return Buffer.concat([FILE_MAGIC, iv, cipher.getAuthTag(), body]);
+}
+
+export function decryptBuffer(data: Buffer): Buffer {
+  if (data.length < 32 || !data.subarray(0, 4).equals(FILE_MAGIC)) throw new Error("not an encrypted file");
+  const decipher = createDecipheriv("aes-256-gcm", key(), data.subarray(4, 16));
+  decipher.setAuthTag(data.subarray(16, 32));
+  return Buffer.concat([decipher.update(data.subarray(32)), decipher.final()]);
 }

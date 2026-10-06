@@ -107,4 +107,9 @@ describe("RBAC System", () => {
     expect(hasPermission("supervisor", "emails:manage")).toBe(false);
     expect(hasPermission("admin", "emails:manage")).toBe(true);
   });
+
+  it("viewers never see screenshot originals", () => {
+    expect(hasPermission("viewer", "attachments:original")).toBe(false);
+    expect(hasPermission("staff", "attachments:original")).toBe(true);
+  });
 });

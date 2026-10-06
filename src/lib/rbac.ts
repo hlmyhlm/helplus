@@ -105,6 +105,9 @@ export const PERMISSIONS = {
   // Email log
   "emails:manage": ["admin", "owner"],
 
+  // Screenshot originals and IC checks
+  "attachments:original": ["staff", "supervisor", "admin", "owner"],
+
   // Company (owner only)
   "company:manage": ["owner"],
 } as const;

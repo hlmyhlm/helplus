@@ -193,6 +193,7 @@ export const updateSettingsSchema = z.object({
   telegramWebhookSecret: z.string().max(256).regex(/^([A-Za-z0-9_-]*|\*\*\*)$/).optional(),
   projectLabel: z.enum(["Clients", "Projects"]).optional(),
   autoCloseDays: z.number().int().min(0).max(60).optional(),
+  originalRetentionDays: z.number().int().min(1).max(3650).optional(),
 }).strict();
 
 // Canned Responses

@@ -21,6 +21,7 @@ export const LINKS: Record<string, Record<string, string>> = {
   Customer: { projectId: "Project" },
   SLARule: { projectId: "Project" },
   EmailOutbox: { ticketId: "Ticket" },
+  Attachment: { ticketId: "Ticket", messageId: "Message", checkedById: "Admin" },
 };
 
 // relation fields between company tables (not `company`), model -> field -> target model.
@@ -37,7 +38,7 @@ export const RELATIONS: Record<string, Record<string, string>> = {
     tags: "ConversationTag",
     notes: "InternalNote",
   },
-  Message: { conversation: "Conversation" },
+  Message: { conversation: "Conversation", attachments: "Attachment" },
   Ticket: {
     conversation: "Conversation",
     department: "Department",
@@ -46,6 +47,7 @@ export const RELATIONS: Record<string, Record<string, string>> = {
     assignee: "Admin",
     slaRule: "SLARule",
     emails: "EmailOutbox",
+    attachments: "Attachment",
   },
   Tag: { conversations: "ConversationTag" },
   ConversationTag: { conversation: "Conversation", tag: "Tag" },
@@ -54,11 +56,12 @@ export const RELATIONS: Record<string, Record<string, string>> = {
   Customer: { notes: "CustomerNote", conversations: "Conversation", project: "Project" },
   CustomerNote: { customer: "Customer" },
   InternalNote: { conversation: "Conversation" },
-  Admin: { assignedTickets: "Ticket", projectAccess: "ProjectAccess" },
+  Admin: { assignedTickets: "Ticket", projectAccess: "ProjectAccess", attachments: "Attachment" },
   Project: { tickets: "Ticket", customers: "Customer", access: "ProjectAccess", slaRules: "SLARule" },
   ProjectAccess: { project: "Project", admin: "Admin" },
   SLARule: { project: "Project", tickets: "Ticket" },
   EmailOutbox: { ticket: "Ticket" },
+  Attachment: { ticket: "Ticket", message: "Message", checkedBy: "Admin" },
 };
 
 // the only nested creates allowed. each nested row gets the current company stamped on it.
