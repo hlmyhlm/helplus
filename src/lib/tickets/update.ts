@@ -43,11 +43,9 @@ export function slaChanges(before: Ticket, data: Record<string, unknown>, ctx: S
     Object.assign(out, slaTimes(before.createdAt, pausedMins, pickRule(ctx.rules, next), ctx.cal));
   } else if (pausedChanged) {
     out.slaPausedMins = pausedMins;
-    if (before.slaRuleId) {
-      const delta = pausedMins - before.slaPausedMins;
-      if (before.resolveWarnAt) out.resolveWarnAt = addBusinessMinutes(before.resolveWarnAt, delta, ctx.cal);
-      if (before.resolveDueAt) out.resolveDueAt = addBusinessMinutes(before.resolveDueAt, delta, ctx.cal);
-    }
+    const delta = pausedMins - before.slaPausedMins;
+    if (before.resolveWarnAt) out.resolveWarnAt = addBusinessMinutes(before.resolveWarnAt, delta, ctx.cal);
+    if (before.resolveDueAt) out.resolveDueAt = addBusinessMinutes(before.resolveDueAt, delta, ctx.cal);
   }
 
   if (inputsChanged || pausedChanged) {

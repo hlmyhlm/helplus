@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { slaChanges, type SlaContext } from "@/lib/tickets/update";
-import { ALWAYS_OPEN } from "@/lib/sla/calendar";
+import { ALWAYS_OPEN, businessMinutesBetween, type BusinessCalendar } from "@/lib/sla/calendar";
 import { slaTimes } from "@/lib/sla/clock";
 
 const created = new Date("2026-10-05T00:00:00Z");
@@ -98,5 +98,34 @@ describe("slaChanges", () => {
     const answered = { ...(ticket as object), status: "answered", slaPausedAt: min(200) } as never;
     const out = slaChanges(answered, { status: "closed", closedAt: min(500) }, ctx, min(500));
     expect(out).toMatchObject({ slaPausedAt: null, slaPausedMins: 300 });
+  });
+
+  it("still shifts due times after its rule was deleted", () => {
+    const orphan = { ...(ticket as object), status: "answered", slaPausedAt: min(200), slaRuleId: null } as never;
+    const out = slaChanges(orphan, { status: "working" }, ctx, min(500));
+    expect(out).toMatchObject({ slaPausedMins: 300, resolveDueAt: min(1300), resolveWarnAt: min(1100) });
+  });
+
+  it("shifts by business minutes on a business calendar", () => {
+    const nineToSix: [number, number] = [540, 1080];
+    const cal: BusinessCalendar = {
+      enabled: true,
+      timezone: "Asia/Kuala_Lumpur",
+      week: [null, nineToSix, nineToSix, nineToSix, nineToSix, nineToSix, null],
+      holidays: new Set(),
+    };
+    const pausedAt = new Date("2026-10-05T03:00:00Z");
+    const now = new Date("2026-10-07T05:30:00Z");
+    const answered = {
+      ...(ticket as object),
+      status: "answered",
+      slaPausedAt: pausedAt,
+      ...slaTimes(created, 0, rule, cal),
+    } as never;
+    const out = slaChanges(answered, { status: "working" }, { rules: [rule], cal }, now);
+    const paused = businessMinutesBetween(pausedAt, now, cal);
+    expect(paused).toBeGreaterThan(0);
+    expect(out.slaPausedMins).toBe(paused);
+    expect(out.resolveDueAt).toEqual(slaTimes(created, paused, rule, cal).resolveDueAt);
   });
 });
