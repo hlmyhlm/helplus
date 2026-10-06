@@ -92,6 +92,9 @@ function createMockPrismaClient() {
     "internalNote",
     "campaign",
     "flow",
+    "project",
+    "projectAccess",
+    "ticketCounter",
   ];
 
   const client: Record<string, unknown> = {

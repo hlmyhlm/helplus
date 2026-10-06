@@ -7,6 +7,8 @@ const A = "it-links-a";
 const B = "it-links-b";
 let convA: string;
 let tagA: string;
+let projA: string;
+let projB: string;
 
 beforeAll(async () => {
   await systemPrisma.company.deleteMany({ where: { id: { in: [A, B] } } });
@@ -18,6 +20,8 @@ beforeAll(async () => {
   });
   convA = (await runWithCompany(A, () => prisma.conversation.create({ data: { channel: "web", customerName: "x", customerContact: "x" } }))).id;
   tagA = (await runWithCompany(A, () => prisma.tag.create({ data: { name: "vip" } }))).id;
+  projA = (await runWithCompany(A, () => prisma.project.create({ data: { name: "General", isDefault: true } }))).id;
+  projB = (await runWithCompany(B, () => prisma.project.create({ data: { name: "General", isDefault: true } }))).id;
 });
 
 afterAll(async () => {
@@ -28,12 +32,12 @@ afterAll(async () => {
 describe("links across companies", () => {
   it("refuses to create a row linked to another company's row", async () => {
     await expect(
-      runWithCompany(B, () => prisma.ticket.create({ data: { title: "t", description: "d", conversationId: convA } }))
+      runWithCompany(B, () => prisma.ticket.create({ data: { number: 1, projectId: projB, title: "t", description: "d", conversationId: convA } }))
     ).rejects.toThrow(CrossCompanyLinkError);
   });
 
   it("refuses to re-point an own row at another company's row", async () => {
-    const t = await runWithCompany(B, () => prisma.ticket.create({ data: { title: "t", description: "d" } }));
+    const t = await runWithCompany(B, () => prisma.ticket.create({ data: { number: 2, projectId: projB, title: "t", description: "d" } }));
     await expect(
       runWithCompany(B, () => prisma.ticket.update({ where: { id: t.id }, data: { conversationId: convA } }))
     ).rejects.toThrow(CrossCompanyLinkError);
@@ -50,14 +54,14 @@ describe("links across companies", () => {
 
   it("allows links inside the same company and empty links", async () => {
     const t = await runWithCompany(A, () =>
-      prisma.ticket.create({ data: { title: "t", description: "d", conversationId: convA, departmentId: null } })
+      prisma.ticket.create({ data: { number: 1, projectId: projA, title: "t", description: "d", conversationId: convA, departmentId: null } })
     );
     expect(t.conversationId).toBe(convA);
   });
 
   it("refuses a link to an id that doesn't exist", async () => {
     await expect(
-      runWithCompany(A, () => prisma.ticket.create({ data: { title: "t", description: "d", conversationId: "nope" } }))
+      runWithCompany(A, () => prisma.ticket.create({ data: { number: 2, projectId: projA, title: "t", description: "d", conversationId: "nope" } }))
     ).rejects.toThrow(CrossCompanyLinkError);
   });
 });

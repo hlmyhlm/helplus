@@ -5,11 +5,19 @@ export const LINKS: Record<string, Record<string, string>> = {
   TeamMember: { departmentId: "Department" },
   Conversation: { customerId: "Customer" },
   Message: { conversationId: "Conversation" },
-  Ticket: { conversationId: "Conversation", departmentId: "Department", assignedToId: "TeamMember" },
+  Ticket: {
+    conversationId: "Conversation",
+    departmentId: "Department",
+    assignedToId: "TeamMember",
+    projectId: "Project",
+    assigneeId: "Admin",
+  },
   ConversationTag: { conversationId: "Conversation", tagId: "Tag" },
   WebhookDelivery: { webhookId: "Webhook" },
   CustomerNote: { customerId: "Customer" },
   InternalNote: { conversationId: "Conversation" },
+  ProjectAccess: { projectId: "Project", adminId: "Admin" },
+  Customer: { projectId: "Project" },
 };
 
 // relation fields between company tables (not `company`), model -> field -> target model.
@@ -27,14 +35,23 @@ export const RELATIONS: Record<string, Record<string, string>> = {
     notes: "InternalNote",
   },
   Message: { conversation: "Conversation" },
-  Ticket: { conversation: "Conversation", department: "Department", assignedTo: "TeamMember" },
+  Ticket: {
+    conversation: "Conversation",
+    department: "Department",
+    assignedTo: "TeamMember",
+    project: "Project",
+    assignee: "Admin",
+  },
   Tag: { conversations: "ConversationTag" },
   ConversationTag: { conversation: "Conversation", tag: "Tag" },
   Webhook: { deliveries: "WebhookDelivery" },
   WebhookDelivery: { webhook: "Webhook" },
-  Customer: { notes: "CustomerNote", conversations: "Conversation" },
+  Customer: { notes: "CustomerNote", conversations: "Conversation", project: "Project" },
   CustomerNote: { customer: "Customer" },
   InternalNote: { conversation: "Conversation" },
+  Admin: { assignedTickets: "Ticket", projectAccess: "ProjectAccess" },
+  Project: { tickets: "Ticket", customers: "Customer", access: "ProjectAccess" },
+  ProjectAccess: { project: "Project", admin: "Admin" },
 };
 
 // the only nested creates allowed. each nested row gets the current company stamped on it.

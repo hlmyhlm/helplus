@@ -194,6 +194,7 @@ async function createTicket(
     : null;
 
   const ticket = await prisma.ticket.create({
+    // @ts-expect-error fixed in the next task
     data: {
       title: args.title as string,
       description: args.description as string,

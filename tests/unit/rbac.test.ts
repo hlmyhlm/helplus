@@ -88,4 +88,10 @@ describe("RBAC System", () => {
   it("client has no dashboard permissions", () => {
     expect(getPermissionsForRole("client")).toEqual([]);
   });
+
+  it("only admins and owners manage projects", () => {
+    expect(hasPermission("staff", "projects:read")).toBe(true);
+    expect(hasPermission("staff", "projects:manage")).toBe(false);
+    expect(hasPermission("admin", "projects:manage")).toBe(true);
+  });
 });

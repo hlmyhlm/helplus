@@ -96,6 +96,10 @@ export const PERMISSIONS = {
   // Export
   "export:read": ["supervisor", "admin", "owner"],
 
+  // Projects (clients)
+  "projects:read": ["viewer", "staff", "supervisor", "admin", "owner"],
+  "projects:manage": ["admin", "owner"],
+
   // Company (owner only)
   "company:manage": ["owner"],
 } as const;
