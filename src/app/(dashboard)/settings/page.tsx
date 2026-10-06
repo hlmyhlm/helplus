@@ -2,6 +2,7 @@
 
 import { Header } from "@/components/layout/header";
 import { cn } from "@/lib/utils";
+import { AI_PROVIDERS, EMBED_PROVIDERS, findPreset, isLocalProvider } from "@/lib/ai/presets";
 import {
   Settings as SettingsIcon,
   Bot,
@@ -31,6 +32,11 @@ interface SettingsData {
   aiProvider: string;
   aiModel: string;
   aiApiKey: string;
+  aiBaseUrl: string;
+  embedProvider: string;
+  embedModel: string;
+  embedApiKey: string;
+  embedBaseUrl: string;
   maxTokens: number;
   temperature: number;
   elevenLabsKey: string;
@@ -50,6 +56,7 @@ interface SettingsData {
   whatsappMode: string;
   whatsappApiKey: string;
   whatsappPhone: string;
+  projectLabel: string;
 }
 
 type SectionKey =
@@ -81,8 +88,19 @@ const tabs: TabDef[] = [
 
 // Which fields belong to each section (used for partial saves)
 const sectionFields: Record<SectionKey, (keyof SettingsData)[]> = {
-  general: ["businessName", "businessDesc", "welcomeMessage", "tone", "language"],
-  ai: ["aiProvider", "aiModel", "aiApiKey", "maxTokens", "temperature"],
+  general: ["businessName", "businessDesc", "welcomeMessage", "tone", "language", "projectLabel"],
+  ai: [
+    "aiProvider",
+    "aiModel",
+    "aiBaseUrl",
+    "aiApiKey",
+    "maxTokens",
+    "temperature",
+    "embedProvider",
+    "embedModel",
+    "embedBaseUrl",
+    "embedApiKey",
+  ],
   voice: ["elevenLabsKey", "elevenLabsVoice"],
   phone: ["twilioSid", "twilioToken", "twilioPhone"],
   email: [
@@ -118,8 +136,8 @@ function ToastContainer({ toasts }: { toasts: Toast[] }) {
           className={cn(
             "flex items-center gap-2 px-4 py-3 rounded-lg shadow-lg text-sm font-medium transition-all animate-in slide-in-from-right",
             t.type === "success"
-              ? "bg-owly-success text-white"
-              : "bg-owly-danger text-white"
+              ? "bg-helplus-success text-white"
+              : "bg-helplus-danger text-white"
           )}
         >
           {t.type === "success" ? (
@@ -149,11 +167,11 @@ function FormField({
 }) {
   return (
     <div className="space-y-1.5">
-      <label className="block text-sm font-medium text-owly-text">
+      <label className="block text-sm font-medium text-helplus-text">
         {label}
       </label>
       {description && (
-        <p className="text-xs text-owly-text-light">{description}</p>
+        <p className="text-xs text-helplus-text-light">{description}</p>
       )}
       {children}
     </div>
@@ -161,7 +179,7 @@ function FormField({
 }
 
 const inputClasses =
-  "w-full px-3 py-2 text-sm border border-owly-border rounded-lg bg-owly-bg text-owly-text placeholder:text-owly-text-light/60 focus:outline-none focus:ring-2 focus:ring-owly-primary/30 focus:border-owly-primary transition-colors";
+  "w-full px-3 py-2 text-sm border border-helplus-border rounded-lg bg-helplus-bg text-helplus-text placeholder:text-helplus-text-light/60 focus:outline-none focus:ring-2 focus:ring-helplus-primary/30 focus:border-helplus-primary transition-colors";
 
 function TextInput({
   value,
@@ -277,7 +295,7 @@ function PasswordInput({
       <button
         type="button"
         onClick={() => setVisible(!visible)}
-        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-owly-text-light hover:text-owly-text rounded transition-colors"
+        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-helplus-text-light hover:text-helplus-text rounded transition-colors"
       >
         {visible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
       </button>
@@ -309,9 +327,9 @@ function SliderInput({
         min={min}
         max={max}
         step={step}
-        className="flex-1 h-2 rounded-full appearance-none bg-owly-border accent-owly-primary cursor-pointer"
+        className="flex-1 h-2 rounded-full appearance-none bg-helplus-border accent-helplus-primary cursor-pointer"
       />
-      <span className="text-sm font-medium text-owly-text w-16 text-right">
+      <span className="text-sm font-medium text-helplus-text w-16 text-right">
         {displayValue ?? value}
       </span>
     </div>
@@ -330,15 +348,15 @@ function SaveButton({
   saving: boolean;
 }) {
   return (
-    <div className="flex justify-end pt-4 border-t border-owly-border">
+    <div className="flex justify-end pt-4 border-t border-helplus-border">
       <button
         onClick={onClick}
         disabled={saving}
         className={cn(
           "flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-colors",
           saving
-            ? "bg-owly-primary/60 text-white cursor-not-allowed"
-            : "bg-owly-primary hover:bg-owly-primary-dark text-white"
+            ? "bg-helplus-primary/60 text-white cursor-not-allowed"
+            : "bg-helplus-primary hover:bg-helplus-primary-dark text-white"
         )}
       >
         {saving ? (
@@ -416,6 +434,16 @@ function GeneralSection({
           ]}
         />
       </FormField>
+      <FormField label="Call client groups" description="What your team calls the groups tickets belong to.">
+        <SelectInput
+          value={data.projectLabel}
+          onChange={(v) => update("projectLabel", v)}
+          options={[
+            { value: "Clients", label: "Clients" },
+            { value: "Projects", label: "Projects" },
+          ]}
+        />
+      </FormField>
     </div>
   );
 }
@@ -427,62 +455,34 @@ function AISection({
   data: SettingsData;
   update: (field: keyof SettingsData, value: string | number) => void;
 }) {
-  const modelOptions: Record<string, { value: string; label: string }[]> = {
-    openai: [
-      { value: "gpt-4o", label: "GPT-4o" },
-      { value: "gpt-4o-mini", label: "GPT-4o Mini" },
-      { value: "gpt-4-turbo", label: "GPT-4 Turbo" },
-    ],
-    claude: [
-      { value: "claude-sonnet-4-20250514", label: "Claude Sonnet 4" },
-      { value: "claude-3-5-sonnet-20241022", label: "Claude 3.5 Sonnet" },
-      { value: "claude-3-haiku-20240307", label: "Claude 3 Haiku" },
-    ],
-    ollama: [
-      { value: "llama3", label: "Llama 3" },
-      { value: "mistral", label: "Mistral" },
-      { value: "codellama", label: "Code Llama" },
-    ],
-  };
-
   return (
     <div className="space-y-5">
-      <FormField label="AI Provider" description="Select which AI provider to use for generating responses.">
+      <FormField label="AI provider" description="DeepSeek and local servers use the same OpenAI-style API.">
         <SelectInput
           value={data.aiProvider}
           onChange={(v) => {
             update("aiProvider", v);
-            const models = modelOptions[v];
-            if (models && models.length > 0) {
-              update("aiModel", models[0].value);
-            }
+            update("aiModel", findPreset(AI_PROVIDERS, v)?.model ?? "");
+            update("aiBaseUrl", findPreset(AI_PROVIDERS, v)?.baseUrl ?? "");
+            update("aiApiKey", "");
           }}
-          options={[
-            { value: "openai", label: "OpenAI" },
-            { value: "claude", label: "Claude (Anthropic)" },
-            { value: "ollama", label: "Ollama (Local)" },
-          ]}
+          options={AI_PROVIDERS.map(({ value, label }) => ({ value, label }))}
         />
       </FormField>
-      <FormField label="Model" description="The specific model to use for AI responses.">
-        <SelectInput
-          value={data.aiModel}
-          onChange={(v) => update("aiModel", v)}
-          options={modelOptions[data.aiProvider] || []}
-        />
+      <FormField label="Model" description="Exact model name, e.g. gpt-4o-mini, deepseek-chat, llama3.1.">
+        <TextInput value={data.aiModel} onChange={(v) => update("aiModel", v)} placeholder="Model name" />
       </FormField>
-      <FormField label="API Key" description="Your provider API key. Not required for Ollama.">
+      <FormField label="Server URL" description="Leave empty for OpenAI.">
+        <TextInput value={data.aiBaseUrl} onChange={(v) => update("aiBaseUrl", v)} placeholder="https://..." />
+      </FormField>
+      <FormField label="API key" description={isLocalProvider(data.aiProvider) ? "Usually not needed for local servers." : "Your provider API key."}>
         <PasswordInput
           value={data.aiApiKey}
           onChange={(v) => update("aiApiKey", v)}
-          placeholder={
-            data.aiProvider === "ollama"
-              ? "Not required for local models"
-              : "Enter your API key"
-          }
+          placeholder={isLocalProvider(data.aiProvider) ? "Optional" : "Enter your API key"}
         />
       </FormField>
-      <FormField label="Max Tokens" description="Maximum number of tokens per AI response.">
+      <FormField label="Max tokens" description="Longest answer the AI may write.">
         <SliderInput
           value={data.maxTokens}
           onChange={(v) => update("maxTokens", v)}
@@ -492,7 +492,7 @@ function AISection({
           displayValue={data.maxTokens.toLocaleString()}
         />
       </FormField>
-      <FormField label="Temperature" description="Controls randomness. Lower values make responses more focused, higher values more creative.">
+      <FormField label="Temperature" description="Lower is more focused, higher is more creative.">
         <SliderInput
           value={data.temperature}
           onChange={(v) => update("temperature", v)}
@@ -502,6 +502,36 @@ function AISection({
           displayValue={data.temperature.toFixed(1)}
         />
       </FormField>
+
+      <div className="pt-5 border-t border-helplus-border space-y-5">
+        <div>
+          <h4 className="text-sm font-semibold text-helplus-text">Similar-ticket search</h4>
+          <p className="text-xs text-helplus-text-light mt-1">
+            Needs an embeddings model. Not every provider offers one, so this can use a different provider.
+          </p>
+        </div>
+        <FormField label="Embeddings provider">
+          <SelectInput
+            value={data.embedProvider}
+            onChange={(v) => {
+              update("embedProvider", v);
+              update("embedModel", findPreset(EMBED_PROVIDERS, v)?.model ?? "");
+              update("embedBaseUrl", findPreset(EMBED_PROVIDERS, v)?.baseUrl ?? "");
+              update("embedApiKey", "");
+            }}
+            options={EMBED_PROVIDERS.map(({ value, label }) => ({ value, label }))}
+          />
+        </FormField>
+        <FormField label="Embeddings model">
+          <TextInput value={data.embedModel} onChange={(v) => update("embedModel", v)} placeholder="Model name" />
+        </FormField>
+        <FormField label="Server URL" description="Leave empty for OpenAI.">
+          <TextInput value={data.embedBaseUrl} onChange={(v) => update("embedBaseUrl", v)} placeholder="https://..." />
+        </FormField>
+        <FormField label="API key" description="Leave empty to reuse the key above when it's the same provider.">
+          <PasswordInput value={data.embedApiKey} onChange={(v) => update("embedApiKey", v)} placeholder="Optional" />
+        </FormField>
+      </div>
     </div>
   );
 }
@@ -515,8 +545,8 @@ function VoiceSection({
 }) {
   return (
     <div className="space-y-5">
-      <div className="p-4 rounded-lg bg-owly-primary-50/50 border border-owly-primary/20">
-        <p className="text-sm text-owly-text">
+      <div className="p-4 rounded-lg bg-helplus-primary-50/50 border border-helplus-primary/20">
+        <p className="text-sm text-helplus-text">
           Connect your ElevenLabs account to enable AI-powered voice responses for phone calls.
         </p>
       </div>
@@ -547,8 +577,8 @@ function PhoneSection({
 }) {
   return (
     <div className="space-y-5">
-      <div className="p-4 rounded-lg bg-owly-primary-50/50 border border-owly-primary/20">
-        <p className="text-sm text-owly-text">
+      <div className="p-4 rounded-lg bg-helplus-primary-50/50 border border-helplus-primary/20">
+        <p className="text-sm text-helplus-text">
           Configure Twilio to enable phone call support. You will need an active Twilio account with a phone number.
         </p>
       </div>
@@ -588,8 +618,8 @@ function EmailSection({
     <div className="space-y-6">
       {/* SMTP */}
       <div>
-        <h4 className="text-sm font-semibold text-owly-text mb-4 flex items-center gap-2">
-          <div className="w-1.5 h-1.5 rounded-full bg-owly-primary" />
+        <h4 className="text-sm font-semibold text-helplus-text mb-4 flex items-center gap-2">
+          <div className="w-1.5 h-1.5 rounded-full bg-helplus-primary" />
           Outgoing Mail (SMTP)
         </h4>
         <div className="space-y-4">
@@ -638,8 +668,8 @@ function EmailSection({
 
       {/* IMAP */}
       <div>
-        <h4 className="text-sm font-semibold text-owly-text mb-4 flex items-center gap-2">
-          <div className="w-1.5 h-1.5 rounded-full bg-owly-primary" />
+        <h4 className="text-sm font-semibold text-helplus-text mb-4 flex items-center gap-2">
+          <div className="w-1.5 h-1.5 rounded-full bg-helplus-primary" />
           Incoming Mail (IMAP)
         </h4>
         <div className="space-y-4">
@@ -691,12 +721,12 @@ function WhatsAppSection({
 }) {
   return (
     <div className="space-y-5">
-      <div className="p-4 rounded-lg bg-owly-primary-50/50 border border-owly-primary/20">
-        <p className="text-sm text-owly-text">
+      <div className="p-4 rounded-lg bg-helplus-primary-50/50 border border-helplus-primary/20">
+        <p className="text-sm text-helplus-text">
           Choose between WhatsApp Web (free, requires QR scan) or the official WhatsApp Business API (paid, more reliable).
         </p>
       </div>
-      <FormField label="Connection Mode" description="Select how Owly connects to WhatsApp.">
+      <FormField label="Connection Mode" description="Select how Help+ connects to WhatsApp.">
         <SelectInput
           value={data.whatsappMode}
           onChange={(v) => update("whatsappMode", v)}
@@ -741,6 +771,11 @@ const defaultSettings: SettingsData = {
   aiProvider: "openai",
   aiModel: "gpt-4o-mini",
   aiApiKey: "",
+  aiBaseUrl: "",
+  embedProvider: "openai",
+  embedModel: "text-embedding-3-small",
+  embedApiKey: "",
+  embedBaseUrl: "",
   maxTokens: 2048,
   temperature: 0.7,
   elevenLabsKey: "",
@@ -760,6 +795,7 @@ const defaultSettings: SettingsData = {
   whatsappMode: "web",
   whatsappApiKey: "",
   whatsappPhone: "",
+  projectLabel: "Clients",
 };
 
 export default function SettingsPage() {
@@ -833,9 +869,9 @@ export default function SettingsPage() {
   if (loading) {
     return (
       <>
-        <Header title="Settings" description="Configure your Owly instance" />
+        <Header title="Settings" description="Configure your Help+ instance" />
         <div className="flex-1 flex items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin text-owly-primary" />
+          <Loader2 className="h-8 w-8 animate-spin text-helplus-link" />
         </div>
       </>
     );
@@ -843,11 +879,11 @@ export default function SettingsPage() {
 
   return (
     <>
-      <Header title="Settings" description="Configure your Owly instance" />
+      <Header title="Settings" description="Configure your Help+ instance" />
       <div className="flex-1 overflow-auto p-6">
         <div className="max-w-4xl mx-auto">
           {/* Tab navigation */}
-          <div className="flex gap-1 p-1 bg-owly-bg rounded-xl border border-owly-border mb-6 overflow-x-auto">
+          <div className="flex gap-1 p-1 bg-helplus-bg rounded-xl border border-helplus-border mb-6 overflow-x-auto">
             {tabs.map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.key;
@@ -858,8 +894,8 @@ export default function SettingsPage() {
                   className={cn(
                     "flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap",
                     isActive
-                      ? "bg-owly-surface text-owly-primary shadow-sm"
-                      : "text-owly-text-light hover:text-owly-text hover:bg-owly-surface/50"
+                      ? "bg-helplus-surface text-helplus-link shadow-sm"
+                      : "text-helplus-text-light hover:text-helplus-text hover:bg-helplus-surface/50"
                   )}
                 >
                   <Icon className="h-4 w-4" />
@@ -870,12 +906,12 @@ export default function SettingsPage() {
           </div>
 
           {/* Section content */}
-          <div className="bg-owly-surface rounded-xl border border-owly-border p-6 space-y-6">
+          <div className="bg-helplus-surface rounded-xl border border-helplus-border p-6 space-y-6">
             <div>
-              <h3 className="text-lg font-semibold text-owly-text">
+              <h3 className="text-lg font-semibold text-helplus-text">
                 {tabs.find((t) => t.key === activeTab)?.label}
               </h3>
-              <p className="text-sm text-owly-text-light mt-0.5">
+              <p className="text-sm text-helplus-text-light mt-0.5">
                 {activeTab === "general" &&
                   "Configure your business identity and communication preferences."}
                 {activeTab === "ai" &&

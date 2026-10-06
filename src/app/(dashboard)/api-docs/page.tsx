@@ -26,7 +26,7 @@ import { cn } from "@/lib/utils";
 // ---------------------------------------------------------------------------
 
 interface Endpoint {
-  method: "GET" | "POST" | "PUT" | "DELETE";
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   path: string;
   description: string;
   requestBody?: Record<string, unknown>;
@@ -192,13 +192,13 @@ const apiSections: ApiSection[] = [
           {
             id: "tkt_abc123",
             title: "Login issue",
-            status: "open",
+            status: "new",
             priority: "high",
             createdAt: "2026-04-01T10:00:00Z",
           },
         ],
         queryParams: [
-          { name: "status", type: "string", required: false, description: "Filter by status: open, in_progress, resolved, closed" },
+          { name: "status", type: "string", required: false, description: "Filter by status: new, ai_suggested, answered, reopened, working, closed (or 'open' for everything but closed)" },
           { name: "priority", type: "string", required: false, description: "Filter by priority: low, medium, high, urgent" },
         ],
       },
@@ -207,15 +207,14 @@ const apiSections: ApiSection[] = [
         path: "/api/tickets",
         description: "Create a new support ticket.",
         requestBody: {
+          text: "User reports 403 error when accessing the main dashboard.",
           title: "Cannot access dashboard",
-          description: "User reports 403 error when accessing the main dashboard.",
           priority: "high",
-          departmentId: "dept_abc",
         },
         responseExample: {
           id: "tkt_new456",
           title: "Cannot access dashboard",
-          status: "open",
+          status: "new",
           priority: "high",
           createdAt: "2026-04-01T10:00:00Z",
         },
@@ -227,27 +226,25 @@ const apiSections: ApiSection[] = [
         responseExample: {
           id: "tkt_abc123",
           title: "Login issue",
-          status: "open",
+          status: "new",
           priority: "high",
-          department: { id: "dept_1", name: "Engineering" },
-          assignedTo: { id: "mem_1", name: "Alice" },
+          project: { id: "proj_1", name: "General" },
+          assignee: { id: "admin_1", name: "Alice" },
         },
         params: [
           { name: "id", type: "string", required: true, description: "Ticket ID" },
         ],
       },
       {
-        method: "PUT",
+        method: "PATCH",
         path: "/api/tickets/:id",
-        description: "Update a ticket's status, priority, assignment, or resolution.",
+        description: "Update a ticket's status, priority, project, or assignee.",
         requestBody: {
-          status: "resolved",
-          resolution: "Fixed permission configuration for the user.",
+          status: "closed",
         },
         responseExample: {
           id: "tkt_abc123",
-          status: "resolved",
-          resolution: "Fixed permission configuration for the user.",
+          status: "closed",
           updatedAt: "2026-04-01T12:00:00Z",
         },
         params: [
@@ -577,40 +574,40 @@ function TryItPanel({ endpoint }: { endpoint: Endpoint }) {
   ];
 
   return (
-    <div className="mt-4 border border-owly-border rounded-lg overflow-hidden">
+    <div className="mt-4 border border-helplus-border rounded-lg overflow-hidden">
       <button
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-2 w-full px-4 py-3 text-sm font-medium text-owly-text bg-owly-primary-50 hover:bg-owly-primary-100 transition-colors text-left"
+        className="flex items-center gap-2 w-full px-4 py-3 text-sm font-medium text-helplus-text bg-helplus-primary-50 hover:bg-helplus-primary-100 transition-colors text-left"
       >
         {open ? (
-          <ChevronDown className="h-4 w-4 text-owly-primary" />
+          <ChevronDown className="h-4 w-4 text-helplus-link" />
         ) : (
-          <ChevronRight className="h-4 w-4 text-owly-primary" />
+          <ChevronRight className="h-4 w-4 text-helplus-link" />
         )}
-        <Send className="h-4 w-4 text-owly-primary" />
+        <Send className="h-4 w-4 text-helplus-link" />
         Try it
       </button>
 
       {open && (
-        <div className="p-4 space-y-4 bg-owly-surface border-t border-owly-border">
+        <div className="p-4 space-y-4 bg-helplus-surface border-t border-helplus-border">
           {allParams.length > 0 && (
             <div className="space-y-3">
-              <h4 className="text-xs font-semibold text-owly-text-light uppercase tracking-wider">
+              <h4 className="text-xs font-semibold text-helplus-text-light uppercase tracking-wider">
                 Parameters
               </h4>
               {allParams.map((p) => (
                 <div key={p.name} className="flex items-start gap-3">
                   <div className="w-40 flex-shrink-0">
-                    <label className="text-sm font-medium text-owly-text">
+                    <label className="text-sm font-medium text-helplus-text">
                       {p.name}
-                      {p.required && <span className="text-owly-danger ml-0.5">*</span>}
+                      {p.required && <span className="text-helplus-danger ml-0.5">*</span>}
                     </label>
-                    <p className="text-xs text-owly-text-light">{p.type}</p>
+                    <p className="text-xs text-helplus-text-light">{p.type}</p>
                   </div>
                   <input
                     type="text"
                     placeholder={p.description}
-                    className="flex-1 px-3 py-1.5 text-sm border border-owly-border rounded-lg bg-owly-bg text-owly-text focus:outline-none focus:ring-2 focus:ring-owly-primary/30 focus:border-owly-primary transition-theme"
+                    className="flex-1 px-3 py-1.5 text-sm border border-helplus-border rounded-lg bg-helplus-bg text-helplus-text focus:outline-none focus:ring-2 focus:ring-helplus-primary/30 focus:border-helplus-primary transition-theme"
                     value={paramValues[p.name] || ""}
                     onChange={(e) =>
                       setParamValues({ ...paramValues, [p.name]: e.target.value })
@@ -623,11 +620,11 @@ function TryItPanel({ endpoint }: { endpoint: Endpoint }) {
 
           {(endpoint.method === "POST" || endpoint.method === "PUT") && (
             <div className="space-y-2">
-              <h4 className="text-xs font-semibold text-owly-text-light uppercase tracking-wider">
+              <h4 className="text-xs font-semibold text-helplus-text-light uppercase tracking-wider">
                 Request Body (JSON)
               </h4>
               <textarea
-                className="w-full h-40 px-3 py-2 text-sm font-mono border border-owly-border rounded-lg bg-owly-bg text-owly-text focus:outline-none focus:ring-2 focus:ring-owly-primary/30 focus:border-owly-primary resize-y transition-theme"
+                className="w-full h-40 px-3 py-2 text-sm font-mono border border-helplus-border rounded-lg bg-helplus-bg text-helplus-text focus:outline-none focus:ring-2 focus:ring-helplus-primary/30 focus:border-helplus-primary resize-y transition-theme"
                 value={bodyText}
                 onChange={(e) => setBodyText(e.target.value)}
               />
@@ -637,7 +634,7 @@ function TryItPanel({ endpoint }: { endpoint: Endpoint }) {
           <button
             onClick={handleSend}
             disabled={loading}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-owly-primary text-white text-sm font-medium rounded-lg hover:bg-owly-primary-dark transition-colors disabled:opacity-50"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-helplus-primary text-white text-sm font-medium rounded-lg hover:bg-helplus-primary-dark transition-colors disabled:opacity-50"
           >
             {loading ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -650,7 +647,7 @@ function TryItPanel({ endpoint }: { endpoint: Endpoint }) {
           {response !== null && (
             <div className="space-y-1">
               <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold text-owly-text-light uppercase tracking-wider">
+                <span className="text-xs font-semibold text-helplus-text-light uppercase tracking-wider">
                   Response
                 </span>
                 {responseStatus !== null && (
@@ -683,15 +680,15 @@ function TryItPanel({ endpoint }: { endpoint: Endpoint }) {
 
 function EndpointCard({ endpoint }: { endpoint: Endpoint }) {
   return (
-    <div className="border border-owly-border rounded-xl bg-owly-surface p-6 transition-theme">
+    <div className="border border-helplus-border rounded-xl bg-helplus-surface p-6 transition-theme">
       <div className="flex items-center gap-3 flex-wrap">
         <MethodBadge method={endpoint.method} />
-        <code className="text-sm font-semibold text-owly-text font-mono">
+        <code className="text-sm font-semibold text-helplus-text font-mono">
           {endpoint.path}
         </code>
       </div>
 
-      <p className="mt-3 text-sm text-owly-text-light leading-relaxed">
+      <p className="mt-3 text-sm text-helplus-text-light leading-relaxed">
         {endpoint.description}
       </p>
 
@@ -699,23 +696,23 @@ function EndpointCard({ endpoint }: { endpoint: Endpoint }) {
       {((endpoint.params && endpoint.params.length > 0) ||
         (endpoint.queryParams && endpoint.queryParams.length > 0)) && (
         <div className="mt-4">
-          <h4 className="text-xs font-semibold text-owly-text-light uppercase tracking-wider mb-2">
+          <h4 className="text-xs font-semibold text-helplus-text-light uppercase tracking-wider mb-2">
             Parameters
           </h4>
-          <div className="border border-owly-border rounded-lg overflow-hidden">
+          <div className="border border-helplus-border rounded-lg overflow-hidden">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-owly-bg">
-                  <th className="text-left px-4 py-2 text-xs font-semibold text-owly-text-light uppercase">
+                <tr className="bg-helplus-bg">
+                  <th className="text-left px-4 py-2 text-xs font-semibold text-helplus-text-light uppercase">
                     Name
                   </th>
-                  <th className="text-left px-4 py-2 text-xs font-semibold text-owly-text-light uppercase">
+                  <th className="text-left px-4 py-2 text-xs font-semibold text-helplus-text-light uppercase">
                     Type
                   </th>
-                  <th className="text-left px-4 py-2 text-xs font-semibold text-owly-text-light uppercase">
+                  <th className="text-left px-4 py-2 text-xs font-semibold text-helplus-text-light uppercase">
                     Required
                   </th>
-                  <th className="text-left px-4 py-2 text-xs font-semibold text-owly-text-light uppercase">
+                  <th className="text-left px-4 py-2 text-xs font-semibold text-helplus-text-light uppercase">
                     Description
                   </th>
                 </tr>
@@ -723,19 +720,19 @@ function EndpointCard({ endpoint }: { endpoint: Endpoint }) {
               <tbody>
                 {[...(endpoint.params || []), ...(endpoint.queryParams || [])].map(
                   (p) => (
-                    <tr key={p.name} className="border-t border-owly-border">
-                      <td className="px-4 py-2 font-mono text-owly-text font-medium">
+                    <tr key={p.name} className="border-t border-helplus-border">
+                      <td className="px-4 py-2 font-mono text-helplus-text font-medium">
                         {p.name}
                       </td>
-                      <td className="px-4 py-2 text-owly-text-light">{p.type}</td>
+                      <td className="px-4 py-2 text-helplus-text-light">{p.type}</td>
                       <td className="px-4 py-2">
                         {p.required ? (
-                          <span className="text-owly-danger font-medium">Yes</span>
+                          <span className="text-helplus-danger font-medium">Yes</span>
                         ) : (
-                          <span className="text-owly-text-light">No</span>
+                          <span className="text-helplus-text-light">No</span>
                         )}
                       </td>
-                      <td className="px-4 py-2 text-owly-text-light">{p.description}</td>
+                      <td className="px-4 py-2 text-helplus-text-light">{p.description}</td>
                     </tr>
                   )
                 )}
@@ -776,12 +773,12 @@ export default function ApiDocsPage() {
     <div className="flex flex-col h-full">
       <Header
         title="API Documentation"
-        description="Integrate Owly with your systems"
+        description="Integrate Help+ with your systems"
       />
 
       <div className="flex flex-1 overflow-hidden">
         {/* Left Sidebar */}
-        <aside className="w-60 flex-shrink-0 border-r border-owly-border bg-owly-bg overflow-y-auto p-4 hidden lg:block">
+        <aside className="w-60 flex-shrink-0 border-r border-helplus-border bg-helplus-bg overflow-y-auto p-4 hidden lg:block">
           <nav className="space-y-1">
             {apiSections.map((section) => {
               const Icon = section.icon;
@@ -793,8 +790,8 @@ export default function ApiDocsPage() {
                   className={cn(
                     "flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-sm font-medium transition-colors text-left",
                     isActive
-                      ? "bg-owly-primary text-white"
-                      : "text-owly-text-light hover:bg-owly-surface hover:text-owly-text"
+                      ? "bg-helplus-primary text-white"
+                      : "text-helplus-text-light hover:bg-helplus-surface hover:text-helplus-text"
                   )}
                 >
                   <Icon className="h-4 w-4 flex-shrink-0" />
@@ -816,7 +813,7 @@ export default function ApiDocsPage() {
               <select
                 value={activeSection}
                 onChange={(e) => setActiveSection(e.target.value)}
-                className="w-full px-3 py-2 border border-owly-border rounded-lg bg-owly-surface text-owly-text text-sm focus:outline-none focus:ring-2 focus:ring-owly-primary/30"
+                className="w-full px-3 py-2 border border-helplus-border rounded-lg bg-helplus-surface text-helplus-text text-sm focus:outline-none focus:ring-2 focus:ring-helplus-primary/30"
               >
                 {apiSections.map((s) => (
                   <option key={s.id} value={s.id}>
@@ -827,29 +824,29 @@ export default function ApiDocsPage() {
             </div>
 
             {/* Authentication Section */}
-            <div className="border border-owly-border rounded-xl bg-owly-surface p-6 transition-theme">
+            <div className="border border-helplus-border rounded-xl bg-helplus-surface p-6 transition-theme">
               <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 bg-owly-primary-50 rounded-lg">
-                  <Key className="h-5 w-5 text-owly-primary" />
+                <div className="p-2 bg-helplus-primary-50 rounded-lg">
+                  <Key className="h-5 w-5 text-helplus-link" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-semibold text-owly-text">
+                  <h3 className="text-lg font-semibold text-helplus-text">
                     Authentication
                   </h3>
-                  <p className="text-sm text-owly-text-light">
+                  <p className="text-sm text-helplus-text-light">
                     All API requests require authentication
                   </p>
                 </div>
               </div>
 
-              <div className="space-y-3 text-sm text-owly-text-light leading-relaxed">
+              <div className="space-y-3 text-sm text-helplus-text-light leading-relaxed">
                 <p>
                   Include your API key in the request headers using the{" "}
-                  <code className="px-1.5 py-0.5 bg-owly-bg rounded text-owly-text font-mono text-xs">
+                  <code className="px-1.5 py-0.5 bg-helplus-bg rounded text-helplus-text font-mono text-xs">
                     X-API-Key
                   </code>{" "}
                   header. You can generate and manage API keys from the{" "}
-                  <span className="font-medium text-owly-text">Settings</span> page.
+                  <span className="font-medium text-helplus-text">Settings</span> page.
                 </p>
                 <div className="bg-gray-900 dark:bg-gray-950 text-gray-100 text-sm p-4 rounded-lg border border-gray-700 font-mono">
                   <span className="text-blue-400">curl</span>{" "}
@@ -868,14 +865,14 @@ export default function ApiDocsPage() {
 
             {/* Section Header */}
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-owly-primary-50 rounded-lg">
-                <currentSection.icon className="h-5 w-5 text-owly-primary" />
+              <div className="p-2 bg-helplus-primary-50 rounded-lg">
+                <currentSection.icon className="h-5 w-5 text-helplus-link" />
               </div>
               <div>
-                <h3 className="text-lg font-semibold text-owly-text">
+                <h3 className="text-lg font-semibold text-helplus-text">
                   {currentSection.name}
                 </h3>
-                <p className="text-sm text-owly-text-light">
+                <p className="text-sm text-helplus-text-light">
                   {currentSection.endpoints.length} endpoint
                   {currentSection.endpoints.length !== 1 ? "s" : ""}
                 </p>

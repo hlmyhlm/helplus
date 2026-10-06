@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { withAuth } from "@/lib/tenant/with-auth";
 
-export async function POST(request: NextRequest) {
+export const POST = withAuth("webhooks:update", async (request: NextRequest, _auth) => {
   try {
     const body = await request.json();
     const { webhookId } = body;
@@ -30,7 +31,7 @@ export async function POST(request: NextRequest) {
       timestamp: new Date().toISOString(),
       data: {
         id: "test_123",
-        message: "This is a test payload from Owly",
+        message: "This is a test payload from Help+",
         webhookName: webhook.name,
         triggerEvent: webhook.triggerOn,
       },
@@ -38,7 +39,7 @@ export async function POST(request: NextRequest) {
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
-      "User-Agent": "Owly-Webhook/1.0",
+      "User-Agent": "Helplus-Webhook/1.0",
       ...(typeof webhook.headers === "object" && webhook.headers !== null
         ? (webhook.headers as Record<string, string>)
         : {}),
@@ -87,4 +88,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

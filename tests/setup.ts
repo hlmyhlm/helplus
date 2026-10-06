@@ -2,25 +2,31 @@ import { vi } from "vitest";
 
 // Set test environment variables
 process.env.JWT_SECRET = "test-secret-key-for-testing-only";
-process.env.DATABASE_URL = "postgresql://test:test@localhost:5432/owly_test";
+process.env.DATABASE_URL = "postgresql://test:test@localhost:5432/helplus_test";
 process.env.NODE_ENV = "test";
+process.env.HELPLUS_SECRET_KEY = "a1".repeat(32);
 
 // Mock Prisma globally
-vi.mock("@/lib/prisma", () => ({
-  prisma: createMockPrismaClient(),
-}));
+vi.mock("@/lib/prisma", () => {
+  const client = createMockPrismaClient();
+  return { prisma: client, systemPrisma: client };
+});
 
 // Mock route-auth to always authenticate as admin in tests
-vi.mock("@/lib/route-auth", () => ({
-  requireAuth: vi.fn().mockResolvedValue({
-    userId: "test-admin-id",
-    role: "admin",
-    username: "admin",
-    name: "Test Admin",
-    authMethod: "cookie",
-  }),
-  isAuthenticated: vi.fn().mockReturnValue(true),
-}));
+vi.mock("@/lib/route-auth", async () => {
+  const { NextResponse } = await import("next/server");
+  return {
+    requireAuth: vi.fn().mockResolvedValue({
+      userId: "test-admin-id",
+      role: "admin",
+      username: "admin",
+      name: "Test Admin",
+      authMethod: "cookie",
+      companyId: "test-company",
+    }),
+    isAuthenticated: vi.fn((r) => !(r instanceof NextResponse)),
+  };
+});
 
 // Mock realtime to prevent side effects in tests
 vi.mock("@/lib/realtime", () => ({
@@ -47,6 +53,7 @@ function createMockPrismaClient() {
     findFirst: vi.fn(),
     findMany: vi.fn(),
     create: vi.fn(),
+    createMany: vi.fn(),
     update: vi.fn(),
     updateMany: vi.fn(),
     upsert: vi.fn(),
@@ -58,6 +65,7 @@ function createMockPrismaClient() {
   };
 
   const models = [
+    "company",
     "settings",
     "admin",
     "conversation",
@@ -85,6 +93,9 @@ function createMockPrismaClient() {
     "internalNote",
     "campaign",
     "flow",
+    "project",
+    "projectAccess",
+    "ticketCounter",
   ];
 
   const client: Record<string, unknown> = {

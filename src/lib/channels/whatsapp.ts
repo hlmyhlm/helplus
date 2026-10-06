@@ -1,16 +1,37 @@
 import { Client, LocalAuth, Message } from "whatsapp-web.js";
 import * as qrcode from "qrcode";
 import { prisma } from "@/lib/prisma";
+import { channelKey } from "@/lib/tenant/keys";
 import { chat, createNewConversation } from "@/lib/ai/engine";
 import { logger } from "@/lib/logger";
 import { resolveCustomer } from "@/lib/customer-resolver";
+import { currentCompanyId, runWithCompany } from "@/lib/tenant/context";
+import { ChannelInUseError } from "@/lib/errors";
 
+// one whatsapp client per server for now; per-company clients come with the silent bot
 let whatsappClient: Client | null = null;
+let ownerCompanyId: string | null = null;
 let currentQR: string | null = null;
 let connectionStatus: "disconnected" | "qr_ready" | "connecting" | "connected" | "error" = "disconnected";
 let statusMessage = "";
 
+function ownedByAnother(companyId: string): boolean {
+  return ownerCompanyId !== null && ownerCompanyId !== companyId;
+}
+
+// let go of a client that never got going, so another company can connect
+function release(client: Client) {
+  if (whatsappClient !== client) return;
+  whatsappClient = null;
+  ownerCompanyId = null;
+  currentQR = null;
+  client.destroy().catch(() => {});
+}
+
 export function getWhatsAppStatus() {
+  if (ownedByAnother(currentCompanyId())) {
+    return { status: "disconnected" as const, qr: null, message: "" };
+  }
   return {
     status: connectionStatus,
     qr: currentQR,
@@ -19,6 +40,10 @@ export function getWhatsAppStatus() {
 }
 
 export async function initWhatsApp(): Promise<void> {
+  // the client is started from a logged-in request; its events must run as that company
+  const companyId = currentCompanyId();
+  if (ownedByAnother(companyId)) throw new ChannelInUseError("WhatsApp");
+
   if (whatsappClient) {
     logger.info("[WhatsApp] Client already exists");
     return;
@@ -28,7 +53,11 @@ export async function initWhatsApp(): Promise<void> {
   statusMessage = "Initializing WhatsApp client...";
 
   const client = new Client({
-    authStrategy: new LocalAuth({ dataPath: ".wwebjs_auth" }),
+    // one saved session per company. default keeps the old unnamed session folder
+    authStrategy: new LocalAuth({
+      dataPath: ".wwebjs_auth",
+      clientId: companyId === "default" ? undefined : companyId,
+    }),
     puppeteer: {
       headless: true,
       args: [
@@ -53,10 +82,12 @@ export async function initWhatsApp(): Promise<void> {
     connectionStatus = "connected";
     statusMessage = "Connected to WhatsApp";
 
-    await prisma.channel.upsert({
-      where: { type: "whatsapp" },
-      update: { isActive: true, status: "connected" },
-      create: { type: "whatsapp", isActive: true, status: "connected" },
+    await runWithCompany(companyId, async () => {
+      await prisma.channel.upsert({
+        where: channelKey("whatsapp"),
+        update: { isActive: true, status: "connected" },
+        create: { type: "whatsapp", isActive: true, status: "connected" },
+      });
     });
   });
 
@@ -70,86 +101,104 @@ export async function initWhatsApp(): Promise<void> {
     logger.error(`[WhatsApp] Auth failure: ${message}`);
     connectionStatus = "error";
     statusMessage = `Authentication failed: ${message}`;
+    release(client);
   });
 
   client.on("disconnected", async (reason: string) => {
     logger.info(`[WhatsApp] Disconnected: ${reason}`);
     connectionStatus = "disconnected";
     statusMessage = `Disconnected: ${reason}`;
-    whatsappClient = null;
+    if (whatsappClient === client) {
+      whatsappClient = null;
+      ownerCompanyId = null;
+    }
 
-    await prisma.channel.upsert({
-      where: { type: "whatsapp" },
-      update: { isActive: false, status: "disconnected" },
-      create: { type: "whatsapp", isActive: false, status: "disconnected" },
+    await runWithCompany(companyId, async () => {
+      await prisma.channel.upsert({
+        where: channelKey("whatsapp"),
+        update: { isActive: false, status: "disconnected" },
+        create: { type: "whatsapp", isActive: false, status: "disconnected" },
+      });
     });
   });
 
   client.on("message", async (message: Message) => {
-    try {
-      if (message.fromMe) return;
+    await runWithCompany(companyId, async () => {
+      try {
+        if (message.fromMe) return;
 
-      const contact = await message.getContact();
-      const customerName = contact.pushname || contact.name || "Unknown";
-      const customerContact = message.from;
+        const contact = await message.getContact();
+        const customerName = contact.pushname || contact.name || "Unknown";
+        const customerContact = message.from;
 
-      // Resolve customer identity across channels
-      const customerId = await resolveCustomer("whatsapp", customerContact, customerName);
+        // Resolve customer identity across channels
+        const customerId = await resolveCustomer("whatsapp", customerContact, customerName);
 
-      // Find or create conversation
-      let conversation = await prisma.conversation.findFirst({
-        where: {
-          channel: "whatsapp",
-          status: { in: ["active", "escalated"] },
-          OR: [
-            { customerId },
-            { customerContact },
-          ],
-        },
-      });
+        // Find or create conversation
+        let conversation = await prisma.conversation.findFirst({
+          where: {
+            channel: "whatsapp",
+            status: { in: ["active", "escalated"] },
+            OR: [
+              { customerId },
+              { customerContact },
+            ],
+          },
+        });
 
-      if (!conversation) {
-        conversation = await createNewConversation(
-          "whatsapp",
-          customerName,
-          customerContact,
-          customerId
-        );
-      }
+        if (!conversation) {
+          conversation = await createNewConversation(
+            "whatsapp",
+            customerName,
+            customerContact,
+            customerId
+          );
+        }
 
-      let messageContent = message.body;
+        let messageContent = message.body;
 
-      // Handle media messages
-      if (message.hasMedia) {
-        const media = await message.downloadMedia();
-        if (media) {
-          const mediaType = media.mimetype.split("/")[0];
-          messageContent = `[${mediaType} attachment: ${media.filename || "media"}] ${message.body || ""}`;
+        // Handle media messages
+        if (message.hasMedia) {
+          const media = await message.downloadMedia();
+          if (media) {
+            const mediaType = media.mimetype.split("/")[0];
+            messageContent = `[${mediaType} attachment: ${media.filename || "media"}] ${message.body || ""}`;
 
-          if (mediaType === "audio") {
-            messageContent = `[Voice message received] ${message.body || ""}`;
+            if (mediaType === "audio") {
+              messageContent = `[Voice message received] ${message.body || ""}`;
+            }
           }
         }
+
+        // Get AI response
+        const aiResponse = await chat(conversation.id, messageContent);
+
+        // Send response back via WhatsApp
+        await message.reply(aiResponse);
+      } catch (error) {
+        logger.error("[WhatsApp] Failed to process message:", error);
       }
-
-      // Get AI response
-      const aiResponse = await chat(conversation.id, messageContent);
-
-      // Send response back via WhatsApp
-      await message.reply(aiResponse);
-    } catch (error) {
-      logger.error("[WhatsApp] Failed to process message:", error);
-    }
+    });
   });
 
   whatsappClient = client;
-  await client.initialize();
+  ownerCompanyId = companyId;
+  try {
+    await client.initialize();
+  } catch (error) {
+    connectionStatus = "error";
+    statusMessage = "Could not start WhatsApp";
+    release(client);
+    throw error;
+  }
 }
 
 export async function disconnectWhatsApp(): Promise<void> {
+  if (ownedByAnother(currentCompanyId())) throw new ChannelInUseError("WhatsApp");
   if (whatsappClient) {
     await whatsappClient.destroy();
     whatsappClient = null;
+    ownerCompanyId = null;
     currentQR = null;
     connectionStatus = "disconnected";
     statusMessage = "Disconnected";
@@ -160,7 +209,7 @@ export async function sendWhatsAppMessage(
   to: string,
   message: string
 ): Promise<boolean> {
-  if (!whatsappClient || connectionStatus !== "connected") {
+  if (!whatsappClient || connectionStatus !== "connected" || ownedByAnother(currentCompanyId())) {
     return false;
   }
 

@@ -1,13 +1,13 @@
-# Contributing to Owly
+# Contributing to Help+
 
-Thanks for your interest in contributing to Owly! This guide will help you get started.
+Thanks for your interest in contributing to Help+! This guide will help you get started.
 
 ## Development Setup
 
 ```bash
 # Clone the repo
-git clone https://github.com/Hesper-Labs/owly.git
-cd owly
+git clone <repo-url> helplus
+cd helplus
 
 # Install dependencies
 npm install
@@ -26,7 +26,7 @@ npm run dev
 ## Code Style
 
 - **TypeScript** for all code
-- **Tailwind CSS** for styling with the Owly custom color system (`owly-primary`, `owly-surface`, etc.)
+- **Tailwind CSS** for styling with the Help+ custom color system (`helplus-primary`, `helplus-surface`, etc.)
 - **Conventional commits**: `feat:`, `fix:`, `docs:`, `chore:`, `refactor:`
 - **Zod validation** on all API request bodies (`src/lib/validations.ts`)
 - **Structured logging** via `logger` from `src/lib/logger.ts` (never use `console.log`/`console.error`)
@@ -76,7 +76,7 @@ tests/
   unit/              # Unit tests
   api/               # API route tests
   security/          # Security tests
-helm/owly/           # Kubernetes Helm chart
+helm/helplus/           # Kubernetes Helm chart
 ```
 
 ## Writing Tests
@@ -108,10 +108,10 @@ Test files go in `tests/` matching the source structure:
 
 ## Reporting Issues
 
-Use [GitHub Issues](https://github.com/Hesper-Labs/owly/issues) with the appropriate template:
+Open an issue in the repo:
 - **Bug Report** for something that's broken
 - **Feature Request** for new ideas
 
 ## Need Help?
 
-Open a [discussion](https://github.com/Hesper-Labs/owly/discussions) or check the [Wiki](https://github.com/Hesper-Labs/owly/wiki) for documentation.
+Check the docs in `docs/wiki`.

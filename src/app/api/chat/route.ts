@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { chat, createNewConversation } from "@/lib/ai/engine";
 import { logger } from "@/lib/logger";
+import { withAuth } from "@/lib/tenant/with-auth";
+import { loadConversationFor } from "@/lib/tickets/load";
 
-export async function POST(request: NextRequest) {
+export const POST = withAuth("conversations:create", async (request: NextRequest, auth) => {
   try {
     const body = await request.json();
     const { message, conversationId, channel, customerName, customerContact } = body;
@@ -13,6 +15,10 @@ export async function POST(request: NextRequest) {
 
     if (message.length > 10000) {
       return NextResponse.json({ error: "Message exceeds maximum length of 10000 characters" }, { status: 400 });
+    }
+
+    if (conversationId && !(await loadConversationFor(auth, String(conversationId)))) {
+      return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
     }
 
     let convId = conversationId;
@@ -39,4 +45,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

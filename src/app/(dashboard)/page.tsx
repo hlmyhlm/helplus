@@ -2,6 +2,11 @@ import { Header } from "@/components/layout/header";
 import { StatCard } from "@/components/ui/stat-card";
 import { OnboardingChecklist } from "@/components/ui/onboarding-checklist";
 import { prisma } from "@/lib/prisma";
+import { getCurrentUser } from "@/lib/auth";
+import { runWithCompany } from "@/lib/tenant/context";
+import { OPEN_STATUSES } from "@/lib/tickets/status";
+import { allowedProjectIds, conversationWhere, projectWhere } from "@/lib/tickets/access";
+import { redirect } from "next/navigation";
 import {
   MessageSquare,
   Ticket,
@@ -13,7 +18,12 @@ import {
 } from "lucide-react";
 import { formatRelativeTime, getChannelLabel, getStatusColor } from "@/lib/utils";
 
-async function getStats() {
+async function getStats(user: { id: string; role: string }) {
+  const ids = await allowedProjectIds({ role: user.role, userId: user.id });
+  const convScope = conversationWhere(ids);
+  const ticketScope = projectWhere(ids);
+  const messageScope = ids === null ? {} : { conversation: convScope };
+
   const [
     totalConversations,
     activeConversations,
@@ -22,12 +32,13 @@ async function getStats() {
     totalMessages,
     recentConversations,
   ] = await Promise.all([
-    prisma.conversation.count(),
-    prisma.conversation.count({ where: { status: "active" } }),
-    prisma.ticket.count(),
-    prisma.ticket.count({ where: { status: "open" } }),
-    prisma.message.count(),
+    prisma.conversation.count({ where: convScope }),
+    prisma.conversation.count({ where: { ...convScope, status: "active" } }),
+    prisma.ticket.count({ where: ticketScope }),
+    prisma.ticket.count({ where: { ...ticketScope, status: { in: OPEN_STATUSES } } }),
+    prisma.message.count({ where: messageScope }),
     prisma.conversation.findMany({
+      where: convScope,
       take: 10,
       orderBy: { updatedAt: "desc" },
       include: {
@@ -38,7 +49,7 @@ async function getStats() {
   ]);
 
   const resolvedConversations = await prisma.conversation.count({
-    where: { status: "resolved" },
+    where: { ...convScope, status: "resolved" },
   });
 
   const resolutionRate =
@@ -64,7 +75,11 @@ const channelIcons: Record<string, React.ElementType> = {
 };
 
 export default async function DashboardPage() {
-  const stats = await getStats();
+  const user = await getCurrentUser();
+  if (!user) redirect("/login");
+  // clients have no dashboard yet
+  if (user.role === "client") redirect("/login");
+  const stats = await runWithCompany(user.companyId, () => getStats(user));
 
   return (
     <>
@@ -102,15 +117,15 @@ export default async function DashboardPage() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 bg-owly-surface rounded-xl border border-owly-border">
-            <div className="px-5 py-4 border-b border-owly-border">
-              <h3 className="font-semibold text-owly-text">
+          <div className="lg:col-span-2 bg-helplus-surface rounded-xl border border-helplus-border">
+            <div className="px-5 py-4 border-b border-helplus-border">
+              <h3 className="font-semibold text-helplus-text">
                 Recent Conversations
               </h3>
             </div>
-            <div className="divide-y divide-owly-border">
+            <div className="divide-y divide-helplus-border">
               {stats.recentConversations.length === 0 ? (
-                <div className="px-5 py-12 text-center text-owly-text-light">
+                <div className="px-5 py-12 text-center text-helplus-text-light">
                   <MessageSquare className="h-10 w-10 mx-auto mb-3 opacity-40" />
                   <p className="font-medium">No conversations yet</p>
                   <p className="text-sm mt-1">
@@ -126,27 +141,27 @@ export default async function DashboardPage() {
                   return (
                     <div
                       key={conv.id}
-                      className="px-5 py-3.5 hover:bg-owly-primary-50/50 transition-colors cursor-pointer"
+                      className="px-5 py-3.5 hover:bg-helplus-primary-50/50 transition-colors cursor-pointer"
                     >
                       <div className="flex items-start gap-3">
-                        <div className="p-2 rounded-lg bg-owly-primary-50 text-owly-primary mt-0.5">
+                        <div className="p-2 rounded-lg bg-helplus-primary-50 text-helplus-link mt-0.5">
                           <ChannelIcon className="h-4 w-4" />
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between">
-                            <p className="font-medium text-sm text-owly-text truncate">
+                            <p className="font-medium text-sm text-helplus-text truncate">
                               {conv.customerName}
                             </p>
-                            <span className="text-xs text-owly-text-light flex-shrink-0 ml-2">
+                            <span className="text-xs text-helplus-text-light flex-shrink-0 ml-2">
                               {formatRelativeTime(conv.updatedAt)}
                             </span>
                           </div>
-                          <p className="text-xs text-owly-text-light mt-0.5">
+                          <p className="text-xs text-helplus-text-light mt-0.5">
                             {getChannelLabel(conv.channel)} -{" "}
                             {conv._count.messages} messages
                           </p>
                           {lastMessage && (
-                            <p className="text-sm text-owly-text-light mt-1 truncate">
+                            <p className="text-sm text-helplus-text-light mt-1 truncate">
                               {lastMessage.content}
                             </p>
                           )}
@@ -165,9 +180,9 @@ export default async function DashboardPage() {
           </div>
 
           <div className="space-y-6">
-            <div className="bg-owly-surface rounded-xl border border-owly-border">
-              <div className="px-5 py-4 border-b border-owly-border">
-                <h3 className="font-semibold text-owly-text">
+            <div className="bg-helplus-surface rounded-xl border border-helplus-border">
+              <div className="px-5 py-4 border-b border-helplus-border">
+                <h3 className="font-semibold text-helplus-text">
                   Channel Overview
                 </h3>
               </div>
@@ -201,21 +216,21 @@ export default async function DashboardPage() {
               </div>
             </div>
 
-            <div className="bg-owly-surface rounded-xl border border-owly-border">
-              <div className="px-5 py-4 border-b border-owly-border">
-                <h3 className="font-semibold text-owly-text">Quick Stats</h3>
+            <div className="bg-helplus-surface rounded-xl border border-helplus-border">
+              <div className="px-5 py-4 border-b border-helplus-border">
+                <h3 className="font-semibold text-helplus-text">Quick Stats</h3>
               </div>
               <div className="p-5 space-y-3">
                 <div className="flex justify-between text-sm">
-                  <span className="text-owly-text-light">Total Messages</span>
+                  <span className="text-helplus-text-light">Total Messages</span>
                   <span className="font-medium">{stats.totalMessages}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-owly-text-light">Total Tickets</span>
+                  <span className="text-helplus-text-light">Total Tickets</span>
                   <span className="font-medium">{stats.totalTickets}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-owly-text-light">
+                  <span className="text-helplus-text-light">
                     Avg. Resolution Rate
                   </span>
                   <span className="font-medium">{stats.resolutionRate}%</span>

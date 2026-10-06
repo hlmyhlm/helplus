@@ -1,70 +1,76 @@
 @import "tailwindcss";
 
 :root {
-  --owly-primary: #4A7C9B;
-  --owly-primary-dark: #2D5A7B;
-  --owly-primary-light: #A8D0E6;
-  --owly-primary-50: #EDF5FA;
-  --owly-primary-100: #D6E8F2;
-  --owly-accent: #C4956A;
-  --owly-accent-light: #E0C4A8;
-  --owly-bg: #F8FAFC;
-  --owly-surface: #FFFFFF;
-  --owly-text: #1E293B;
-  --owly-text-light: #64748B;
-  --owly-border: #E2E8F0;
-  --owly-sidebar: #1E293B;
-  --owly-sidebar-hover: #334155;
-  --owly-sidebar-active: #4A7C9B;
-  --owly-success: #22C55E;
-  --owly-warning: #F59E0B;
-  --owly-danger: #EF4444;
+  --helplus-primary: #3B3FA6;
+  --helplus-primary-dark: #2F3388;
+  --helplus-primary-light: #C7C9FF;
+  --helplus-primary-50: #EEEEFB;
+  --helplus-primary-100: #E0E1F7;
+  --helplus-accent: #5B5FD6;
+  --helplus-accent-light: #E0E1F7;
+  --helplus-link: #3B3FA6;
+  --helplus-bg: #F6F6F3;
+  --helplus-surface: #FFFFFF;
+  --helplus-text: #16181F;
+  --helplus-text-light: #5B6070;
+  --helplus-border: #E4E3DE;
+  --helplus-sidebar: #16181F;
+  --helplus-sidebar-hover: #23262F;
+  --helplus-sidebar-active: #23262F;
+  --helplus-success: #067647;
+  --helplus-warning: #B54708;
+  --helplus-danger: #B42318;
 }
 
 .dark {
-  --owly-primary: #5A9CBB;
-  --owly-primary-dark: #4A8CAB;
-  --owly-primary-light: #3A6C8B;
-  --owly-primary-50: #1A2A3A;
-  --owly-primary-100: #1E3448;
-  --owly-accent: #D4A57A;
-  --owly-accent-light: #4A3A2A;
-  --owly-bg: #0F172A;
-  --owly-surface: #1E293B;
-  --owly-text: #F1F5F9;
-  --owly-text-light: #94A3B8;
-  --owly-border: #334155;
-  --owly-sidebar: #0F172A;
-  --owly-sidebar-hover: #1E293B;
-  --owly-sidebar-active: #4A7C9B;
+  --helplus-primary: #4B4FC4;
+  --helplus-primary-dark: #3B3FA6;
+  --helplus-primary-light: #A5A8FF;
+  --helplus-primary-50: #1E2040;
+  --helplus-primary-100: #272A55;
+  --helplus-accent: #A5A8FF;
+  --helplus-accent-light: #272A55;
+  --helplus-link: #A5A8FF;
+  --helplus-bg: #0F1015;
+  --helplus-surface: #16181F;
+  --helplus-text: #ECECF1;
+  --helplus-text-light: #A9ACBA;
+  --helplus-border: #2A2D36;
+  --helplus-sidebar: #0B0C10;
+  --helplus-sidebar-hover: #1C1E26;
+  --helplus-sidebar-active: #1C1E26;
+  --helplus-success: #47CD89;
+  --helplus-warning: #FDB022;
+  --helplus-danger: #F97066;
 }
 
 @theme inline {
-  --color-owly-primary: var(--owly-primary);
-  --color-owly-primary-dark: var(--owly-primary-dark);
-  --color-owly-primary-light: var(--owly-primary-light);
-  --color-owly-primary-50: var(--owly-primary-50);
-  --color-owly-primary-100: var(--owly-primary-100);
-  --color-owly-accent: var(--owly-accent);
-  --color-owly-accent-light: var(--owly-accent-light);
-  --color-owly-bg: var(--owly-bg);
-  --color-owly-surface: var(--owly-surface);
-  --color-owly-text: var(--owly-text);
-  --color-owly-text-light: var(--owly-text-light);
-  --color-owly-border: var(--owly-border);
-  --color-owly-sidebar: var(--owly-sidebar);
-  --color-owly-sidebar-hover: var(--owly-sidebar-hover);
-  --color-owly-sidebar-active: var(--owly-sidebar-active);
-  --color-owly-success: var(--owly-success);
-  --color-owly-warning: var(--owly-warning);
-  --color-owly-danger: var(--owly-danger);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-helplus-primary: var(--helplus-primary);
+  --color-helplus-primary-dark: var(--helplus-primary-dark);
+  --color-helplus-primary-light: var(--helplus-primary-light);
+  --color-helplus-primary-50: var(--helplus-primary-50);
+  --color-helplus-primary-100: var(--helplus-primary-100);
+  --color-helplus-accent: var(--helplus-accent);
+  --color-helplus-accent-light: var(--helplus-accent-light);
+  --color-helplus-bg: var(--helplus-bg);
+  --color-helplus-surface: var(--helplus-surface);
+  --color-helplus-text: var(--helplus-text);
+  --color-helplus-text-light: var(--helplus-text-light);
+  --color-helplus-border: var(--helplus-border);
+  --color-helplus-sidebar: var(--helplus-sidebar);
+  --color-helplus-sidebar-hover: var(--helplus-sidebar-hover);
+  --color-helplus-sidebar-active: var(--helplus-sidebar-active);
+  --color-helplus-success: var(--helplus-success);
+  --color-helplus-warning: var(--helplus-warning);
+  --color-helplus-danger: var(--helplus-danger);
+  --color-helplus-link: var(--helplus-link);
+  --font-sans: var(--font-plex-sans);
+  --font-mono: var(--font-plex-mono);
 }
 
 body {
-  background: var(--owly-bg);
-  color: var(--owly-text);
+  background: var(--helplus-bg);
+  color: var(--helplus-text);
   font-family: var(--font-sans), system-ui, sans-serif;
 }
 
@@ -79,12 +85,12 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--owly-border);
+  background: var(--helplus-border);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--owly-text-light);
+  background: var(--helplus-text-light);
 }
 
 /* Animations */
@@ -158,7 +164,7 @@ body {
 
 /* Focus ring */
 .focus-ring:focus-visible {
-  outline: 2px solid var(--owly-primary);
+  outline: 2px solid var(--helplus-primary);
   outline-offset: 2px;
 }
 

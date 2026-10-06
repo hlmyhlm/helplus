@@ -7,58 +7,155 @@ datasource db {
   provider = "postgresql"
 }
 
+model Company {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  settings          Settings?
+  admins            Admin[]
+  categories        Category[]
+  knowledgeEntries  KnowledgeEntry[]
+  departments       Department[]
+  teamMembers       TeamMember[]
+  conversations     Conversation[]
+  messages          Message[]
+  tickets           Ticket[]
+  tags              Tag[]
+  conversationTags  ConversationTag[]
+  callLogs          CallLog[]
+  channels          Channel[]
+  schedules         Schedule[]
+  webhooks          Webhook[]
+  webhookDeliveries WebhookDelivery[]
+  activityLogs      ActivityLog[]
+  slaRules          SLARule[]
+  cannedResponses   CannedResponse[]
+  customers         Customer[]
+  customerNotes     CustomerNote[]
+  automationRules   AutomationRule[]
+  businessHours     BusinessHours[]
+  apiKeys           ApiKey[]
+  internalNotes     InternalNote[]
+  campaigns         Campaign[]
+  flows             Flow[]
+  projects          Project[]
+  projectAccess     ProjectAccess[]
+  ticketCounters    TicketCounter[]
+}
+
+model Project {
+  id        String          @id @default(uuid())
+  companyId String          @default("")
+  company   Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name      String
+  isDefault Boolean         @default(false)
+  archived  Boolean         @default(false)
+  tickets   Ticket[]
+  customers Customer[]
+  access    ProjectAccess[]
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  @@unique([companyId, name])
+  @@index([companyId])
+}
+
+model ProjectAccess {
+  id        String   @id @default(uuid())
+  companyId String   @default("")
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  adminId   String
+  admin     Admin    @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([projectId, adminId])
+  @@index([companyId])
+  @@index([adminId])
+}
+
+model TicketCounter {
+  id        String  @id @default(uuid())
+  companyId String  @unique @default("")
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  next      Int     @default(1)
+}
+
 // ==================== SETTINGS ====================
 
 model Settings {
-  id              String   @id @default("default")
-  businessName    String   @default("My Business")
-  businessDesc    String   @default("")
-  welcomeMessage  String   @default("Hello! How can I help you today?")
-  tone            String   @default("friendly")
-  language        String   @default("auto")
-  aiProvider      String   @default("openai")
-  aiModel         String   @default("gpt-4o-mini")
-  aiApiKey        String   @default("")
-  maxTokens       Int      @default(2048)
-  temperature     Float    @default(0.7)
-  elevenLabsKey   String   @default("")
-  elevenLabsVoice String   @default("")
-  twilioSid       String   @default("")
-  twilioToken     String   @default("")
-  twilioPhone     String   @default("")
-  smtpHost        String   @default("")
-  smtpPort        Int      @default(587)
-  smtpUser        String   @default("")
-  smtpPass        String   @default("")
-  smtpFrom        String   @default("")
-  imapHost        String   @default("")
-  imapPort        Int      @default(993)
-  imapUser        String   @default("")
-  imapPass        String   @default("")
-  whatsappMode    String   @default("web")
-  whatsappApiKey      String   @default("")
-  whatsappPhone       String   @default("")
-  telegramBotToken    String   @default("")
-  createdAt           DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id                    String   @id @default(uuid())
+  // set by the tenant scope extension, never by hand
+  companyId             String   @unique @default("")
+  company               Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  businessName          String   @default("My Business")
+  businessDesc          String   @default("")
+  welcomeMessage        String   @default("Hello! How can I help you today?")
+  tone                  String   @default("friendly")
+  language              String   @default("auto")
+  aiProvider            String   @default("openai")
+  aiModel               String   @default("gpt-4o-mini")
+  aiApiKey              String   @default("")
+  aiBaseUrl             String   @default("")
+  embedProvider         String   @default("openai")
+  embedModel            String   @default("text-embedding-3-small")
+  embedApiKey           String   @default("")
+  embedBaseUrl          String   @default("")
+  maxTokens             Int      @default(2048)
+  temperature           Float    @default(0.7)
+  elevenLabsKey         String   @default("")
+  elevenLabsVoice       String   @default("")
+  twilioSid             String   @default("")
+  twilioToken           String   @default("")
+  twilioPhone           String   @default("")
+  smtpHost              String   @default("")
+  smtpPort              Int      @default(587)
+  smtpUser              String   @default("")
+  smtpPass              String   @default("")
+  smtpFrom              String   @default("")
+  imapHost              String   @default("")
+  imapPort              Int      @default(993)
+  imapUser              String   @default("")
+  imapPass              String   @default("")
+  whatsappMode          String   @default("web")
+  whatsappApiKey        String   @default("")
+  whatsappPhone         String   @default("")
+  telegramBotToken      String   @default("")
+  telegramWebhookSecret String   @default("")
+  projectLabel          String   @default("Clients")
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 }
 
 // ==================== AUTH ====================
 
 model Admin {
   id        String   @id @default(uuid())
+  companyId String   @default("")
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
   username  String   @unique
   password  String
   name      String   @default("Admin")
   role      String   @default("admin")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  assignedTickets Ticket[]
+  projectAccess   ProjectAccess[]
+
+  @@index([companyId])
 }
 
 // ==================== KNOWLEDGE BASE ====================
 
 model Category {
   id          String           @id @default(uuid())
+  companyId   String           @default("")
+  company     Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
   name        String
   description String           @default("")
   icon        String           @default("folder")
@@ -67,10 +164,14 @@ model Category {
   entries     KnowledgeEntry[]
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
+
+  @@index([companyId])
 }
 
 model KnowledgeEntry {
   id         String   @id @default(uuid())
+  companyId  String   @default("")
+  company    Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
   categoryId String
   category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   title      String
@@ -83,12 +184,15 @@ model KnowledgeEntry {
   updatedAt  DateTime @updatedAt
 
   @@index([categoryId])
+  @@index([companyId])
 }
 
 // ==================== TEAM ====================
 
 model Department {
   id          String       @id @default(uuid())
+  companyId   String       @default("")
+  company     Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
   name        String
   description String       @default("")
   email       String       @default("")
@@ -96,10 +200,14 @@ model Department {
   tickets     Ticket[]
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
+
+  @@index([companyId])
 }
 
 model TeamMember {
   id           String     @id @default(uuid())
+  companyId    String     @default("")
+  company      Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
   name         String
   email        String
   phone        String     @default("")
@@ -113,12 +221,15 @@ model TeamMember {
   updatedAt    DateTime   @updatedAt
 
   @@index([departmentId])
+  @@index([companyId])
 }
 
 // ==================== CONVERSATIONS ====================
 
 model Conversation {
   id              String            @id @default(uuid())
+  companyId       String            @default("")
+  company         Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
   channel         String
   customerName    String            @default("Unknown")
   customerContact String            @default("")
@@ -141,10 +252,13 @@ model Conversation {
   @@index([channel, status])
   @@index([createdAt])
   @@index([customerId])
+  @@index([companyId])
 }
 
 model Message {
   id             String       @id @default(uuid())
+  companyId      String       @default("")
+  company        Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
   conversationId String
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   role           String
@@ -156,55 +270,84 @@ model Message {
 
   @@index([conversationId])
   @@index([conversationId, createdAt])
+  @@index([companyId])
 }
 
 // ==================== TICKETS ====================
 
 model Ticket {
   id             String        @id @default(uuid())
+  companyId      String        @default("")
+  company        Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
   conversationId String?
-  conversation   Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  conversation   Conversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   departmentId   String?
   department     Department?   @relation(fields: [departmentId], references: [id], onDelete: SetNull)
   assignedToId   String?
   assignedTo     TeamMember?   @relation(fields: [assignedToId], references: [id], onDelete: SetNull)
   title          String
   description    String
-  status         String        @default("open")
+  status         String        @default("new")
   priority       String        @default("medium")
   resolution     String        @default("")
+  number         Int
+  projectId      String
+  project        Project       @relation(fields: [projectId], references: [id])
+  assigneeId     String?
+  assignee       Admin?        @relation(fields: [assigneeId], references: [id], onDelete: SetNull)
+  source         String        @default("quick_add")
+  category       String        @default("")
+  firstReplyAt   DateTime?
+  answeredAt     DateTime?
+  closedAt       DateTime?
+  reopenCount    Int           @default(0)
+  aiMatch        Int?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
+  @@unique([companyId, number])
   @@index([status])
   @@index([departmentId])
   @@index([assignedToId])
+  @@index([projectId])
+  @@index([assigneeId])
+  @@index([companyId])
 }
 
 // ==================== TAGS ====================
 
 model Tag {
   id            String            @id @default(uuid())
-  name          String            @unique
+  companyId     String            @default("")
+  company       Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name          String
   color         String            @default("#4A7C9B")
   conversations ConversationTag[]
   createdAt     DateTime          @default(now())
+
+  @@unique([companyId, name])
+  @@index([companyId])
 }
 
 model ConversationTag {
   id             String       @id @default(uuid())
+  companyId      String       @default("")
+  company        Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
   conversationId String
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   tagId          String
   tag            Tag          @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
   @@unique([conversationId, tagId])
+  @@index([companyId])
 }
 
 // ==================== CALL LOGS ====================
 
 model CallLog {
   id        String   @id @default(uuid())
+  companyId String   @default("")
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
   callSid   String   @unique
   from      String
   to        String
@@ -214,24 +357,33 @@ model CallLog {
   summary   String   @default("")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([companyId])
 }
 
 // ==================== CHANNELS ====================
 
 model Channel {
   id        String   @id @default(uuid())
-  type      String   @unique
+  companyId String   @default("")
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  type      String
   isActive  Boolean  @default(false)
   config    Json     @default("{}")
   status    String   @default("disconnected")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@unique([companyId, type])
+  @@index([companyId])
 }
 
 // ==================== SCHEDULES ====================
 
 model Schedule {
-  id           String @id @default(uuid())
+  id           String  @id @default(uuid())
+  companyId    String  @default("")
+  company      Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
   teamMemberId String
   dayOfWeek    Int
   startTime    String
@@ -239,12 +391,15 @@ model Schedule {
 
   @@index([teamMemberId])
   @@index([dayOfWeek])
+  @@index([companyId])
 }
 
 // ==================== WEBHOOKS ====================
 
 model Webhook {
   id          String            @id @default(uuid())
+  companyId   String            @default("")
+  company     Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
   name        String
   description String            @default("")
   url         String
@@ -255,10 +410,14 @@ model Webhook {
   deliveries  WebhookDelivery[]
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
+
+  @@index([companyId])
 }
 
 model WebhookDelivery {
   id          String    @id @default(uuid())
+  companyId   String    @default("")
+  company     Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
   webhookId   String
   webhook     Webhook   @relation(fields: [webhookId], references: [id], onDelete: Cascade)
   event       String
@@ -273,14 +432,17 @@ model WebhookDelivery {
 
   @@index([webhookId])
   @@index([status, nextRetryAt])
+  @@index([companyId])
 }
 
 // ==================== ACTIVITY LOG ====================
 
 model ActivityLog {
   id          String   @id @default(uuid())
-  action      String   // conversation.created, ticket.assigned, settings.updated, etc.
-  entity      String   // conversation, ticket, settings, knowledge, team
+  companyId   String   @default("")
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  action      String // conversation.created, ticket.assigned, settings.updated, etc.
+  entity      String // conversation, ticket, settings, knowledge, team
   entityId    String?
   description String
   userId      String?
@@ -293,12 +455,15 @@ model ActivityLog {
 
   @@index([entity])
   @@index([createdAt])
+  @@index([companyId])
 }
 
 // ==================== SLA RULES ====================
 
 model SLARule {
   id                String   @id @default(uuid())
+  companyId         String   @default("")
+  company           Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
   name              String
   description       String   @default("")
   channel           String   @default("all") // all, whatsapp, email, phone
@@ -308,26 +473,34 @@ model SLARule {
   isActive          Boolean  @default(true)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+
+  @@index([companyId])
 }
 
 // ==================== CANNED RESPONSES ====================
 
 model CannedResponse {
-  id        String   @id @default(uuid())
-  title     String
-  content   String
-  category  String   @default("General")
-  shortcut  String   @default("") // e.g., /greeting, /refund
-  isActive  Boolean  @default(true)
-  usageCount Int     @default(0)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         String   @id @default(uuid())
+  companyId  String   @default("")
+  company    Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  title      String
+  content    String
+  category   String   @default("General")
+  shortcut   String   @default("") // e.g., /greeting, /refund
+  isActive   Boolean  @default(true)
+  usageCount Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([companyId])
 }
 
 // ==================== CUSTOMERS ====================
 
 model Customer {
   id            String         @id @default(uuid())
+  companyId     String         @default("")
+  company       Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
   name          String
   email         String         @default("")
   phone         String         @default("")
@@ -336,6 +509,8 @@ model Customer {
   isBlocked     Boolean        @default(false)
   notes         CustomerNote[]
   conversations Conversation[]
+  projectId     String?
+  project       Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
   metadata      Json           @default("{}")
   firstContact  DateTime       @default(now())
   lastContact   DateTime       @default(now())
@@ -346,10 +521,14 @@ model Customer {
   @@index([phone])
   @@index([whatsapp])
   @@index([lastContact])
+  @@index([companyId])
+  @@index([projectId])
 }
 
 model CustomerNote {
   id         String   @id @default(uuid())
+  companyId  String   @default("")
+  company    Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
   customerId String
   customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
   content    String
@@ -357,58 +536,70 @@ model CustomerNote {
   createdAt  DateTime @default(now())
 
   @@index([customerId])
+  @@index([companyId])
 }
 
 // ==================== AUTOMATION RULES ====================
 
 model AutomationRule {
-  id          String   @id @default(uuid())
-  name        String
-  description String   @default("")
-  type        String   // auto_route, auto_tag, auto_reply, keyword_alert
-  isActive    Boolean  @default(true)
-  conditions  Json     @default("[]") // [{field, operator, value}]
-  actions     Json     @default("[]") // [{type, target, value}]
-  priority    Int      @default(0)
-  triggerCount Int     @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           String   @id @default(uuid())
+  companyId    String   @default("")
+  company      Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name         String
+  description  String   @default("")
+  type         String // auto_route, auto_tag, auto_reply, keyword_alert
+  isActive     Boolean  @default(true)
+  conditions   Json     @default("[]") // [{field, operator, value}]
+  actions      Json     @default("[]") // [{type, target, value}]
+  priority     Int      @default(0)
+  triggerCount Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([companyId])
 }
 
 // ==================== BUSINESS HOURS ====================
 
 model BusinessHours {
-  id        String  @id @default("default")
-  enabled   Boolean @default(false)
-  timezone  String  @default("UTC")
-  monday    String  @default("09:00-18:00") // empty = closed
-  tuesday   String  @default("09:00-18:00")
-  wednesday String  @default("09:00-18:00")
-  thursday  String  @default("09:00-18:00")
-  friday    String  @default("09:00-18:00")
-  saturday  String  @default("")
-  sunday    String  @default("")
-  offlineMessage String @default("We are currently offline. We will get back to you during business hours.")
+  id             String  @id @default(uuid())
+  companyId      String  @unique @default("")
+  company        Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  enabled        Boolean @default(false)
+  timezone       String  @default("UTC")
+  monday         String  @default("09:00-18:00") // empty = closed
+  tuesday        String  @default("09:00-18:00")
+  wednesday      String  @default("09:00-18:00")
+  thursday       String  @default("09:00-18:00")
+  friday         String  @default("09:00-18:00")
+  saturday       String  @default("")
+  sunday         String  @default("")
+  offlineMessage String  @default("We are currently offline. We will get back to you during business hours.")
 }
 
 // ==================== API KEYS ====================
 
 model ApiKey {
-  id        String   @id @default(uuid())
+  id        String    @id @default(uuid())
+  companyId String    @default("")
+  company   Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
   name      String
-  key       String   @unique
-  isActive  Boolean  @default(true)
+  key       String    @unique
+  isActive  Boolean   @default(true)
   lastUsed  DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
   @@index([key])
+  @@index([companyId])
 }
 
 // ==================== INTERNAL NOTES ====================
 
 model InternalNote {
   id             String       @id @default(uuid())
+  companyId      String       @default("")
+  company        Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
   conversationId String
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   content        String
@@ -416,35 +607,44 @@ model InternalNote {
   createdAt      DateTime     @default(now())
 
   @@index([conversationId])
+  @@index([companyId])
 }
 
 // ==================== CAMPAIGNS ====================
 
 model Campaign {
-  id          String   @id @default(uuid())
+  id          String    @id @default(uuid())
+  companyId   String    @default("")
+  company     Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
   name        String
-  description String   @default("")
-  channel     String   @default("email")
+  description String    @default("")
+  channel     String    @default("email")
   message     String
-  subject     String   @default("")
-  segments    Json     @default("[]")
-  status      String   @default("draft") // draft, scheduled, running, completed, paused
+  subject     String    @default("")
+  segments    Json      @default("[]")
+  status      String    @default("draft") // draft, scheduled, running, completed, paused
   scheduledAt DateTime?
-  sentCount   Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  sentCount   Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([companyId])
 }
 
 // ==================== FLOWS ====================
 
 model Flow {
-  id          String   @id @default(uuid())
-  name        String
-  description String   @default("")
-  startNodeId String   @default("")
-  nodes       Json     @default("[]")
-  isActive    Boolean  @default(false)
-  triggerCount Int     @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           String   @id @default(uuid())
+  companyId    String   @default("")
+  company      Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name         String
+  description  String   @default("")
+  startNodeId  String   @default("")
+  nodes        Json     @default("[]")
+  isActive     Boolean  @default(false)
+  triggerCount Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([companyId])
 }

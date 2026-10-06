@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TICKET_STATUSES } from "@/lib/tickets/status";
 
 // Shared schemas
 const paginationSchema = z.object({
@@ -44,24 +45,36 @@ export const createMessageSchema = z.object({
 });
 
 // Tickets
+const PRIORITIES = ["low", "medium", "high", "urgent"] as const;
+
 export const createTicketSchema = z.object({
-  title: z.string().min(1, "Title is required").max(500),
-  description: z.string().max(10000).optional(),
-  priority: z.enum(["low", "medium", "high", "urgent"]).default("medium"),
-  status: z.enum(["open", "in_progress", "resolved", "closed"]).default("open"),
-  conversationId: z.string().max(100).optional(),
-  departmentId: z.string().max(100).optional(),
-  assignedToId: z.string().max(100).optional(),
+  text: z.string().trim().min(1, "Describe the issue").max(20000),
+  title: z.string().max(200).optional(),
+  projectId: z.string().max(100).optional(),
+  customerName: z.string().max(200).optional(),
+  customerContact: z.string().max(200).optional(),
+  category: z.string().max(100).optional(),
+  priority: z.enum(PRIORITIES).optional(),
 });
 
-export const updateTicketSchema = z.object({
-  title: z.string().min(1).max(500).optional(),
-  description: z.string().max(10000).optional(),
-  priority: z.enum(["low", "medium", "high", "urgent"]).optional(),
-  status: z.enum(["open", "in_progress", "resolved", "closed"]).optional(),
-  resolution: z.string().max(10000).nullable().optional(),
-  departmentId: z.string().max(100).nullable().optional(),
-  assignedToId: z.string().max(100).nullable().optional(),
+export const updateTicketSchema = z
+  .object({
+    status: z.enum(TICKET_STATUSES).optional(),
+    assigneeId: z.string().max(100).nullable().optional(),
+    priority: z.enum(PRIORITIES).optional(),
+    category: z.string().max(100).optional(),
+    projectId: z.string().max(100).optional(),
+    title: z.string().min(1).max(200).optional(),
+  })
+  .strict();
+
+export const ticketReplySchema = z.object({
+  content: z.string().trim().min(1).max(20000),
+  markAnswered: z.boolean().optional(),
+});
+
+export const ticketNoteSchema = z.object({
+  content: z.string().trim().min(1).max(10000),
 });
 
 // Knowledge
@@ -152,6 +165,11 @@ export const updateSettingsSchema = z.object({
   aiProvider: z.string().max(50).optional(),
   aiModel: z.string().max(100).optional(),
   aiApiKey: z.string().max(500).optional(),
+  aiBaseUrl: z.string().max(500).optional(),
+  embedProvider: z.string().max(50).optional(),
+  embedModel: z.string().max(100).optional(),
+  embedApiKey: z.string().max(500).optional(),
+  embedBaseUrl: z.string().max(500).optional(),
   maxTokens: z.number().int().min(100).max(128000).optional(),
   temperature: z.number().min(0).max(2).optional(),
   smtpHost: z.string().max(500).optional(),
@@ -171,6 +189,9 @@ export const updateSettingsSchema = z.object({
   whatsappMode: z.string().max(50).optional(),
   whatsappApiKey: z.string().max(500).optional(),
   whatsappPhone: z.string().max(50).optional(),
+  // telegram only allows these characters in secret_token. "***" is the masked value coming back
+  telegramWebhookSecret: z.string().max(256).regex(/^([A-Za-z0-9_-]*|\*\*\*)$/).optional(),
+  projectLabel: z.enum(["Clients", "Projects"]).optional(),
 }).strict();
 
 // Canned Responses
@@ -198,7 +219,7 @@ export const createAdminSchema = z.object({
   username: z.string().min(3).max(100),
   password: z.string().min(6).max(200),
   name: z.string().max(200).optional(),
-  role: z.enum(["admin", "supervisor", "agent", "viewer"]).default("admin"),
+  role: z.enum(["viewer", "staff", "supervisor", "admin", "owner"]).default("staff"),
 });
 
 // API Keys
@@ -211,6 +232,13 @@ export const createNoteSchema = z.object({
   content: z.string().min(1, "Content is required").max(10000),
   authorName: z.string().max(200).optional(),
 });
+
+// Projects
+export const projectSchema = z.object({ name: z.string().trim().min(1, "Name is required").max(120) });
+export const updateProjectSchema = z
+  .object({ name: z.string().trim().min(1).max(120).optional(), archived: z.boolean().optional() })
+  .strict();
+export const projectAccessSchema = z.object({ adminIds: z.array(z.string().max(100)).max(500) });
 
 // Pagination helper
 export { paginationSchema };

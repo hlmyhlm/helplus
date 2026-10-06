@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { createRequest, parseJsonResponse } from "../helpers/request";
 import { fixtures } from "../helpers/fixtures";
 import { SECRET_FIELDS } from "@/lib/security";
+import { runWithCompany } from "@/lib/tenant/context";
 
 const mockPrisma = prisma as unknown as Record<string, Record<string, ReturnType<typeof vi.fn>>>;
 
@@ -12,7 +13,7 @@ describe("GET /api/settings", () => {
   });
 
   it("should return settings with secrets masked", async () => {
-    mockPrisma.settings.findUnique.mockResolvedValue({ ...fixtures.settings });
+    mockPrisma.settings.upsert.mockResolvedValue({ ...fixtures.settings });
 
     const { GET } = await import("@/app/api/settings/route");
     const response = await GET();
@@ -28,7 +29,7 @@ describe("GET /api/settings", () => {
   });
 
   it("should not leak raw API keys", async () => {
-    mockPrisma.settings.findUnique.mockResolvedValue({ ...fixtures.settings });
+    mockPrisma.settings.upsert.mockResolvedValue({ ...fixtures.settings });
 
     const { GET } = await import("@/app/api/settings/route");
     const response = await GET();
@@ -45,22 +46,23 @@ describe("GET /api/settings", () => {
   });
 
   it("should create default settings if none exist", async () => {
-    mockPrisma.settings.findUnique.mockResolvedValue(null);
-    mockPrisma.settings.create.mockResolvedValue({
+    mockPrisma.settings.upsert.mockResolvedValue({
       id: "default",
       businessName: "",
       aiApiKey: "",
     });
 
     const { GET } = await import("@/app/api/settings/route");
-    const response = await GET();
+    const response = await runWithCompany("test-company", () => GET());
 
     expect(response.status).toBe(200);
-    expect(mockPrisma.settings.create).toHaveBeenCalled();
+    expect(mockPrisma.settings.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { companyId: "test-company" }, create: {} })
+    );
   });
 
   it("should handle database errors", async () => {
-    mockPrisma.settings.findUnique.mockRejectedValue(new Error("DB error"));
+    mockPrisma.settings.upsert.mockRejectedValue(new Error("DB error"));
 
     const { GET } = await import("@/app/api/settings/route");
     const response = await GET();
@@ -72,6 +74,9 @@ describe("GET /api/settings", () => {
 describe("PUT /api/settings", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    mockPrisma.settings.findUnique.mockReset();
+    mockPrisma.settings.findUnique.mockResolvedValue({ ...fixtures.settings });
+    mockPrisma.$transaction.mockImplementation(async (fn) => (fn as (tx: unknown) => Promise<unknown>)(mockPrisma));
   });
 
   it("should update settings with valid data", async () => {
@@ -110,6 +115,25 @@ describe("PUT /api/settings", () => {
 
     const response = await PUT(request);
     expect(response.status).toBe(400);
+  });
+
+  it("says why when the encryption key is missing", async () => {
+    mockPrisma.settings.upsert.mockResolvedValue({ ...fixtures.settings });
+    const saved = process.env.HELPLUS_SECRET_KEY;
+    delete process.env.HELPLUS_SECRET_KEY;
+    try {
+      const { PUT } = await import("@/app/api/settings/route");
+      const request = createRequest("/api/settings", {
+        method: "PUT",
+        body: { aiApiKey: "sk-new" },
+      });
+      const response = await PUT(request);
+      const data = await parseJsonResponse(response);
+      expect(response.status).toBe(500);
+      expect(data.error).toBe("Server encryption key is missing or invalid. Set HELPLUS_SECRET_KEY.");
+    } finally {
+      process.env.HELPLUS_SECRET_KEY = saved;
+    }
   });
 
   it("should mask secrets in response after update", async () => {

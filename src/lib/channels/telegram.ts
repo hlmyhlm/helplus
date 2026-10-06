@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { getSettings } from "@/lib/settings";
 import { chat, createNewConversation } from "@/lib/ai/engine";
 import { resolveCustomer } from "@/lib/customer-resolver";
 import { logger } from "@/lib/logger";
@@ -23,10 +24,8 @@ interface TelegramUpdate {
 }
 
 async function getTelegramToken(): Promise<string> {
-  const settings = await prisma.settings.findFirst({
-    select: { telegramBotToken: true },
-  });
-  return settings?.telegramBotToken || "";
+  const settings = await getSettings();
+  return settings.telegramBotToken || "";
 }
 
 /**
@@ -104,7 +103,8 @@ async function sendTelegramMessage(
  */
 export async function setupTelegramWebhook(
   botToken: string,
-  webhookUrl: string
+  webhookUrl: string,
+  secretToken?: string
 ): Promise<boolean> {
   try {
     const response = await fetch(
@@ -112,7 +112,8 @@ export async function setupTelegramWebhook(
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: webhookUrl }),
+        // telegram echoes this back in X-Telegram-Bot-Api-Secret-Token, the webhook checks it
+        body: JSON.stringify({ url: webhookUrl, ...(secretToken ? { secret_token: secretToken } : {}) }),
       }
     );
 

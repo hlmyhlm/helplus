@@ -119,39 +119,31 @@ describe("Injection Attack Prevention", () => {
 
     it("should safely handle SQL injection in ticket search", async () => {
       mockPrisma.ticket.findMany.mockResolvedValue([]);
+      mockPrisma.ticket.count.mockResolvedValue(0);
+      mockPrisma.ticket.groupBy.mockResolvedValue([]);
 
       const { GET } = await import("@/app/api/tickets/route");
       const request = createRequest("/api/tickets", {
-        searchParams: { search: "1 OR 1=1" },
+        searchParams: { q: "1 OR 1=1" },
       });
 
-      const response = await GET(request);
+      const response = await GET(request, {} as never);
       expect(response.status).toBe(200);
     });
   });
 
   describe("Oversized Payload Protection", () => {
     it("should handle large payloads without crashing", async () => {
-      mockPrisma.ticket.create.mockResolvedValue({
-        id: "ticket-large",
-        title: "A".repeat(500),
-        conversation: null,
-        department: null,
-        assignedTo: null,
-      });
-
       const { POST } = await import("@/app/api/tickets/route");
       const request = createRequest("/api/tickets", {
         method: "POST",
         body: {
-          title: "A".repeat(500),
-          description: "B".repeat(10000),
+          text: "B".repeat(25000),
         },
       });
 
-      const response = await POST(request);
-      // Should either accept (within limits) or reject gracefully
-      expect([201, 400, 413]).toContain(response.status);
+      const response = await POST(request, {} as never);
+      expect(response.status).toBe(400);
     });
   });
 
@@ -177,7 +169,7 @@ describe("Injection Attack Prevention", () => {
   describe("Error Response Safety", () => {
     it("should not leak database details in error responses", async () => {
       mockPrisma.conversation.findMany.mockRejectedValue(
-        new Error("PrismaClientKnownRequestError: Connection refused to database owly_production")
+        new Error("PrismaClientKnownRequestError: Connection refused to database helplus_production")
       );
 
       const { GET } = await import("@/app/api/conversations/route");
@@ -188,7 +180,7 @@ describe("Injection Attack Prevention", () => {
       expect(response.status).toBe(500);
       expect(data.error).toBe("Failed to fetch conversations");
       // Error message should NOT contain database details
-      expect(JSON.stringify(data)).not.toContain("owly_production");
+      expect(JSON.stringify(data)).not.toContain("helplus_production");
       expect(JSON.stringify(data)).not.toContain("PrismaClient");
     });
   });

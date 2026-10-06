@@ -1,28 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyToken } from "@/lib/auth";
 import { hasPermission, Permission } from "@/lib/rbac";
-import { prisma } from "@/lib/prisma";
+import { systemPrisma } from "@/lib/prisma";
 
-interface AuthContext {
+export interface AuthContext {
   userId: string;
   role: string;
   username: string;
   name: string;
   authMethod: "cookie" | "api_key";
+  companyId: string;
 }
 
 /**
  * Authenticate via API key (X-API-Key header).
  */
 async function authenticateApiKey(apiKey: string): Promise<AuthContext | null> {
-  const key = await prisma.apiKey.findUnique({
+  const key = await systemPrisma.apiKey.findUnique({
     where: { key: apiKey },
   });
 
   if (!key || !key.isActive) return null;
 
   // Update lastUsed timestamp
-  prisma.apiKey.update({
+  systemPrisma.apiKey.update({
     where: { id: key.id },
     data: { lastUsed: new Date() },
   }).catch(() => { /* fire and forget */ });
@@ -34,6 +35,7 @@ async function authenticateApiKey(apiKey: string): Promise<AuthContext | null> {
     username: key.name,
     name: key.name,
     authMethod: "api_key",
+    companyId: key.companyId,
   };
 }
 
@@ -68,7 +70,7 @@ export async function requireAuth(
   }
 
   // Fall back to cookie auth
-  const token = request.cookies.get("owly-token")?.value;
+  const token = request.cookies.get("helplus-token")?.value;
 
   if (!token) {
     return NextResponse.json(
@@ -85,16 +87,9 @@ export async function requireAuth(
     );
   }
 
-  if (permission && !hasPermission(payload.role, permission)) {
-    return NextResponse.json(
-      { error: { code: "FORBIDDEN", message: "Insufficient permissions" } },
-      { status: 403 }
-    );
-  }
-
-  const admin = await prisma.admin.findUnique({
+  const admin = await systemPrisma.admin.findUnique({
     where: { id: payload.userId },
-    select: { id: true, username: true, name: true, role: true },
+    select: { id: true, username: true, name: true, role: true, companyId: true },
   });
 
   if (!admin) {
@@ -104,12 +99,21 @@ export async function requireAuth(
     );
   }
 
+  // check against the db role, not the token's: the token can be stale if the role changed since login
+  if (permission && !hasPermission(admin.role, permission)) {
+    return NextResponse.json(
+      { error: { code: "FORBIDDEN", message: "Insufficient permissions" } },
+      { status: 403 }
+    );
+  }
+
   return {
     userId: admin.id,
     role: admin.role,
     username: admin.username,
     name: admin.name,
     authMethod: "cookie",
+    companyId: admin.companyId,
   };
 }
 

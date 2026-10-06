@@ -1,35 +1,32 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth, isAuthenticated } from "@/lib/route-auth";
+import { withAuth } from "@/lib/tenant/with-auth";
 import { validateFlow, type Flow } from "@/lib/flow-builder";
 import { logger } from "@/lib/logger";
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const auth = await requireAuth(request, "automation:read");
-  if (!isAuthenticated(auth)) return auth;
+export const POST = withAuth(
+  "automation:read",
+  async (_request: NextRequest, _auth, { params }: { params: Promise<{ id: string }> }) => {
+    try {
+      const { id } = await params;
 
-  try {
-    const { id } = await params;
+      const flow = await prisma.flow.findUnique({ where: { id } });
+      if (!flow) {
+        return NextResponse.json(
+          { error: "Flow not found" },
+          { status: 404 }
+        );
+      }
 
-    const flow = await prisma.flow.findUnique({ where: { id } });
-    if (!flow) {
+      const result = validateFlow(flow as unknown as Flow);
+
+      return NextResponse.json(result);
+    } catch (error) {
+      logger.error("Failed to validate flow:", error);
       return NextResponse.json(
-        { error: "Flow not found" },
-        { status: 404 }
+        { error: "Failed to validate flow" },
+        { status: 500 }
       );
     }
-
-    const result = validateFlow(flow as unknown as Flow);
-
-    return NextResponse.json(result);
-  } catch (error) {
-    logger.error("Failed to validate flow:", error);
-    return NextResponse.json(
-      { error: "Failed to validate flow" },
-      { status: 500 }
-    );
   }
-}
+);

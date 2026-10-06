@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { prisma, systemPrisma } from "@/lib/prisma";
+import { runWithCompany } from "@/lib/tenant/context";
+import { channelKey } from "@/lib/tenant/keys";
+import { saveSettings } from "@/lib/settings";
 import {
   hashPassword,
   verifyPassword,
@@ -32,30 +35,34 @@ export async function POST(request: NextRequest) {
     }
 
     const hashed = await hashPassword(password);
-    const admin = await prisma.admin.create({
+
+    // first run: use the default company (it already holds any migrated data), or create it
+    const company = await systemPrisma.company.upsert({
+      where: { id: "default" },
+      update: {},
+      create: { id: "default", name: "My Company", slug: "default" },
+    });
+
+    const admin = await systemPrisma.admin.create({
       data: {
         username,
         password: hashed,
         name: name || "Admin",
-        role: "admin",
+        role: "owner",
+        companyId: company.id,
       },
     });
 
-    // Ensure default settings exist
-    await prisma.settings.upsert({
-      where: { id: "default" },
-      update: {},
-      create: { id: "default" },
+    await runWithCompany(company.id, async () => {
+      await saveSettings({});
+      for (const type of ["whatsapp", "email", "phone"]) {
+        await prisma.channel.upsert({
+          where: channelKey(type),
+          update: {},
+          create: { type, isActive: false, status: "disconnected" },
+        });
+      }
     });
-
-    // Ensure channels exist
-    for (const type of ["whatsapp", "email", "phone"]) {
-      await prisma.channel.upsert({
-        where: { type },
-        update: {},
-        create: { type, isActive: false, status: "disconnected" },
-      });
-    }
 
     const token = generateToken(admin.id, admin.role);
     const cookie = setAuthCookie(token);
@@ -76,7 +83,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const admin = await prisma.admin.findUnique({ where: { username } });
+    const admin = await systemPrisma.admin.findUnique({ where: { username } });
     if (!admin) {
       return NextResponse.json(
         { error: "Invalid credentials" },

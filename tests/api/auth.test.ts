@@ -93,11 +93,16 @@ describe("POST /api/auth", () => {
       const { isSetupComplete } = await import("@/lib/auth");
       (isSetupComplete as ReturnType<typeof vi.fn>).mockResolvedValue(false);
 
+      mockPrisma.company.upsert.mockResolvedValue({
+        id: "default",
+        name: "My Company",
+        slug: "default",
+      });
       mockPrisma.admin.create.mockResolvedValue({
         id: "new-admin",
         username: "newadmin",
         name: "New Admin",
-        role: "admin",
+        role: "owner",
       });
       mockPrisma.settings.upsert.mockResolvedValue({});
       mockPrisma.channel.upsert.mockResolvedValue({});

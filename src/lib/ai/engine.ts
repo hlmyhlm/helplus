@@ -1,8 +1,13 @@
-import OpenAI from "openai";
+import type OpenAI from "openai";
+import { chatCompletion } from "./provider";
+import { chatConfig, isConfigured } from "./config";
 import { prisma } from "@/lib/prisma";
-import { owlyTools, executeToolCall } from "./tools";
+import { getSettings } from "@/lib/settings";
+import { helplusTools, executeToolCall } from "./tools";
 import { emitNewMessage } from "@/lib/realtime";
 import { analyzeSentiment, detectIntent, estimateConfidence, requiresHumanApproval } from "./guardrails";
+import { maskIC } from "@/lib/privacy/ic-mask";
+import { ticketForIncomingMessage } from "@/lib/tickets/service";
 import type {
   AIMessage,
   AIConfig,
@@ -33,7 +38,7 @@ function buildSystemPrompt(context: ConversationContext): string {
           .join("\n\n---\n\n")
       : "No specific knowledge base entries available. Answer based on general knowledge about the business.";
 
-  return `You are Owly, the AI customer support assistant for ${context.businessName}.
+  return `You are Help+, the AI customer support assistant for ${context.businessName}.
 
 ${context.businessDesc ? `About the business: ${context.businessDesc}` : ""}
 
@@ -77,15 +82,13 @@ async function getKnowledgeBase(): Promise<KnowledgeItem[]> {
 }
 
 async function getAIConfig(): Promise<AIConfig & ConversationContext> {
-  let settings = await prisma.settings.findFirst();
-  if (!settings) {
-    settings = await prisma.settings.create({ data: { id: "default" } });
-  }
+  const settings = await getSettings();
 
   return {
     provider: settings.aiProvider,
     model: settings.aiModel,
     apiKey: settings.aiApiKey,
+    baseUrl: settings.aiBaseUrl,
     maxTokens: settings.maxTokens,
     temperature: settings.temperature,
     businessName: settings.businessName,
@@ -100,15 +103,20 @@ async function getAIConfig(): Promise<AIConfig & ConversationContext> {
   };
 }
 
+function providerFor(config: AIConfig) {
+  return chatConfig({
+    aiProvider: config.provider,
+    aiModel: config.model,
+    aiApiKey: config.apiKey,
+    aiBaseUrl: config.baseUrl,
+  });
+}
+
 export async function chat(
   conversationId: string,
   userMessage: string
 ): Promise<string> {
   const config = await getAIConfig();
-
-  if (!config.apiKey) {
-    return "AI is not configured. Please add your API key in Settings > AI Configuration.";
-  }
 
   const conversation = await prisma.conversation.findUnique({
     where: { id: conversationId },
@@ -119,6 +127,15 @@ export async function chat(
 
   if (!conversation) {
     return "Conversation not found.";
+  }
+
+  // every incoming message is kept on a ticket, with or without AI
+  const customerText = maskIC(userMessage).text;
+  await prisma.message.create({ data: { conversationId, role: "customer", content: customerText } });
+  await ticketForIncomingMessage(conversationId, customerText);
+
+  if (!isConfigured(providerFor(config))) {
+    return "AI is not configured. Please add your API key in Settings > AI Configuration.";
   }
 
   const knowledgeBase = await getKnowledgeBase();
@@ -139,12 +156,12 @@ export async function chat(
   for (const msg of conversation.messages) {
     if (msg.role === "customer") {
       messages.push({ role: "user", content: msg.content });
-    } else if (msg.role === "assistant") {
+    } else if (msg.role === "assistant" || msg.role === "agent") {
       messages.push({ role: "assistant", content: msg.content });
     }
   }
 
-  messages.push({ role: "user", content: userMessage });
+  messages.push({ role: "user", content: customerText });
 
   // Guardrails: check if human approval needed
   const approval = requiresHumanApproval(userMessage);
@@ -164,15 +181,6 @@ export async function chat(
       },
     });
   }
-
-  // Save user message
-  await prisma.message.create({
-    data: {
-      conversationId,
-      role: "customer",
-      content: userMessage,
-    },
-  });
 
   // Call AI
   const response = await callAI(config, messages, conversationId);
@@ -216,15 +224,12 @@ async function callAI(
     return "I apologize, but I'm having trouble processing your request. Let me connect you with a team member.";
   }
 
-  const openai = new OpenAI({ apiKey: config.apiKey });
-
   let response;
   try {
-    response = await openai.chat.completions.create({
-      model: config.model,
+    response = await chatCompletion(providerFor(config), {
       messages: messages as OpenAI.ChatCompletionMessageParam[],
-      tools: owlyTools as OpenAI.ChatCompletionTool[],
-      max_tokens: config.maxTokens,
+      tools: helplusTools as OpenAI.ChatCompletionTool[],
+      maxTokens: config.maxTokens,
       temperature: config.temperature,
     });
   } catch {

@@ -1,16 +1,14 @@
-/**
- * Semantic Search for Knowledge Base
- *
- * Uses OpenAI embeddings for vector similarity search.
- * Falls back to keyword matching when embeddings are unavailable.
- *
- * Embeddings are stored in the KnowledgeEntry metadata field as JSON.
- * For production with pgvector, store in a dedicated vector column.
- */
+// knowledge base search: embeddings when a provider is set up, keyword match otherwise.
+// vectors live in KnowledgeEntry.metadata for now.
 
+import { createHash } from "node:crypto";
 import { prisma } from "@/lib/prisma";
+import { currentCompanyId } from "@/lib/tenant/context";
+import { getSettings } from "@/lib/settings";
 import { logger } from "@/lib/logger";
 import { cacheGet, cacheSet } from "@/lib/cache";
+import { embed } from "./provider";
+import { embedConfig, isConfigured } from "./config";
 
 interface SearchResult {
   id: string;
@@ -20,27 +18,18 @@ interface SearchResult {
   score: number;
 }
 
-/**
- * Generate embedding for a text using OpenAI.
- */
-async function generateEmbedding(text: string, apiKey: string): Promise<number[] | null> {
+// vectors differ per provider and model, and queries can be private, so key on all of it
+export function embeddingCacheKey(companyId: string, provider: string, model: string, query: string): string {
+  const hash = createHash("sha256").update(query).digest("hex");
+  return `embedding:${companyId}:${provider}:${model}:${hash}`;
+}
+
+async function generateEmbedding(text: string): Promise<number[] | null> {
   try {
-    const response = await fetch("https://api.openai.com/v1/embeddings", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: "text-embedding-3-small",
-        input: text.substring(0, 8000),
-      }),
-    });
-
-    if (!response.ok) return null;
-
-    const data = await response.json();
-    return data.data?.[0]?.embedding || null;
+    const cfg = embedConfig(await getSettings());
+    if (!isConfigured(cfg)) return null;
+    const [vector] = await embed(cfg, [text]);
+    return vector ?? null;
   } catch (error) {
     logger.error("Failed to generate embedding:", error);
     return null;
@@ -99,23 +88,20 @@ export async function searchKnowledgeBase(
 
   if (entries.length === 0) return [];
 
-  // Try to get API key for embeddings
-  const settings = await prisma.settings.findFirst({
-    select: { aiApiKey: true },
-  });
+  const cfg = embedConfig(await getSettings());
 
   let results: SearchResult[];
 
-  if (settings?.aiApiKey) {
+  if (isConfigured(cfg)) {
     // Try semantic search with embeddings
-    const cacheKey = `embedding:${Buffer.from(query).toString("base64").substring(0, 50)}`;
+    const cacheKey = embeddingCacheKey(currentCompanyId(), cfg.kind, cfg.model, query);
     let queryEmbedding: number[] | null = null;
 
     const cached = await cacheGet(cacheKey);
     if (cached) {
       queryEmbedding = JSON.parse(cached);
     } else {
-      queryEmbedding = await generateEmbedding(query, settings.aiApiKey);
+      queryEmbedding = await generateEmbedding(query);
       if (queryEmbedding) {
         await cacheSet(cacheKey, JSON.stringify(queryEmbedding), 3600);
       }
@@ -176,13 +162,7 @@ function keywordSearch(
   }));
 }
 
-/**
- * Generate and store embedding for a knowledge entry.
- */
-export async function indexKnowledgeEntry(
-  entryId: string,
-  apiKey: string
-): Promise<boolean> {
+export async function indexKnowledgeEntry(entryId: string): Promise<boolean> {
   const entry = await prisma.knowledgeEntry.findUnique({
     where: { id: entryId },
   });
@@ -190,7 +170,7 @@ export async function indexKnowledgeEntry(
   if (!entry) return false;
 
   const text = `${entry.title}\n${entry.content}`;
-  const embedding = await generateEmbedding(text, apiKey);
+  const embedding = await generateEmbedding(text);
 
   if (!embedding) return false;
 

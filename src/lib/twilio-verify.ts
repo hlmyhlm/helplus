@@ -32,14 +32,41 @@ export function validateTwilioSignature(
   return crypto.timingSafeEqual(computedBuf, signatureBuf);
 }
 
+export class UndecryptableSecretError extends Error {
+  constructor(field: string) {
+    super(`stored ${field} can't be decrypted`);
+    this.name = "UndecryptableSecretError";
+  }
+}
+
 /**
- * Extract Twilio auth token from settings.
+ * Twilio auth token from settings. "" means none is configured.
+ * Throws when one is stored but can't be decrypted, so callers fail closed.
  */
 export async function getTwilioAuthToken(): Promise<string> {
   // Dynamic import to avoid circular deps
-  const { prisma } = await import("@/lib/prisma");
-  const settings = await prisma.settings.findFirst({
-    select: { twilioToken: true },
-  });
-  return settings?.twilioToken || "";
+  const { getSettingsWithStatus } = await import("@/lib/settings");
+  const { settings, undecryptable } = await getSettingsWithStatus();
+  if (undecryptable.includes("twilioToken")) throw new UndecryptableSecretError("twilioToken");
+  return settings.twilioToken || "";
+}
+
+/**
+ * Shared webhook check. With no token configured the request is refused unless
+ * HELPLUS_ALLOW_UNSIGNED_WEBHOOKS is set; a stored token that can't be read rejects it.
+ */
+export async function isTwilioRequestAllowed(
+  request: Request,
+  params: Record<string, string>
+): Promise<boolean> {
+  let authToken: string;
+  try {
+    authToken = await getTwilioAuthToken();
+  } catch (error) {
+    if (error instanceof UndecryptableSecretError) return false;
+    throw error;
+  }
+  if (!authToken) return process.env.HELPLUS_ALLOW_UNSIGNED_WEBHOOKS === "true";
+  const signature = request.headers.get("x-twilio-signature") || "";
+  return validateTwilioSignature(authToken, signature, request.url, params);
 }

@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { prisma } from "@/lib/prisma";
 import { executeToolCall } from "@/lib/ai/tools";
+import { runWithCompany } from "@/lib/tenant/context";
+
+// callers always run inside a company, so the tests do too
+const inCompany = (fn: () => Promise<void>) => () => runWithCompany("test-company", fn);
 
 // Mock nodemailer
 vi.mock("nodemailer", () => ({
@@ -29,16 +33,20 @@ describe("AI Tools", () => {
   });
 
   describe("create_ticket", () => {
-    it("should create a ticket with correct fields", async () => {
+    it("should create a ticket with correct fields", inCompany(async () => {
       mockPrisma.department.findFirst.mockResolvedValue({
         id: "dept-1",
         name: "Support",
       });
+      mockPrisma.ticketCounter.upsert.mockResolvedValue({ next: 2 });
+      mockPrisma.project.findFirst.mockResolvedValue({ id: "p1" });
       mockPrisma.ticket.create.mockResolvedValue({
         id: "ticket-1",
+        number: 1,
         title: "Login issue",
         priority: "high",
       });
+      mockPrisma.ticket.update.mockResolvedValue({});
 
       const result = JSON.parse(
         await executeToolCall(
@@ -62,16 +70,23 @@ describe("AI Tools", () => {
             description: "Cannot login",
             priority: "high",
             conversationId: "conv-1",
-            departmentId: "dept-1",
+            source: "ai",
           }),
         })
       );
-    });
+      expect(mockPrisma.ticket.update).toHaveBeenCalledWith({
+        where: { id: "ticket-1" },
+        data: { departmentId: "dept-1" },
+      });
+    }));
 
-    it("should create ticket without department when not found", async () => {
+    it("should create ticket without department when not found", inCompany(async () => {
       mockPrisma.department.findFirst.mockResolvedValue(null);
+      mockPrisma.ticketCounter.upsert.mockResolvedValue({ next: 2 });
+      mockPrisma.project.findFirst.mockResolvedValue({ id: "p1" });
       mockPrisma.ticket.create.mockResolvedValue({
         id: "ticket-2",
+        number: 1,
         title: "Issue",
         priority: "medium",
       });
@@ -81,15 +96,28 @@ describe("AI Tools", () => {
           title: "Issue",
           description: "Details",
           priority: "medium",
-        })
+        }, "conv-1")
       );
 
       expect(result.success).toBe(true);
-    });
+    }));
+
+    it("should fail without a conversation to attach to", inCompany(async () => {
+      const result = JSON.parse(
+        await executeToolCall("create_ticket", {
+          title: "Issue",
+          description: "Details",
+          priority: "medium",
+        })
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.message).toContain("No conversation");
+    }));
   });
 
   describe("assign_to_person", () => {
-    it("should assign ticket to matching team member", async () => {
+    it("should assign ticket to matching team member", inCompany(async () => {
       mockPrisma.teamMember.findFirst.mockResolvedValue({
         id: "member-1",
         name: "Jane",
@@ -108,11 +136,11 @@ describe("AI Tools", () => {
       expect(result.assignedTo).toBe("Jane");
       expect(mockPrisma.ticket.update).toHaveBeenCalledWith({
         where: { id: "ticket-1" },
-        data: { assignedToId: "member-1", status: "in_progress" },
+        data: { assignedToId: "member-1", status: "working" },
       });
-    });
+    }));
 
-    it("should return failure when no matching member found", async () => {
+    it("should return failure when no matching member found", inCompany(async () => {
       mockPrisma.teamMember.findFirst.mockResolvedValue(null);
 
       const result = JSON.parse(
@@ -124,12 +152,12 @@ describe("AI Tools", () => {
 
       expect(result.success).toBe(false);
       expect(result.message).toContain("No available team member");
-    });
+    }));
   });
 
   describe("send_internal_email", () => {
-    it("should send email when SMTP is configured", async () => {
-      mockPrisma.settings.findFirst.mockResolvedValue({
+    it("should send email when SMTP is configured", inCompany(async () => {
+      mockPrisma.settings.upsert.mockResolvedValue({
         smtpHost: "smtp.test.com",
         smtpPort: 587,
         smtpUser: "user@test.com",
@@ -146,10 +174,10 @@ describe("AI Tools", () => {
       );
 
       expect(result.success).toBe(true);
-    });
+    }));
 
-    it("should return failure when SMTP not configured", async () => {
-      mockPrisma.settings.findFirst.mockResolvedValue({ smtpHost: null });
+    it("should return failure when SMTP not configured", inCompany(async () => {
+      mockPrisma.settings.upsert.mockResolvedValue({ smtpHost: null });
 
       const result = JSON.parse(
         await executeToolCall("send_internal_email", {
@@ -161,11 +189,11 @@ describe("AI Tools", () => {
 
       expect(result.success).toBe(false);
       expect(result.message).toContain("Email not configured");
-    });
+    }));
   });
 
   describe("get_customer_history", () => {
-    it("should return conversation history", async () => {
+    it("should return conversation history", inCompany(async () => {
       mockPrisma.conversation.findMany.mockResolvedValue([
         {
           channel: "whatsapp",
@@ -188,9 +216,9 @@ describe("AI Tools", () => {
       expect(result.success).toBe(true);
       expect(result.history).toHaveLength(1);
       expect(result.history[0].channel).toBe("whatsapp");
-    });
+    }));
 
-    it("should return empty history for new customer", async () => {
+    it("should return empty history for new customer", inCompany(async () => {
       mockPrisma.conversation.findMany.mockResolvedValue([]);
 
       const result = JSON.parse(
@@ -202,11 +230,11 @@ describe("AI Tools", () => {
       expect(result.success).toBe(true);
       expect(result.history).toHaveLength(0);
       expect(result.message).toContain("No previous conversations");
-    });
+    }));
   });
 
   describe("schedule_followup", () => {
-    it("should return success with scheduled time", async () => {
+    it("should return success with scheduled time", inCompany(async () => {
       const result = JSON.parse(
         await executeToolCall("schedule_followup", {
           conversationId: "conv-1",
@@ -217,11 +245,11 @@ describe("AI Tools", () => {
 
       expect(result.success).toBe(true);
       expect(result.scheduledFor).toBeDefined();
-    });
+    }));
   });
 
   describe("trigger_webhook", () => {
-    it("should trigger webhook when found and active", async () => {
+    it("should trigger webhook when found and active", inCompany(async () => {
       mockPrisma.webhook.findFirst.mockResolvedValue({
         id: "wh-1",
         name: "Slack",
@@ -251,9 +279,9 @@ describe("AI Tools", () => {
           signal: expect.any(AbortSignal),
         })
       );
-    });
+    }));
 
-    it("should return failure when webhook not found", async () => {
+    it("should return failure when webhook not found", inCompany(async () => {
       mockPrisma.webhook.findFirst.mockResolvedValue(null);
 
       const result = JSON.parse(
@@ -264,16 +292,16 @@ describe("AI Tools", () => {
 
       expect(result.success).toBe(false);
       expect(result.message).toContain("No active webhook");
-    });
+    }));
   });
 
   describe("unknown tool", () => {
-    it("should return error for unknown tool name", async () => {
+    it("should return error for unknown tool name", inCompany(async () => {
       const result = JSON.parse(
         await executeToolCall("nonexistent_tool", {})
       );
 
       expect(result.error).toContain("Unknown tool");
-    });
+    }));
   });
 });

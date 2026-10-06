@@ -99,35 +99,34 @@ describe("Input Validation Schemas", () => {
   describe("createTicketSchema", () => {
     it("should accept valid ticket", () => {
       const result = validateBody(createTicketSchema, {
+        text: "Something is broken",
         title: "Bug report",
-        description: "Something is broken",
         priority: "high",
       });
       expect(result.success).toBe(true);
     });
 
-    it("should reject empty title", () => {
+    it("should reject empty text", () => {
       const result = validateBody(createTicketSchema, {
-        title: "",
-        description: "Details",
+        text: "  ",
       });
       expect(result.success).toBe(false);
     });
 
     it("should reject invalid priority", () => {
       const result = validateBody(createTicketSchema, {
-        title: "Bug",
+        text: "Bug",
         priority: "super-critical",
       });
       expect(result.success).toBe(false);
     });
 
-    it("should apply defaults for optional fields", () => {
-      const result = validateBody(createTicketSchema, { title: "Bug" });
+    it("accepts just the text", () => {
+      const result = validateBody(createTicketSchema, { text: "Bug" });
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data.priority).toBe("medium");
-        expect(result.data.status).toBe("open");
+        expect(result.data.text).toBe("Bug");
+        expect(result.data.priority).toBeUndefined();
       }
     });
   });
@@ -233,6 +232,11 @@ describe("Input Validation Schemas", () => {
       expect(result.success).toBe(false);
     });
 
+    it("should accept a telegram webhook secret", () => {
+      const result = validateBody(updateSettingsSchema, { telegramWebhookSecret: "tg-secret_1" });
+      expect(result.success).toBe(true);
+    });
+
     it("should reject unknown fields (strict mode)", () => {
       const result = validateBody(updateSettingsSchema, {
         businessName: "Test",
@@ -282,6 +286,7 @@ describe("Input Validation Schemas", () => {
   describe("XSS payloads should be treated as normal strings", () => {
     it("should accept XSS in title (validation passes, escaping happens at render)", () => {
       const result = validateBody(createTicketSchema, {
+        text: "issue",
         title: '<script>alert("xss")</script>',
       });
       expect(result.success).toBe(true);
@@ -289,14 +294,16 @@ describe("Input Validation Schemas", () => {
 
     it("should accept long strings within limits", () => {
       const result = validateBody(createTicketSchema, {
-        title: "A".repeat(500),
+        text: "issue",
+        title: "A".repeat(200),
       });
       expect(result.success).toBe(true);
     });
 
     it("should reject strings exceeding max length", () => {
       const result = validateBody(createTicketSchema, {
-        title: "A".repeat(501),
+        text: "issue",
+        title: "A".repeat(201),
       });
       expect(result.success).toBe(false);
     });

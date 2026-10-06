@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/prisma";
+import { tagKey } from "@/lib/tenant/keys";
 import { logger } from "@/lib/logger";
+import { OPEN_STATUSES } from "@/lib/tickets/status";
 
 /**
  * Conversation Routing & Management Engine
@@ -108,7 +110,7 @@ export async function transferConversation(
 
   // Update all open tickets for this conversation
   await prisma.ticket.updateMany({
-    where: { conversationId, status: { in: ["open", "in_progress"] } },
+    where: { conversationId, status: { in: OPEN_STATUSES } },
     data: { assignedToId: toMemberId },
   });
 
@@ -290,7 +292,7 @@ export async function executeMacro(
 
         case "add_tag": {
           let tag = await prisma.tag.findUnique({
-            where: { name: action.value },
+            where: tagKey(action.value),
           });
           if (!tag) {
             tag = await prisma.tag.create({ data: { name: action.value } });

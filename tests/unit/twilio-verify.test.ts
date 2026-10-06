@@ -1,6 +1,15 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import crypto from "crypto";
-import { validateTwilioSignature } from "@/lib/twilio-verify";
+import { prisma } from "@/lib/prisma";
+import { encryptSecret } from "@/lib/secrets";
+import { fixtures } from "../helpers/fixtures";
+import { validateTwilioSignature, getTwilioAuthToken, UndecryptableSecretError } from "@/lib/twilio-verify";
+import { runWithCompany } from "@/lib/tenant/context";
+
+// callers always run inside a company, so the tests do too
+const inCompany = (fn: () => Promise<void>) => () => runWithCompany("test-company", fn);
+
+const mockPrisma = prisma as unknown as Record<string, Record<string, ReturnType<typeof vi.fn>>>;
 
 describe("Twilio Signature Validation", () => {
   const authToken = "test-auth-token-12345";
@@ -35,4 +44,28 @@ describe("Twilio Signature Validation", () => {
     const tampered = { ...params, From: "+1999999999" };
     expect(validateTwilioSignature(authToken, signature, url, tampered)).toBe(false);
   });
+});
+
+describe("getTwilioAuthToken", () => {
+  it("returns the token", inCompany(async () => {
+    mockPrisma.settings.upsert.mockResolvedValue({ ...fixtures.settings, twilioToken: encryptSecret("tw") });
+    expect(await getTwilioAuthToken()).toBe("tw");
+  }));
+
+  it("returns empty when no token is set", inCompany(async () => {
+    mockPrisma.settings.upsert.mockResolvedValue({ ...fixtures.settings, twilioToken: "" });
+    expect(await getTwilioAuthToken()).toBe("");
+  }));
+
+  it("throws when a token is stored but can't be decrypted", inCompany(async () => {
+    mockPrisma.settings.upsert.mockResolvedValue({ ...fixtures.settings, twilioToken: encryptSecret("tw") });
+    process.env.HELPLUS_SECRET_KEY = "b2".repeat(32);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await expect(getTwilioAuthToken()).rejects.toThrow(UndecryptableSecretError);
+    } finally {
+      process.env.HELPLUS_SECRET_KEY = "a1".repeat(32);
+      warn.mockRestore();
+    }
+  }));
 });

@@ -139,7 +139,7 @@ export function middleware(request: NextRequest) {
   }
 
   // Check for auth token (cookie) or API key (header)
-  const token = request.cookies.get("owly-token")?.value;
+  const token = request.cookies.get("helplus-token")?.value;
   const apiKey = request.headers.get("x-api-key");
 
   if (!token && !apiKey) {
@@ -175,7 +175,7 @@ export function middleware(request: NextRequest) {
       );
     }
     const response = NextResponse.redirect(new URL("/login", request.url));
-    response.cookies.delete("owly-token");
+    response.cookies.delete("helplus-token");
     return response;
   }
 

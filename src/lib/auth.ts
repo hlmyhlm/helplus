@@ -1,6 +1,6 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import { prisma } from "@/lib/prisma";
+import { systemPrisma } from "@/lib/prisma";
 import { cookies } from "next/headers";
 
 function getJwtSecret(): string {
@@ -14,7 +14,7 @@ function getJwtSecret(): string {
 }
 
 const JWT_SECRET = getJwtSecret();
-const TOKEN_NAME = "owly-token";
+const TOKEN_NAME = "helplus-token";
 const TOKEN_EXPIRY = "7d";
 
 export async function hashPassword(password: string): Promise<string> {
@@ -50,16 +50,16 @@ export async function getCurrentUser() {
   const payload = verifyToken(token);
   if (!payload) return null;
 
-  const admin = await prisma.admin.findUnique({
+  const admin = await systemPrisma.admin.findUnique({
     where: { id: payload.userId },
-    select: { id: true, username: true, name: true, role: true },
+    select: { id: true, username: true, name: true, role: true, companyId: true },
   });
 
   return admin;
 }
 
 export async function isSetupComplete(): Promise<boolean> {
-  const adminCount = await prisma.admin.count();
+  const adminCount = await systemPrisma.admin.count();
   return adminCount > 0;
 }
 
