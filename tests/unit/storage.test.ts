@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { mkdtempSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import path from "path";
-import { fileStore, attachmentKey } from "@/lib/storage";
+import { fileStore, attachmentKey, attachmentFolder } from "@/lib/storage";
 
 let dir: string;
 
@@ -33,6 +33,25 @@ describe("local file store", () => {
   it("refuses keys that escape the folder", async () => {
     await expect(fileStore().put("../evil", Buffer.from("x"))).rejects.toThrow("bad storage key");
     await expect(fileStore().get("c/../../etc/passwd")).rejects.toThrow("bad storage key");
+  });
+
+  it("removes a whole folder and refuses unsafe ones", async () => {
+    const store = fileStore();
+    await store.put("c/co-1/attachments/att-2/original.bin", Buffer.from("o"));
+    await store.put("c/co-1/attachments/att-2/masked-r1.png", Buffer.from("m"));
+    await store.put("c/co-1/attachments/att-3/masked-r1.png", Buffer.from("m"));
+    await store.removeFolder(attachmentFolder("co-1", "att-2"));
+    await expect(store.get("c/co-1/attachments/att-2/original.bin")).rejects.toThrow();
+    await expect(store.get("c/co-1/attachments/att-2/masked-r1.png")).rejects.toThrow();
+    expect((await store.get("c/co-1/attachments/att-3/masked-r1.png")).toString()).toBe("m");
+    await expect(store.removeFolder("c/co-1/attachments/missing")).resolves.toBeUndefined();
+    await expect(store.removeFolder("../x")).rejects.toThrow("bad storage key");
+    await expect(store.removeFolder("")).rejects.toThrow("bad storage key");
+  });
+
+  it("an attachment folder holds its files", () => {
+    expect(attachmentFolder("co-1", "att-1")).toBe("c/co-1/attachments/att-1");
+    expect(attachmentKey("co-1", "att-1", "masked", "r1").startsWith(attachmentFolder("co-1", "att-1") + "/")).toBe(true);
   });
 
   it("keys are per company", () => {

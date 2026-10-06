@@ -49,21 +49,34 @@ describe("imageForAi", () => {
 });
 
 describe("removeAttachmentFiles", () => {
-  it("removes both files and skips null keys", async () => {
+  it("removes every file in each attachment's folder, spare renders too", async () => {
     const store = fileStore();
     await store.put("c/co/attachments/b1/original.bin", Buffer.from("o"));
-    await store.put("c/co/attachments/b1/masked.png", Buffer.from("m"));
-    await store.put("c/co/attachments/b2/masked.png", Buffer.from("m"));
+    await store.put("c/co/attachments/b1/masked-r1.png", Buffer.from("m"));
+    await store.put("c/co/attachments/b1/masked-spare.png", Buffer.from("m"));
+    await store.put("c/co/attachments/b2/masked-r2.png", Buffer.from("m"));
+    await store.put("c/co/attachments/keep/masked-r3.png", Buffer.from("m"));
     attachment.findMany.mockResolvedValueOnce([
-      { originalKey: "c/co/attachments/b1/original.bin", maskedKey: "c/co/attachments/b1/masked.png" },
-      { originalKey: null, maskedKey: "c/co/attachments/b2/masked.png" },
+      { id: "b1", companyId: "co" },
+      { id: "b2", companyId: "co" },
     ]);
 
     expect(await removeAttachmentFiles({ ticketId: "t1" })).toBe(2);
 
-    expect(attachment.findMany).toHaveBeenCalledWith({ where: { ticketId: "t1" }, select: { originalKey: true, maskedKey: true } });
-    await expect(store.get("c/co/attachments/b1/original.bin")).rejects.toThrow();
-    await expect(store.get("c/co/attachments/b1/masked.png")).rejects.toThrow();
-    await expect(store.get("c/co/attachments/b2/masked.png")).rejects.toThrow();
+    expect(attachment.findMany).toHaveBeenCalledWith({ where: { ticketId: "t1" }, select: { id: true, companyId: true } });
+    for (const key of ["b1/original.bin", "b1/masked-r1.png", "b1/masked-spare.png", "b2/masked-r2.png"]) {
+      await expect(store.get(`c/co/attachments/${key}`)).rejects.toThrow();
+    }
+    expect((await store.get("c/co/attachments/keep/masked-r3.png")).toString()).toBe("m");
+  });
+
+  it("keeps going when one folder can't be removed", async () => {
+    await fileStore().put("c/co/attachments/b4/original.bin", Buffer.from("o"));
+    attachment.findMany.mockResolvedValueOnce([
+      { id: "../b3", companyId: "co" },
+      { id: "b4", companyId: "co" },
+    ]);
+    expect(await removeAttachmentFiles({ ticketId: "t2" })).toBe(2);
+    await expect(fileStore().get("c/co/attachments/b4/original.bin")).rejects.toThrow();
   });
 });

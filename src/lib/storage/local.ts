@@ -21,5 +21,8 @@ export function localStore(root: string): FileStore {
     async remove(key) {
       await rm(full(key), { force: true });
     },
+    async removeFolder(prefix) {
+      await rm(full(prefix), { recursive: true, force: true });
+    },
   };
 }

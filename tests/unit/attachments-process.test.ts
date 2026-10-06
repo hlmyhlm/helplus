@@ -29,6 +29,7 @@ const store = {
   }),
   put: vi.fn(async (k: string, d: Buffer) => void files.set(k, d)),
   remove: vi.fn(async (k: string) => void files.delete(k)),
+  removeFolder: vi.fn(),
 };
 const ORIGINAL = "c/co/attachments/a1/original.bin";
 const RENDER = /^c\/co\/attachments\/a1\/masked-[0-9a-f-]{36}\.png$/;
