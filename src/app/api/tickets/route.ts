@@ -9,6 +9,7 @@ import { OPEN_STATUSES, TICKET_STATUSES, isTicketStatus, type TicketStatus } fro
 import { slaWhere } from "@/lib/sla/clock";
 import { createTicket } from "@/lib/tickets/service";
 import { projectProblem } from "@/lib/projects/usable";
+import { hasPermission } from "@/lib/rbac";
 
 const ROW_INCLUDE = {
   project: { select: { id: true, name: true } },
@@ -61,6 +62,15 @@ export const GET = withAuth("tickets:read", async (request: NextRequest, auth) =
 
     const sla = params.get("sla");
     if (sla === "near" || sla === "breached") filters.push(slaWhere(sla, now));
+
+    // taken before the attention filter is pushed, so it never counts itself either
+    const needsCheckWhere = { AND: [...filters, { status: { not: "closed" } }, { attachments: { some: { status: "needs_check" } } }] };
+    const canSeeOriginals = hasPermission(auth.role, "attachments:original");
+    const screensToCheck = canSeeOriginals ? await prisma.ticket.count({ where: needsCheckWhere }) : 0;
+
+    if (params.get("attention") === "screens") {
+      filters.push({ status: { not: "closed" }, attachments: { some: { status: "needs_check" } } });
+    }
     const where = { AND: [...filters, statusFilter(params.get("status"))] };
 
     const [rows, total, grouped] = await Promise.all([
@@ -74,7 +84,7 @@ export const GET = withAuth("tickets:read", async (request: NextRequest, auth) =
       if (isTicketStatus(g.status)) counts[g.status] = g._count._all;
     }
 
-    return NextResponse.json({ ...paginatedResponse(rows, total, page, limit), counts, slaCounts: { near, breached } });
+    return NextResponse.json({ ...paginatedResponse(rows, total, page, limit), counts, slaCounts: { near, breached }, screensToCheck });
   } catch (error) {
     logger.error("Failed to fetch tickets:", error);
     return NextResponse.json({ error: "Failed to fetch tickets" }, { status: 500 });

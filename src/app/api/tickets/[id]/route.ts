@@ -10,6 +10,7 @@ import { saveTicket, loadSlaContext } from "@/lib/tickets/update";
 import { STAFF_ROLES } from "@/lib/rbac";
 import { projectProblem } from "@/lib/projects/usable";
 import { notifyTicket } from "@/lib/notify/notify";
+import { removeAttachmentFiles } from "@/lib/attachments/files";
 
 type Ctx = { params: Promise<{ id: string }> };
 const notFound = () => NextResponse.json({ error: "Ticket not found" }, { status: 404 });
@@ -28,6 +29,21 @@ export const GET = withAuth("tickets:read", async (_request: NextRequest, auth, 
           messages: { orderBy: { createdAt: "asc" } },
           notes: { orderBy: { createdAt: "desc" } },
           customer: { select: { id: true, name: true, phone: true, email: true } },
+        },
+      },
+      attachments: {
+        orderBy: { createdAt: "asc" },
+        select: {
+          id: true,
+          messageId: true,
+          fileName: true,
+          status: true,
+          icCount: true,
+          width: true,
+          height: true,
+          checkNote: true,
+          originalDeletedAt: true,
+          createdAt: true,
         },
       },
     },
@@ -106,6 +122,7 @@ export const PATCH = withAuth("tickets:update", async (request: NextRequest, aut
 export const DELETE = withAuth("tickets:delete", async (_request: NextRequest, auth, { params }: Ctx) => {
   const { id } = await params;
   if (!(await loadTicketFor(auth, id))) return notFound();
+  await removeAttachmentFiles({ ticketId: id });
   await prisma.ticket.delete({ where: { id } });
   return NextResponse.json({ success: true });
 });

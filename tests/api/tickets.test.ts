@@ -78,6 +78,34 @@ describe("GET /api/tickets", () => {
     const body = await parseJsonResponse(res);
     expect(body.slaCounts).toEqual({ near: 2, breached: 3 });
   });
+
+  it("attention=screens adds the needs-check filter", async () => {
+    const { GET } = await import("@/app/api/tickets/route");
+    await GET(createRequest("/api/tickets", { searchParams: { attention: "screens" } }), {} as never);
+    const where = db.ticket.findMany.mock.calls[0][0].where;
+    expect(JSON.stringify(where)).toContain('"attachments":{"some":{"status":"needs_check"}}');
+  });
+
+  it("returns screensToCheck next to slaCounts", async () => {
+    db.ticket.count.mockImplementation(async ({ where }: { where?: unknown } = {}) => {
+      const s = JSON.stringify(where ?? {});
+      if (s.includes("needs_check")) return 4;
+      return 1;
+    });
+    const { GET } = await import("@/app/api/tickets/route");
+    const res = await GET(createRequest("/api/tickets"), {} as never);
+    const body = await parseJsonResponse(res);
+    expect(body.screensToCheck).toBe(4);
+  });
+
+  it("a viewer gets screensToCheck: 0", async () => {
+    asRole("viewer");
+    db.projectAccess.findMany.mockResolvedValue([]);
+    const { GET } = await import("@/app/api/tickets/route");
+    const res = await GET(createRequest("/api/tickets"), {} as never);
+    const body = await parseJsonResponse(res);
+    expect(body.screensToCheck).toBe(0);
+  });
 });
 
 describe("POST /api/tickets", () => {
