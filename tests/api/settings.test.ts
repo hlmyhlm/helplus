@@ -136,6 +136,39 @@ describe("PUT /api/settings", () => {
     }
   });
 
+  it("saves autoCloseDays", async () => {
+    mockPrisma.settings.upsert.mockResolvedValue({
+      ...fixtures.settings,
+      autoCloseDays: 5,
+    });
+
+    const { PUT } = await import("@/app/api/settings/route");
+    const request = createRequest("/api/settings", {
+      method: "PUT",
+      body: { autoCloseDays: 5 },
+    });
+
+    const response = await PUT(request);
+    const data = await parseJsonResponse(response);
+
+    expect(response.status).toBe(200);
+    expect(data.autoCloseDays).toBe(5);
+    expect(mockPrisma.settings.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ update: expect.objectContaining({ autoCloseDays: 5 }) })
+    );
+  });
+
+  it("rejects autoCloseDays over 60", async () => {
+    const { PUT } = await import("@/app/api/settings/route");
+    const request = createRequest("/api/settings", {
+      method: "PUT",
+      body: { autoCloseDays: 61 },
+    });
+
+    const response = await PUT(request);
+    expect(response.status).toBe(400);
+  });
+
   it("should mask secrets in response after update", async () => {
     mockPrisma.settings.upsert.mockResolvedValue({
       ...fixtures.settings,

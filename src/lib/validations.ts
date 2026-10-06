@@ -192,6 +192,7 @@ export const updateSettingsSchema = z.object({
   // telegram only allows these characters in secret_token. "***" is the masked value coming back
   telegramWebhookSecret: z.string().max(256).regex(/^([A-Za-z0-9_-]*|\*\*\*)$/).optional(),
   projectLabel: z.enum(["Clients", "Projects"]).optional(),
+  autoCloseDays: z.number().int().min(0).max(60).optional(),
 }).strict();
 
 // Canned Responses
