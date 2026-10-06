@@ -45,15 +45,18 @@ export function QuickAddDialog({
   const suggest = async () => {
     if (!text.trim()) return;
     setBusy(true);
-    const res = await fetch("/api/tickets/suggest", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text }),
-    });
-    const d = await res.json().catch(() => ({}));
-    if (d.title) setTitle(d.title);
-    if (d.category) setCategory(d.category);
-    setBusy(false);
+    try {
+      const res = await fetch("/api/tickets/suggest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (d.title) setTitle(d.title);
+      if (d.category) setCategory(d.category);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const submit = async () => {
@@ -63,29 +66,32 @@ export function QuickAddDialog({
       return;
     }
     setBusy(true);
-    const res = await fetch("/api/tickets", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        text,
-        title: title || undefined,
-        category: category || undefined,
-        customerName: customerName || undefined,
-        projectId: projectId || undefined,
-      }),
-    });
-    setBusy(false);
-    if (!res.ok) {
-      const d = await res.json().catch(() => ({}));
-      setError(typeof d.error === "string" ? d.error : "Couldn't create the ticket.");
-      return;
+    try {
+      const res = await fetch("/api/tickets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text,
+          title: title || undefined,
+          category: category || undefined,
+          customerName: customerName || undefined,
+          projectId: projectId || undefined,
+        }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        setError(typeof d.error === "string" ? d.error : "Couldn't create the ticket.");
+        return;
+      }
+      const ticket = await res.json();
+      setText("");
+      setTitle("");
+      setCategory("");
+      setCustomerName("");
+      onCreated(ticket.id);
+    } finally {
+      setBusy(false);
     }
-    const ticket = await res.json();
-    setText("");
-    setTitle("");
-    setCategory("");
-    setCustomerName("");
-    onCreated(ticket.id);
   };
 
   const field =

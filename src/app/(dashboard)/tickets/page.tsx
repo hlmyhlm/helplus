@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { Header } from "@/components/layout/header";
@@ -29,22 +29,35 @@ export default function TicketsPage() {
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [adding, setAdding] = useState(false);
+  const requestId = useRef(0);
 
   const load = useCallback(async () => {
+    const myRequest = ++requestId.current;
     setLoading(true);
+    setLoadError("");
     const c = CHIPS.find((x) => x.key === chip)!;
     const params = new URLSearchParams({ status: c.status, page: String(page), limit: "25" });
     if (c.assignee) params.set("assignee", c.assignee);
     if (q.trim()) params.set("q", q.trim());
-    const res = await fetch(`/api/tickets?${params}`);
-    if (res.ok) {
-      const json = await res.json();
-      setRows(unwrapList<TicketRow>(json));
-      setPages(listMeta(json)?.totalPages || 1);
-      setCounts(json.counts ?? {});
+    try {
+      const res = await fetch(`/api/tickets?${params}`);
+      if (myRequest !== requestId.current) return; // a newer request started, drop this one
+      if (res.ok) {
+        const json = await res.json();
+        if (myRequest !== requestId.current) return;
+        setRows(unwrapList<TicketRow>(json));
+        setPages(listMeta(json)?.totalPages || 1);
+        setCounts(json.counts ?? {});
+      } else {
+        setLoadError("Couldn't load tickets.");
+      }
+    } catch {
+      if (myRequest === requestId.current) setLoadError("Couldn't load tickets.");
+    } finally {
+      if (myRequest === requestId.current) setLoading(false);
     }
-    setLoading(false);
   }, [chip, q, page]);
 
   useEffect(() => {
@@ -67,7 +80,7 @@ export default function TicketsPage() {
         actions={
           <button
             onClick={() => setAdding(true)}
-            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md bg-helplus-primary text-white text-sm font-medium"
+            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md bg-helplus-primary text-white text-sm font-medium whitespace-nowrap"
           >
             <Plus className="h-4 w-4" /> Quick add
           </button>
@@ -103,6 +116,7 @@ export default function TicketsPage() {
             </button>
           ))}
         </div>
+        {loadError && <p className="text-sm text-helplus-danger">{loadError}</p>}
         {loading ? <div className="text-sm text-helplus-text-light">Loading…</div> : <TicketList rows={rows} />}
         {pages > 1 && (
           <div className="flex items-center justify-end gap-2 text-sm text-helplus-text">

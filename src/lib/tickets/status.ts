@@ -33,6 +33,13 @@ export function isTicketStatus(v: unknown): v is TicketStatus {
   return typeof v === "string" && (TICKET_STATUSES as readonly string[]).includes(v);
 }
 
+// same rule the server enforces in statusChange - UI pickers should use this
+// so they never offer a move the PATCH route will 409 on.
+export function canMove(from: TicketStatus, to: TicketStatus): boolean {
+  if (from === to) return false;
+  return ALLOWED[from].includes(to);
+}
+
 export function statusChange(
   current: { status: string; firstReplyAt: Date | null; reopenCount: number },
   to: TicketStatus,

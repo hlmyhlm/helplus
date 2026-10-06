@@ -24,7 +24,7 @@ export function TicketList({ rows }: { rows: TicketRow[] }) {
   }
   return (
     <>
-      <div className="hidden md:block rounded-md border border-helplus-border bg-helplus-surface overflow-hidden">
+      <div className="hidden md:block rounded-md border border-helplus-border bg-helplus-surface overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-xs text-helplus-text-light border-b border-helplus-border">

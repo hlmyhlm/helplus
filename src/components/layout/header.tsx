@@ -42,11 +42,11 @@ export function Header({ title, description, actions }: HeaderProps) {
       <div className="animate-fade-in min-w-0">
         <h2 className="text-lg md:text-xl font-semibold text-helplus-text truncate">{title}</h2>
         {description && (
-          <p className="text-sm text-helplus-text-light mt-0.5 truncate">{description}</p>
+          <p className="text-sm text-helplus-text-light mt-0.5">{description}</p>
         )}
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 shrink-0">
         {searchOpen && (
           <input
             type="text"

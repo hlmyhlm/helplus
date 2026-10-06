@@ -16,10 +16,14 @@ export function useCompany(): CompanyInfo {
   useEffect(() => {
     if (cached) return;
     fetch("/api/company")
-      .then((r) => (r.ok ? r.json() : EMPTY))
-      .then((d: CompanyInfo) => {
-        cached = d;
-        setInfo(d);
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: CompanyInfo | null) => {
+        if (d) {
+          cached = d;
+          setInfo(d);
+        } else {
+          setInfo(EMPTY);
+        }
       })
       .catch(() => setInfo(EMPTY));
   }, []);
