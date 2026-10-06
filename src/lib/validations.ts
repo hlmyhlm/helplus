@@ -205,14 +205,17 @@ export const createCannedResponseSchema = z.object({
 
 // SLA
 export const createSLARuleSchema = z.object({
-  name: z.string().min(1, "Name is required").max(200),
+  name: z.string().trim().min(1, "Name is required").max(200),
   description: z.string().max(1000).optional(),
-  channel: z.string().max(50).optional(),
-  priority: z.enum(["low", "medium", "high", "urgent"]).optional(),
+  projectId: z.string().max(100).nullable().optional(),
+  priority: z.enum(["all", "low", "medium", "high", "urgent"]).default("all"),
+  category: z.string().trim().max(100).default("all"),
+  source: z.string().trim().max(50).default("all"),
   firstResponseMins: z.number().int().min(1).max(10080),
   resolutionMins: z.number().int().min(1).max(43200),
   isActive: z.boolean().default(true),
 });
+export const updateSLARuleSchema = createSLARuleSchema.partial();
 
 // Admin Users
 export const createAdminSchema = z.object({

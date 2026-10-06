@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { withAuth } from "@/lib/tenant/with-auth";
+import { updateSLARuleSchema, validateBody } from "@/lib/validations";
 
 export const PUT = withAuth(
   "sla:update",
@@ -9,7 +10,15 @@ export const PUT = withAuth(
     try {
       const { id } = await params;
       const body = await request.json();
-      const { name, description, channel, priority, firstResponseMins, resolutionMins, isActive } = body;
+      const parsed = validateBody(updateSLARuleSchema, body);
+      if (!parsed.success) {
+        return NextResponse.json({ error: parsed.error }, { status: 400 });
+      }
+      // zod fills defaults even in partial(), so only keep keys the client sent
+      const sent = body && typeof body === "object" ? body : {};
+      const d = Object.fromEntries(
+        Object.entries(parsed.data).filter(([k]) => k in sent)
+      ) as typeof parsed.data;
 
       const existing = await prisma.sLARule.findUnique({ where: { id } });
       if (!existing) {
@@ -19,16 +28,22 @@ export const PUT = withAuth(
         );
       }
 
+      if (d.projectId && !(await prisma.project.findFirst({ where: { id: d.projectId } }))) {
+        return NextResponse.json({ error: "Project not found" }, { status: 400 });
+      }
+
       const rule = await prisma.sLARule.update({
         where: { id },
         data: {
-          ...(name !== undefined && { name: name.trim() }),
-          ...(description !== undefined && { description: description.trim() }),
-          ...(channel !== undefined && { channel }),
-          ...(priority !== undefined && { priority }),
-          ...(firstResponseMins !== undefined && { firstResponseMins }),
-          ...(resolutionMins !== undefined && { resolutionMins }),
-          ...(isActive !== undefined && { isActive }),
+          ...(d.name !== undefined && { name: d.name }),
+          ...(d.description !== undefined && { description: d.description.trim() }),
+          ...(d.projectId !== undefined && { projectId: d.projectId || null }),
+          ...(d.priority !== undefined && { priority: d.priority }),
+          ...(d.category !== undefined && { category: d.category || "all" }),
+          ...(d.source !== undefined && { source: d.source || "all" }),
+          ...(d.firstResponseMins !== undefined && { firstResponseMins: d.firstResponseMins }),
+          ...(d.resolutionMins !== undefined && { resolutionMins: d.resolutionMins }),
+          ...(d.isActive !== undefined && { isActive: d.isActive }),
         },
       });
 

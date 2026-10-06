@@ -102,4 +102,9 @@ describe("RBAC System", () => {
     expect(hasPermission("staff", "projects:manage")).toBe(false);
     expect(hasPermission("admin", "projects:manage")).toBe(true);
   });
+
+  it("only admins and owners manage the email log", () => {
+    expect(hasPermission("supervisor", "emails:manage")).toBe(false);
+    expect(hasPermission("admin", "emails:manage")).toBe(true);
+  });
 });

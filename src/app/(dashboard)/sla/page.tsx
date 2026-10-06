@@ -19,7 +19,7 @@ interface SLARuleData {
   id: string;
   name: string;
   description: string;
-  channel: string;
+  source: string;
   priority: string;
   firstResponseMins: number;
   resolutionMins: number;
@@ -28,7 +28,7 @@ interface SLARuleData {
   updatedAt: string;
 }
 
-const channelOptions = [
+const sourceOptions = [
   { value: "all", label: "All Channels" },
   { value: "whatsapp", label: "WhatsApp" },
   { value: "email", label: "Email" },
@@ -46,7 +46,7 @@ const priorityOptions = [
 const defaultForm = {
   name: "",
   description: "",
-  channel: "all",
+  source: "all",
   priority: "all",
   firstResponseMins: 30,
   resolutionMins: 480,
@@ -98,7 +98,7 @@ export default function SLAPage() {
     setForm({
       name: rule.name,
       description: rule.description,
-      channel: rule.channel,
+      source: rule.source,
       priority: rule.priority,
       firstResponseMins: rule.firstResponseMins,
       resolutionMins: rule.resolutionMins,
@@ -253,7 +253,7 @@ export default function SLAPage() {
 
                 <div className="flex items-center gap-2 mb-3">
                   <span className="px-2 py-0.5 rounded text-xs font-medium bg-helplus-primary-50 text-helplus-link">
-                    {channelOptions.find((c) => c.value === rule.channel)?.label || rule.channel}
+                    {sourceOptions.find((c) => c.value === rule.source)?.label || rule.source}
                   </span>
                   <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-700">
                     {priorityOptions.find((p) => p.value === rule.priority)?.label || rule.priority}
@@ -370,13 +370,13 @@ export default function SLAPage() {
                     Channel
                   </label>
                   <select
-                    value={form.channel}
+                    value={form.source}
                     onChange={(e) =>
-                      setForm({ ...form, channel: e.target.value })
+                      setForm({ ...form, source: e.target.value })
                     }
                     className="w-full text-sm px-3 py-2 border border-helplus-border rounded-lg bg-helplus-bg focus:outline-none focus:ring-2 focus:ring-helplus-primary/30 text-helplus-text"
                   >
-                    {channelOptions.map((c) => (
+                    {sourceOptions.map((c) => (
                       <option key={c.value} value={c.value}>
                         {c.label}
                       </option>

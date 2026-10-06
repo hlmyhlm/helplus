@@ -11,6 +11,7 @@ export const LINKS: Record<string, Record<string, string>> = {
     assignedToId: "TeamMember",
     projectId: "Project",
     assigneeId: "Admin",
+    slaRuleId: "SLARule",
   },
   ConversationTag: { conversationId: "Conversation", tagId: "Tag" },
   WebhookDelivery: { webhookId: "Webhook" },
@@ -18,6 +19,8 @@ export const LINKS: Record<string, Record<string, string>> = {
   InternalNote: { conversationId: "Conversation" },
   ProjectAccess: { projectId: "Project", adminId: "Admin" },
   Customer: { projectId: "Project" },
+  SLARule: { projectId: "Project" },
+  EmailOutbox: { ticketId: "Ticket" },
 };
 
 // relation fields between company tables (not `company`), model -> field -> target model.
@@ -41,6 +44,8 @@ export const RELATIONS: Record<string, Record<string, string>> = {
     assignedTo: "TeamMember",
     project: "Project",
     assignee: "Admin",
+    slaRule: "SLARule",
+    emails: "EmailOutbox",
   },
   Tag: { conversations: "ConversationTag" },
   ConversationTag: { conversation: "Conversation", tag: "Tag" },
@@ -50,8 +55,10 @@ export const RELATIONS: Record<string, Record<string, string>> = {
   CustomerNote: { customer: "Customer" },
   InternalNote: { conversation: "Conversation" },
   Admin: { assignedTickets: "Ticket", projectAccess: "ProjectAccess" },
-  Project: { tickets: "Ticket", customers: "Customer", access: "ProjectAccess" },
+  Project: { tickets: "Ticket", customers: "Customer", access: "ProjectAccess", slaRules: "SLARule" },
   ProjectAccess: { project: "Project", admin: "Admin" },
+  SLARule: { project: "Project", tickets: "Ticket" },
+  EmailOutbox: { ticket: "Ticket" },
 };
 
 // the only nested creates allowed. each nested row gets the current company stamped on it.

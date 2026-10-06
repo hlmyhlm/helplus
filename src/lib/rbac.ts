@@ -102,6 +102,9 @@ export const PERMISSIONS = {
   "projects:read": ["viewer", "staff", "supervisor", "admin", "owner"],
   "projects:manage": ["admin", "owner"],
 
+  // Email log
+  "emails:manage": ["admin", "owner"],
+
   // Company (owner only)
   "company:manage": ["owner"],
 } as const;
