@@ -12,7 +12,7 @@ const conversation = { id: "c1", channel: "whatsapp", customerName: "Ali", statu
 const hidden = async ({ where }: { where: Record<string, unknown> }) => (where.tickets ? null : conversation);
 
 beforeEach(() => {
-  for (const m of ["conversation", "message", "internalNote", "customer", "projectAccess", "conversationTag"]) {
+  for (const m of ["conversation", "message", "internalNote", "customer", "projectAccess", "conversationTag", "attachment"]) {
     for (const fn of Object.values(db[m])) fn.mockReset();
   }
   vi.mocked(requireAuth).mockResolvedValue({
@@ -89,6 +89,29 @@ describe("staff limited to p1", () => {
     const { GET } = await import("@/app/api/conversations/route");
     await GET(createRequest("/api/conversations"));
     expect(db.conversation.findMany.mock.calls[0][0].where.tickets).toBeUndefined();
+  });
+});
+
+describe("DELETE /api/conversations/:id", () => {
+  it("removes attachment files before deleting the conversation row", async () => {
+    vi.mocked(requireAuth).mockResolvedValue({
+      userId: "a1",
+      role: "admin",
+      username: "a",
+      name: "A",
+      authMethod: "cookie",
+      companyId: "test-company",
+    } as never);
+    db.attachment.findMany.mockResolvedValue([]);
+    db.conversation.delete.mockResolvedValue({});
+    const { DELETE } = await import("@/app/api/conversations/[id]/route");
+    const res = await DELETE(createRequest("/api/conversations/c1", { method: "DELETE" }), ctx);
+    expect(res.status).toBe(200);
+    expect(db.attachment.findMany).toHaveBeenCalledWith({
+      where: { ticket: { conversationId: "c1" } },
+      select: { id: true, companyId: true },
+    });
+    expect(db.attachment.findMany.mock.invocationCallOrder[0]).toBeLessThan(db.conversation.delete.mock.invocationCallOrder[0]);
   });
 });
 

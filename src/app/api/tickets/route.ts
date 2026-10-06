@@ -60,15 +60,19 @@ export const GET = withAuth("tickets:read", async (request: NextRequest, auth) =
       prisma.ticket.count({ where: { AND: [...filters, slaWhere("breached", now)] } }),
     ]);
 
+    // counted the same way as near/breached: before sla and attention are pushed, so neither counts itself
+    const canSeeOriginals = hasPermission(auth.role, "attachments:original");
+    const screensToCheck = canSeeOriginals
+      ? await prisma.ticket.count({
+          where: { AND: [...filters, { status: { not: "closed" } }, { attachments: { some: { status: "needs_check" } } }] },
+        })
+      : 0;
+
     const sla = params.get("sla");
     if (sla === "near" || sla === "breached") filters.push(slaWhere(sla, now));
 
-    // taken before the attention filter is pushed, so it never counts itself either
-    const needsCheckWhere = { AND: [...filters, { status: { not: "closed" } }, { attachments: { some: { status: "needs_check" } } }] };
-    const canSeeOriginals = hasPermission(auth.role, "attachments:original");
-    const screensToCheck = canSeeOriginals ? await prisma.ticket.count({ where: needsCheckWhere }) : 0;
-
-    if (params.get("attention") === "screens") {
+    // staff-only filter; anyone else gets the param silently ignored
+    if (canSeeOriginals && params.get("attention") === "screens") {
       filters.push({ status: { not: "closed" }, attachments: { some: { status: "needs_check" } } });
     }
     const where = { AND: [...filters, statusFilter(params.get("status"))] };

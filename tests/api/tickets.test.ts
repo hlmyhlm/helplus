@@ -106,6 +106,15 @@ describe("GET /api/tickets", () => {
     const body = await parseJsonResponse(res);
     expect(body.screensToCheck).toBe(0);
   });
+
+  it("ignores attention=screens for a role without attachments:original", async () => {
+    asRole("viewer");
+    db.projectAccess.findMany.mockResolvedValue([]);
+    const { GET } = await import("@/app/api/tickets/route");
+    await GET(createRequest("/api/tickets", { searchParams: { attention: "screens" } }), {} as never);
+    const where = db.ticket.findMany.mock.calls[0][0].where;
+    expect(JSON.stringify(where)).not.toContain("needs_check");
+  });
 });
 
 describe("POST /api/tickets", () => {

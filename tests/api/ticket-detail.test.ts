@@ -19,7 +19,7 @@ const ticket = {
 };
 
 beforeEach(() => {
-  for (const m of ["ticket", "project", "projectAccess", "message", "internalNote", "admin", "sLARule", "businessHours", "holiday"]) {
+  for (const m of ["ticket", "project", "projectAccess", "message", "internalNote", "admin", "sLARule", "businessHours", "holiday", "attachment"]) {
     for (const fn of Object.values(db[m])) fn.mockReset();
   }
   vi.mocked(requireAuth).mockResolvedValue({
@@ -188,6 +188,18 @@ describe("PATCH /api/tickets/:id", () => {
     const { GET } = await import("@/app/api/tickets/[id]/route");
     const res = await GET(createRequest("/api/tickets/t1"), ctx);
     expect(res.status).toBe(404);
+  });
+});
+
+describe("DELETE /api/tickets/:id", () => {
+  it("removes attachment files before deleting the ticket row", async () => {
+    db.attachment.findMany.mockResolvedValue([]);
+    db.ticket.delete.mockResolvedValue({});
+    const { DELETE } = await import("@/app/api/tickets/[id]/route");
+    const res = await DELETE(createRequest("/api/tickets/t1", { method: "DELETE" }), ctx);
+    expect(res.status).toBe(200);
+    expect(db.attachment.findMany).toHaveBeenCalledWith({ where: { ticketId: "t1" }, select: { id: true, companyId: true } });
+    expect(db.attachment.findMany.mock.invocationCallOrder[0]).toBeLessThan(db.ticket.delete.mock.invocationCallOrder[0]);
   });
 });
 

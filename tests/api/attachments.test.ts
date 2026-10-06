@@ -8,14 +8,15 @@ import { confirmAttachment, remask } from "@/lib/attachments/process";
 import { fileStore } from "@/lib/storage";
 import { decryptBuffer } from "@/lib/secrets";
 import { isAllowedImage, normalizeImage } from "@/lib/privacy/ic-image";
-import { logActivity } from "@/lib/activity";
 
 vi.mock("@/lib/attachments/service", () => ({ addAttachment: vi.fn(), MAX_BYTES: 1000 }));
 vi.mock("@/lib/attachments/process", () => ({ confirmAttachment: vi.fn(), remask: vi.fn() }));
 vi.mock("@/lib/storage", () => ({ fileStore: vi.fn() }));
 vi.mock("@/lib/secrets", () => ({ decryptBuffer: vi.fn((b: Buffer) => b) }));
 vi.mock("@/lib/privacy/ic-image", () => ({ isAllowedImage: vi.fn(), normalizeImage: vi.fn() }));
-vi.mock("@/lib/activity", () => ({ logActivity: vi.fn() }));
+
+const MAX_FILES = 5;
+const MAX_UPLOAD_BYTES = MAX_FILES * MAX_BYTES + 1024 * 1024;
 
 const db = prisma as unknown as Record<string, Record<string, ReturnType<typeof vi.fn>>>;
 const ctx = { params: Promise.resolve({ id: "a1" }) };
@@ -51,7 +52,7 @@ const asRole = (role: string) =>
 const store = { get: vi.fn(), put: vi.fn(), remove: vi.fn() };
 
 beforeEach(() => {
-  for (const m of ["ticket", "attachment", "projectAccess"]) {
+  for (const m of ["ticket", "attachment", "projectAccess", "activityLog"]) {
     for (const fn of Object.values(db[m])) fn.mockReset();
   }
   vi.mocked(addAttachment).mockReset();
@@ -59,7 +60,6 @@ beforeEach(() => {
   vi.mocked(remask).mockReset();
   vi.mocked(isAllowedImage).mockReset().mockResolvedValue(true);
   vi.mocked(normalizeImage).mockReset().mockResolvedValue({ png: Buffer.from("png"), width: 10, height: 10 });
-  vi.mocked(logActivity).mockReset();
   vi.mocked(decryptBuffer).mockReset().mockImplementation((b: Buffer) => b);
   store.get.mockReset().mockResolvedValue(Buffer.from("bytes"));
   store.put.mockReset();
@@ -69,12 +69,29 @@ beforeEach(() => {
   asRole("admin");
   db.ticket.findUnique.mockResolvedValue(ticket);
   db.attachment.findUnique.mockResolvedValue(baseAttachment());
+  db.activityLog.create.mockResolvedValue({ id: "log1" });
 });
 
-function multipart(path: string, files: { name: string; bytes: number }[]) {
+// a real browser always sends Content-Length for a FormData body; tests set it explicitly
+// since constructing a Request from FormData directly doesn't compute one.
+function multipart(path: string, files: { name: string; bytes: number }[], contentLength?: number | null) {
   const fd = new FormData();
-  for (const f of files) fd.append("files", new File([Buffer.alloc(f.bytes, 1)], f.name, { type: "image/png" }));
-  return new NextRequest(new URL(path, "http://localhost:3000"), { method: "POST", body: fd });
+  let total = 0;
+  for (const f of files) {
+    fd.append("files", new File([Buffer.alloc(f.bytes, 1)], f.name, { type: "image/png" }));
+    total += f.bytes + 200; // rough per-part overhead
+  }
+  const headers: Record<string, string> = {};
+  if (contentLength !== null) headers["content-length"] = String(contentLength ?? total);
+  return new NextRequest(new URL(path, "http://localhost:3000"), { method: "POST", body: fd, headers });
+}
+
+function badFormBody(path: string) {
+  return new NextRequest(new URL(path, "http://localhost:3000"), {
+    method: "POST",
+    headers: { "content-type": "multipart/form-data; boundary=x", "content-length": "20" },
+    body: "not actually form data",
+  });
 }
 
 describe("POST /api/tickets/:id/attachments", () => {
@@ -90,6 +107,25 @@ describe("POST /api/tickets/:id/attachments", () => {
     const { POST } = await import("@/app/api/tickets/[id]/attachments/route");
     const res = await POST(multipart("/api/tickets/t1/attachments", [{ name: "a.png", bytes: 10 }]), ticketCtx);
     expect(res.status).toBe(404);
+  });
+
+  it("returns 411 when Content-Length is missing", async () => {
+    const { POST } = await import("@/app/api/tickets/[id]/attachments/route");
+    const res = await POST(multipart("/api/tickets/t1/attachments", [{ name: "a.png", bytes: 10 }], null), ticketCtx);
+    expect(res.status).toBe(411);
+  });
+
+  it("returns 413 when Content-Length declares more than the cap", async () => {
+    const { POST } = await import("@/app/api/tickets/[id]/attachments/route");
+    const res = await POST(multipart("/api/tickets/t1/attachments", [{ name: "a.png", bytes: 10 }], MAX_UPLOAD_BYTES + 1), ticketCtx);
+    expect(res.status).toBe(413);
+  });
+
+  it("returns 400 for a body that isn't valid form data", async () => {
+    const { POST } = await import("@/app/api/tickets/[id]/attachments/route");
+    const res = await POST(badFormBody("/api/tickets/t1/attachments"), ticketCtx);
+    expect(res.status).toBe(400);
+    expect((await parseJsonResponse(res)).error).toBe("Couldn't read the upload");
   });
 
   it("returns 400 with no files", async () => {
@@ -133,6 +169,23 @@ describe("POST /api/tickets/:id/attachments", () => {
     const body = await parseJsonResponse(res);
     expect(body.data).toHaveLength(2);
   });
+
+  it("returns 500 with what was already saved when a later file fails", async () => {
+    vi.mocked(addAttachment)
+      .mockResolvedValueOnce(baseAttachment())
+      .mockRejectedValueOnce(new Error("disk full"));
+    const { POST } = await import("@/app/api/tickets/[id]/attachments/route");
+    const res = await POST(
+      multipart("/api/tickets/t1/attachments", [
+        { name: "a.png", bytes: 10 },
+        { name: "b.png", bytes: 10 },
+      ]),
+      ticketCtx
+    );
+    expect(res.status).toBe(500);
+    const body = await parseJsonResponse(res);
+    expect(body.saved).toHaveLength(1);
+  });
 });
 
 describe("GET /api/attachments/:id", () => {
@@ -174,10 +227,30 @@ describe("GET /api/attachments/:id/original", () => {
     expect(vi.mocked(requireAuth).mock.calls[0][1]).toBe("attachments:original");
   });
 
-  it("writes logActivity with action attachment.original_viewed", async () => {
+  it("writes the audit row before sending any bytes", async () => {
     const { GET } = await import("@/app/api/attachments/[id]/original/route");
-    await GET(createRequest("/api/attachments/a1/original"), ctx);
-    expect(logActivity).toHaveBeenCalledWith("attachment.original_viewed", "attachment", "a1", expect.any(String), "U");
+    const res = await GET(createRequest("/api/attachments/a1/original"), ctx);
+    expect(res.status).toBe(200);
+    expect(db.activityLog.create).toHaveBeenCalledWith({
+      data: {
+        action: "attachment.original_viewed",
+        entity: "attachment",
+        entityId: "a1",
+        description: expect.any(String),
+        userName: "U",
+      },
+    });
+    const auditOrder = db.activityLog.create.mock.invocationCallOrder[0];
+    const readOrder = store.get.mock.invocationCallOrder[0];
+    expect(auditOrder).toBeLessThan(readOrder);
+  });
+
+  it("fails closed: a 500 and no bytes when the audit write fails", async () => {
+    db.activityLog.create.mockRejectedValue(new Error("db down"));
+    const { GET } = await import("@/app/api/attachments/[id]/original/route");
+    const res = await GET(createRequest("/api/attachments/a1/original"), ctx);
+    expect(res.status).toBe(500);
+    expect(store.get).not.toHaveBeenCalled();
   });
 
   it("returns 410 when originalKey is null", async () => {
@@ -226,5 +299,40 @@ describe("POST /api/attachments/:id/check", () => {
     const { POST } = await import("@/app/api/attachments/[id]/check/route");
     const res = await POST(createRequest("/api/attachments/a1/check", { method: "POST", body: { action: "confirm" } }), ctx);
     expect(res.status).toBe(409);
+  });
+
+  it("returns 410 when the original is gone", async () => {
+    vi.mocked(remask).mockRejectedValue(new Error("the original was deleted"));
+    const { POST } = await import("@/app/api/attachments/[id]/check/route");
+    const res = await POST(
+      createRequest("/api/attachments/a1/check", { method: "POST", body: { action: "mask", boxes: [{ x: 0, y: 0, w: 10, h: 10 }] } }),
+      ctx
+    );
+    expect(res.status).toBe(410);
+  });
+});
+
+describe("an attachment on a ticket outside the user's projects", () => {
+  beforeEach(() => {
+    asRole("staff");
+    db.projectAccess.findMany.mockResolvedValue([{ projectId: "other" }]);
+  });
+
+  it("GET masked gets 404", async () => {
+    const { GET } = await import("@/app/api/attachments/[id]/route");
+    const res = await GET(createRequest("/api/attachments/a1"), ctx);
+    expect(res.status).toBe(404);
+  });
+
+  it("GET original gets 404", async () => {
+    const { GET } = await import("@/app/api/attachments/[id]/original/route");
+    const res = await GET(createRequest("/api/attachments/a1/original"), ctx);
+    expect(res.status).toBe(404);
+  });
+
+  it("POST check gets 404", async () => {
+    const { POST } = await import("@/app/api/attachments/[id]/check/route");
+    const res = await POST(createRequest("/api/attachments/a1/check", { method: "POST", body: { action: "confirm" } }), ctx);
+    expect(res.status).toBe(404);
   });
 });
