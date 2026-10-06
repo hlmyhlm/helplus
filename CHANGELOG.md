@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- Multi-company: every record belongs to a company, and queries are scoped to the logged-in user's company. Existing data moves into "My Company".
+- Roles are now owner, admin, supervisor, staff, viewer and client. The first admin of each company becomes owner; agent and editor become staff.
+- Settings and business hours are per company.
+
+### Upgrade notes
+
+- Set `HELPLUS_SECRET_KEY` (see `.env.example`), then run `npx tsx --env-file=.env scripts/encrypt-secrets.ts` once.
+- Twilio webhooks without a Twilio token are refused. Set the token, or `HELPLUS_ALLOW_UNSIGNED_WEBHOOKS=true` for local testing only.
+- Telegram webhooks now need a secret. Set `telegramWebhookSecret` with `PUT /api/settings`, and register the webhook with the same value as `secret_token`. Until then every Telegram update gets 403.
+- With more than one company on a server, add `?company=<slug>` to the Twilio and Telegram webhook URLs.
+
 ## [0.2.2] - 2026-04-08
 
 ### Added
