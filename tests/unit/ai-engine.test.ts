@@ -65,6 +65,10 @@ describe("AI Engine", () => {
     // Default message creation
     mockPrisma.message.create.mockResolvedValue({ id: "msg-new" });
     mockPrisma.conversation.update.mockResolvedValue({});
+
+    // ticketForIncomingMessage finds an open ticket and just touches it
+    mockPrisma.ticket.findFirst.mockResolvedValue({ id: "t1" });
+    mockPrisma.ticket.update.mockResolvedValue({ id: "t1" });
   });
 
   it("should return fallback when AI API key is not configured", inCompany(async () => {
@@ -141,6 +145,32 @@ describe("AI Engine", () => {
     const sent = JSON.stringify(mockOpenAICreateFn.mock.calls[0][0].messages);
     expect(sent).toContain("My IC is [IC HIDDEN], please check");
     expect(sent).not.toContain("900101");
+  }));
+
+  it("sends staff replies (role agent) to the AI as assistant history", inCompany(async () => {
+    mockPrisma.conversation.findUnique.mockResolvedValue({
+      id: "conv-1",
+      channel: "whatsapp",
+      customerName: "John",
+      customerContact: "+1555",
+      status: "active",
+      messages: [
+        { role: "customer", content: "Hi", createdAt: new Date() },
+        { role: "agent", content: "A staff member already told you X", createdAt: new Date() },
+      ],
+    });
+    mockOpenAICreateFn.mockResolvedValue({
+      choices: [{ finish_reason: "stop", message: { content: "Thanks" } }],
+    });
+
+    const { chat } = await import("@/lib/ai/engine");
+    await chat("conv-1", "follow up question");
+
+    const sentMessages = mockOpenAICreateFn.mock.calls[0][0].messages;
+    const agentMessage = sentMessages.find(
+      (m: { content: string }) => m.content === "A staff member already told you X"
+    );
+    expect(agentMessage?.role).toBe("assistant");
   }));
 
   it("should save user and assistant messages", inCompany(async () => {

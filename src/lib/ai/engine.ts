@@ -6,6 +6,8 @@ import { getSettings } from "@/lib/settings";
 import { helplusTools, executeToolCall } from "./tools";
 import { emitNewMessage } from "@/lib/realtime";
 import { analyzeSentiment, detectIntent, estimateConfidence, requiresHumanApproval } from "./guardrails";
+import { maskIC } from "@/lib/privacy/ic-mask";
+import { ticketForIncomingMessage } from "@/lib/tickets/service";
 import type {
   AIMessage,
   AIConfig,
@@ -116,10 +118,6 @@ export async function chat(
 ): Promise<string> {
   const config = await getAIConfig();
 
-  if (!isConfigured(providerFor(config))) {
-    return "AI is not configured. Please add your API key in Settings > AI Configuration.";
-  }
-
   const conversation = await prisma.conversation.findUnique({
     where: { id: conversationId },
     include: {
@@ -129,6 +127,15 @@ export async function chat(
 
   if (!conversation) {
     return "Conversation not found.";
+  }
+
+  // every incoming message is kept on a ticket, with or without AI
+  const customerText = maskIC(userMessage).text;
+  await prisma.message.create({ data: { conversationId, role: "customer", content: customerText } });
+  await ticketForIncomingMessage(conversationId, customerText);
+
+  if (!isConfigured(providerFor(config))) {
+    return "AI is not configured. Please add your API key in Settings > AI Configuration.";
   }
 
   const knowledgeBase = await getKnowledgeBase();
@@ -149,12 +156,12 @@ export async function chat(
   for (const msg of conversation.messages) {
     if (msg.role === "customer") {
       messages.push({ role: "user", content: msg.content });
-    } else if (msg.role === "assistant") {
+    } else if (msg.role === "assistant" || msg.role === "agent") {
       messages.push({ role: "assistant", content: msg.content });
     }
   }
 
-  messages.push({ role: "user", content: userMessage });
+  messages.push({ role: "user", content: customerText });
 
   // Guardrails: check if human approval needed
   const approval = requiresHumanApproval(userMessage);
@@ -174,15 +181,6 @@ export async function chat(
       },
     });
   }
-
-  // Save user message
-  await prisma.message.create({
-    data: {
-      conversationId,
-      role: "customer",
-      content: userMessage,
-    },
-  });
 
   // Call AI
   const response = await callAI(config, messages, conversationId);
