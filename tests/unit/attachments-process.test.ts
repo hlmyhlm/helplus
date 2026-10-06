@@ -5,9 +5,12 @@ import { encryptBuffer } from "@/lib/secrets";
 import { fileStore } from "@/lib/storage";
 import { ocrImage } from "@/lib/ocr/tesseract";
 import { findIcBoxes, needsCheck } from "@/lib/privacy/ic-image";
-import { processAttachment, confirmAttachment } from "@/lib/attachments/process";
+import { processAttachment, confirmAttachment, remask } from "@/lib/attachments/process";
 
-vi.mock("@/lib/storage", () => ({ fileStore: vi.fn(), attachmentKey: vi.fn(() => "c/co/attachments/a1/masked.png") }));
+vi.mock("@/lib/storage", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/storage")>()),
+  fileStore: vi.fn(),
+}));
 vi.mock("@/lib/ocr/tesseract", () => ({ ocrImage: vi.fn() }));
 vi.mock("@/lib/tenant/context", () => ({ currentCompanyId: () => "co" }));
 vi.mock("@/lib/activity", () => ({ logActivity: vi.fn() }));
@@ -28,11 +31,13 @@ const store = {
   remove: vi.fn(async (k: string) => void files.delete(k)),
 };
 const ORIGINAL = "c/co/attachments/a1/original.bin";
-const MASKED = "c/co/attachments/a1/masked.png";
+const RENDER = /^c\/co\/attachments\/a1\/masked-[0-9a-f-]{36}\.png$/;
+const renders = () => [...files.keys()].filter((k) => k.includes("/masked"));
 let row: Record<string, unknown>;
 
 const png = () => sharp({ create: { width: 40, height: 20, channels: 3, background: "#ffffff" } }).png().toBuffer();
 const ocr = { confidence: 50, lines: [{ words: [{ text: "900101-14-5678", confidence: 60, bbox: { x0: 1, y0: 1, x1: 30, y1: 10 } }] }] };
+const staff = { id: "admin-1", name: "Siti" };
 
 beforeEach(async () => {
   for (const fn of Object.values(attachment)) fn.mockReset();
@@ -57,8 +62,8 @@ describe("processAttachment", () => {
   it("writes a masked copy for a confident result", async () => {
     vi.mocked(findIcBoxes).mockReturnValue([{ x: 0, y: 0, w: 10, h: 10 }]);
     const a = await processAttachment("a1");
-    expect(a).toMatchObject({ status: "masked", icCount: 1, maskedKey: MASKED });
-    expect(files.has(MASKED)).toBe(true);
+    expect(a).toMatchObject({ status: "masked", icCount: 1, maskedKey: expect.stringMatching(RENDER) });
+    expect(renders()).toEqual([a?.maskedKey]);
   });
 
   it("low confidence keeps the boxes but writes no masked copy", async () => {
@@ -91,35 +96,71 @@ describe("processAttachment", () => {
     expect(ocrImage).not.toHaveBeenCalled();
   });
 
-  it("doesn't overwrite a row that was handled meanwhile", async () => {
+  it("a losing run leaves the winner's file and row alone", async () => {
+    // the fixed key every render used to share
+    const winner = "c/co/attachments/a1/masked.png";
+    vi.mocked(findIcBoxes).mockReturnValue([]);
     vi.mocked(ocrImage).mockImplementation(async () => {
-      row = { ...row, status: "clean", maskedKey: null };
+      // staff checked it while this run was still reading
+      files.set(winner, Buffer.from("checked render"));
+      row = { ...row, status: "masked", maskedKey: winner };
       return ocr;
     });
     const a = await processAttachment("a1");
-    expect(a?.status).toBe("clean");
+    expect(a).toMatchObject({ status: "masked", maskedKey: winner });
     expect(attachment.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "a1", status: "pending" } }));
-    expect(files.has(MASKED)).toBe(false);
+    expect(files.get(winner)?.toString()).toBe("checked render");
+    expect(renders()).toEqual([winner]);
+  });
+
+  it("still returns the row if cleaning up a losing render fails", async () => {
+    vi.mocked(ocrImage).mockImplementation(async () => {
+      row = { ...row, status: "clean" };
+      return ocr;
+    });
+    store.remove.mockRejectedValueOnce(new Error("disk"));
+    expect((await processAttachment("a1"))?.status).toBe("clean");
   });
 });
 
 describe("confirmAttachment", () => {
   it("renders the masked copy from the original and sets the status", async () => {
     row = { ...row, status: "needs_check", icCount: 1, autoBoxes: [{ x: 0, y: 0, w: 10, h: 10 }] };
-    const a = await confirmAttachment("a1", { id: "admin-1", name: "Siti" });
-    expect(a).toMatchObject({ status: "masked", maskedKey: MASKED, checkedById: "admin-1" });
-    expect(files.has(MASKED)).toBe(true);
+    const a = await confirmAttachment("a1", staff);
+    expect(a).toMatchObject({ status: "masked", maskedKey: expect.stringMatching(RENDER), checkedById: "admin-1" });
+    expect(renders()).toEqual([a.maskedKey]);
   });
 
   it("marks an image with nothing found clean", async () => {
     row = { ...row, status: "needs_check" };
     const a = await confirmAttachment("a1", { id: "api-key:k", name: "Bot" });
-    expect(a).toMatchObject({ status: "clean", maskedKey: MASKED, checkedById: null });
+    expect(a).toMatchObject({ status: "clean", maskedKey: expect.stringMatching(RENDER), checkedById: null });
   });
 
   it("throws when the original was deleted", async () => {
     row = { ...row, status: "needs_check", originalKey: null };
-    await expect(confirmAttachment("a1", { id: "admin-1", name: "Siti" })).rejects.toThrow("the original was deleted");
+    await expect(confirmAttachment("a1", staff)).rejects.toThrow("the original was deleted");
     expect(attachment.update).not.toHaveBeenCalled();
+  });
+});
+
+describe("remask", () => {
+  it("removes the old render", async () => {
+    const old = "c/co/attachments/a1/masked-old.png";
+    files.set(old, Buffer.from("old"));
+    row = { ...row, status: "masked", maskedKey: old };
+    const a = await remask("a1", [{ x: 1, y: 1, w: 5, h: 5 }], staff);
+    expect(a.maskedKey).toMatch(RENDER);
+    expect(a.maskedKey).not.toBe(old);
+    expect(renders()).toEqual([a.maskedKey]);
+  });
+
+  it("confirm then remask keeps the row and the file in step", async () => {
+    row = { ...row, status: "needs_check" };
+    const confirmed = await confirmAttachment("a1", staff);
+    const masked = await remask("a1", [{ x: 1, y: 1, w: 5, h: 5 }], staff);
+    expect(masked.maskedKey).not.toBe(confirmed.maskedKey);
+    expect(row.maskedKey).toBe(masked.maskedKey);
+    expect(renders()).toEqual([masked.maskedKey]);
   });
 });

@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { logActivity } from "@/lib/activity";
@@ -12,9 +13,18 @@ async function originalPng(originalKey: string) {
 }
 
 async function saveMasked(id: string, png: Buffer, boxes: Box[]): Promise<string> {
-  const key = attachmentKey(currentCompanyId(), id, "masked");
+  const key = attachmentKey(currentCompanyId(), id, "masked", randomUUID());
   await fileStore().put(key, await coverBoxes(png, boxes));
   return key;
+}
+
+async function dropRender(key: string | null) {
+  if (!key) return;
+  try {
+    await fileStore().remove(key);
+  } catch (error) {
+    logger.error("couldn't remove an old masked render", error);
+  }
 }
 
 // api keys aren't admins, so there's no row to point at
@@ -25,9 +35,9 @@ type Outcome = { status: string; checkNote: string; [field: string]: unknown };
 // only a row that's still pending takes the result, so a second run can't undo a check
 async function finish(id: string, data: Outcome, maskedKey: string | null) {
   const { count } = await prisma.attachment.updateMany({ where: { id, status: "pending" }, data: { ...data, maskedKey } });
-  const row = await prisma.attachment.findUnique({ where: { id } });
-  if (!count && maskedKey && row?.maskedKey !== maskedKey) await fileStore().remove(maskedKey);
-  return row;
+  // lost the race, so this run's render belongs to nobody
+  if (!count) await dropRender(maskedKey);
+  return prisma.attachment.findUnique({ where: { id } });
 }
 
 // needs_check never gets a masked copy, staff review it from the encrypted original
@@ -74,6 +84,7 @@ async function load(id: string) {
 const boxesOf = (value: unknown) => (Array.isArray(value) ? (value as Box[]) : []);
 
 // auto boxes stay, manual boxes go on top, always from the original
+// the row moves to the new render first, then the old file goes
 export async function remask(id: string, manualBoxes: Box[], actor: { id: string; name: string }) {
   const a = await load(id);
   const auto = (a.autoBoxes as unknown as Box[]) ?? [];
@@ -91,6 +102,7 @@ export async function remask(id: string, manualBoxes: Box[], actor: { id: string
       checkNote: "",
     },
   });
+  await dropRender(a.maskedKey);
   await logActivity("attachment.masked", "attachment", id, `Covered ${manualBoxes.length} area(s) on a screenshot`, actor.name);
   return updated;
 }
@@ -109,6 +121,7 @@ export async function confirmAttachment(id: string, actor: { id: string; name: s
       checkNote: "",
     },
   });
+  await dropRender(a.maskedKey);
   await logActivity("attachment.checked", "attachment", id, `Checked a screenshot, ${a.icCount} IC covered`, actor.name);
   return updated;
 }

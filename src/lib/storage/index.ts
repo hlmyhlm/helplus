@@ -12,6 +12,8 @@ export function fileStore(): FileStore {
   return localStore(process.env.HELPLUS_STORAGE_DIR || path.join(process.cwd(), "storage"));
 }
 
-export function attachmentKey(companyId: string, id: string, kind: "original" | "masked"): string {
-  return `c/${companyId}/attachments/${id}/${kind === "original" ? "original.bin" : "masked.png"}`;
+// each masked render gets its own file so a slow run can't overwrite a newer one
+export function attachmentKey(companyId: string, id: string, kind: "original" | "masked", renderId?: string): string {
+  const file = kind === "original" ? "original.bin" : renderId ? `masked-${renderId}.png` : "masked.png";
+  return `c/${companyId}/attachments/${id}/${file}`;
 }

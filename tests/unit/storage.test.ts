@@ -39,4 +39,9 @@ describe("local file store", () => {
     expect(attachmentKey("co-1", "att-1", "original")).toBe("c/co-1/attachments/att-1/original.bin");
     expect(attachmentKey("co-1", "att-1", "masked")).toBe("c/co-1/attachments/att-1/masked.png");
   });
+
+  it("each masked render gets its own key", () => {
+    expect(attachmentKey("co-1", "att-1", "masked", "r1")).toBe("c/co-1/attachments/att-1/masked-r1.png");
+    expect(attachmentKey("co-1", "att-1", "original", "r1")).toBe("c/co-1/attachments/att-1/original.bin");
+  });
 });
