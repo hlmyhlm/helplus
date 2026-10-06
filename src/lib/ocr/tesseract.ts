@@ -7,24 +7,30 @@ import type { OcrResult } from "@/lib/privacy/ic-image";
 let workerPromise: Promise<Worker> | null = null;
 const TIMEOUT_MS = 30_000;
 
-async function getWorker(): Promise<Worker> {
+class OcrTimeout extends Error {
+  constructor() {
+    super("ocr timed out");
+  }
+}
+
+function getWorker(): Promise<Worker> {
   if (!workerPromise) {
-    workerPromise = (async () => {
+    const created = (async () => {
       const cachePath = path.join(process.cwd(), ".cache", "tesseract");
       await mkdir(cachePath, { recursive: true });
       // without an errorHandler a failed job throws inside the message listener
       return createWorker("eng", undefined, { cachePath, errorHandler: (e) => logger.error("ocr worker error", e) });
     })();
-    workerPromise.catch(() => {
-      workerPromise = null;
+    created.catch(() => {
+      if (workerPromise === created) workerPromise = null;
     });
+    workerPromise = created;
   }
   return workerPromise;
 }
 
-async function recognize(png: Buffer): Promise<OcrResult> {
-  const worker = await getWorker();
-  const { data } = await worker.recognize(png, {}, { blocks: true });
+async function recognize(current: Promise<Worker>, png: Buffer): Promise<OcrResult> {
+  const { data } = await (await current).recognize(png, {}, { blocks: true });
   const lines = (data.blocks ?? []).flatMap((b) =>
     b.paragraphs.flatMap((p) =>
       p.lines.map((l) => ({
@@ -36,15 +42,16 @@ async function recognize(png: Buffer): Promise<OcrResult> {
 }
 
 export async function ocrImage(png: Buffer): Promise<OcrResult> {
+  const current = getWorker();
   let timer: NodeJS.Timeout | undefined;
   const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error("ocr timed out")), TIMEOUT_MS);
+    timer = setTimeout(() => reject(new OcrTimeout()), TIMEOUT_MS);
   });
   try {
-    return await Promise.race([recognize(png), timeout]);
+    return await Promise.race([recognize(current, png), timeout]);
   } catch (error) {
-    // a stuck or broken worker would block every later call, so start fresh
-    await closeOcr().catch(() => {});
+    // a stuck worker blocks every later call, but a bad image doesn't hurt it
+    if (error instanceof OcrTimeout && workerPromise === current) await closeOcr().catch(() => {});
     throw error;
   } finally {
     clearTimeout(timer);
