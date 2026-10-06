@@ -40,6 +40,7 @@ export function slaChanges(before: Ticket, data: Record<string, unknown>, ctx: S
   // rules aren't retroactive: only a changed sla input re-picks one
   const inputsChanged = SLA_INPUTS.some((k) => k in data && data[k] !== before[k]);
   const pausedChanged = pausedMins !== before.slaPausedMins;
+  const firstReplied = !!data.firstReplyAt && !before.firstReplyAt;
 
   if (inputsChanged) {
     out.slaPausedMins = pausedMins;
@@ -51,7 +52,7 @@ export function slaChanges(before: Ticket, data: Record<string, unknown>, ctx: S
     if (before.resolveDueAt) out.resolveDueAt = addBusinessMinutes(before.resolveDueAt, delta, ctx.cal);
   }
 
-  if (inputsChanged || pausedChanged) {
+  if (inputsChanged || pausedChanged || firstReplied) {
     const state = slaState({ ...next, ...out } as SlaTicket, now);
     if (state === "ok" || state === "paused") {
       out.slaWarnedAt = null;
@@ -70,7 +71,7 @@ export async function saveTicket(
   opts: { now?: Date; ctx?: SlaContext; actorId?: string; db?: Pick<typeof prisma, "ticket"> } = {}
 ): Promise<Ticket> {
   const now = opts.now ?? new Date();
-  // no status or sla input means slaChanges can't do anything, skip the db round trip
+  // no status or sla input means no rules or calendar needed, skip the db round trip
   const needsCtx = "status" in data || SLA_INPUTS.some((k) => k in data);
   const ctx = opts.ctx ?? (needsCtx ? await loadSlaContext() : { rules: [], cal: ALWAYS_OPEN });
   const db = opts.db ?? prisma;

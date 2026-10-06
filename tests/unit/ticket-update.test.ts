@@ -1,5 +1,6 @@
-import { describe, it, expect } from "vitest";
-import { slaChanges, type SlaContext } from "@/lib/tickets/update";
+import { describe, it, expect, vi } from "vitest";
+import { prisma } from "@/lib/prisma";
+import { slaChanges, saveTicket, type SlaContext } from "@/lib/tickets/update";
 import { ALWAYS_OPEN, businessMinutesBetween, type BusinessCalendar } from "@/lib/sla/calendar";
 import { slaTimes } from "@/lib/sla/clock";
 
@@ -132,5 +133,22 @@ describe("slaChanges", () => {
     expect(paused).toBeGreaterThan(0);
     expect(out.slaPausedMins).toBe(paused);
     expect(out.resolveDueAt).toEqual(slaTimes(created, paused, rule, cal).resolveDueAt);
+  });
+
+  it("clears a first reply warning once staff reply", () => {
+    const waiting = { ...(ticket as object), firstReplyAt: null, slaWarnedAt: min(85) } as never;
+    expect(slaChanges(waiting, { firstReplyAt: min(90) }, ctx, min(90))).toEqual({ slaWarnedAt: null, slaBreachedAt: null });
+  });
+});
+
+describe("saveTicket", () => {
+  it("clears first reply alerts without loading the sla context", async () => {
+    const db = prisma as unknown as Record<string, Record<string, ReturnType<typeof vi.fn>>>;
+    db.ticket.update.mockReset().mockResolvedValue({ id: "t1" });
+    db.sLARule.findMany.mockReset();
+    const waiting = { ...(ticket as object), firstReplyAt: null, slaWarnedAt: min(85), slaBreachedAt: min(101) } as never;
+    await saveTicket(waiting, { firstReplyAt: min(120) }, { now: min(120) });
+    expect(db.sLARule.findMany).not.toHaveBeenCalled();
+    expect(db.ticket.update.mock.calls[0][0].data).toMatchObject({ firstReplyAt: min(120), slaWarnedAt: null, slaBreachedAt: null });
   });
 });
