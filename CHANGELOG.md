@@ -11,6 +11,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Multi-company: every record belongs to a company, and queries are scoped to the logged-in user's company. Existing data moves into "My Company".
 - Roles are now owner, admin, supervisor, staff, viewer and client. The first admin of each company becomes owner; agent and editor become staff.
 - Settings and business hours are per company.
+- Tickets are the main screen now. Each ticket has a number per company, a client/project, a handler (staff login) and one of six steps: New, AI Suggested, Answered, Reopened, Staff working, Closed.
+- Every message from a channel lands on a ticket, with IC numbers hidden, even when AI is not set up.
+- Quick add, ticket detail with replies and internal notes, and a Clients/Projects screen. Staff and viewers only see the projects they are given.
+- The old Conversations page now opens Tickets. Deleting a conversation deletes its tickets.
+- The realtime stream is limited to supervisors, admins and owners for now.
 
 ### Upgrade notes
 
@@ -18,6 +23,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Twilio webhooks without a Twilio token are refused. Set the token, or `HELPLUS_ALLOW_UNSIGNED_WEBHOOKS=true` for local testing only.
 - Telegram webhooks now need a secret. Set `telegramWebhookSecret` with `PUT /api/settings`, and register the webhook with the same value as `secret_token`. Until then every Telegram update gets 403.
 - With more than one company on a server, add `?company=<slug>` to the Twilio and Telegram webhook URLs.
+- Run `npx prisma migrate deploy`. The tickets migration gives every conversation without a ticket its own ticket, numbers all tickets, maps the old statuses (open to New, in progress to Staff working, resolved to Closed) and puts everything in a "General" project. Back up first.
+- Existing staff and viewer accounts get access to "General" only. Give them other projects under Clients.
 
 ## [0.2.2] - 2026-04-08
 
