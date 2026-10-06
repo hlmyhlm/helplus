@@ -7,6 +7,7 @@ import { logger } from "@/lib/logger";
 import { resolveCustomer } from "@/lib/customer-resolver";
 import { currentCompanyId, runWithCompany } from "@/lib/tenant/context";
 import { ChannelInUseError } from "@/lib/errors";
+import { attachIncomingImage } from "@/lib/attachments/service";
 
 // one whatsapp client per server for now; per-company clients come with the silent bot
 let whatsappClient: Client | null = null;
@@ -156,22 +157,38 @@ export async function initWhatsApp(): Promise<void> {
         }
 
         let messageContent = message.body;
+        let incomingImage: Awaited<ReturnType<Message["downloadMedia"]>> | null = null;
 
         // Handle media messages
         if (message.hasMedia) {
           const media = await message.downloadMedia();
           if (media) {
             const mediaType = media.mimetype.split("/")[0];
+            // keep the placeholder text so chat() still creates or updates the ticket
             messageContent = `[${mediaType} attachment: ${media.filename || "media"}] ${message.body || ""}`;
 
             if (mediaType === "audio") {
               messageContent = `[Voice message received] ${message.body || ""}`;
             }
+            if (mediaType === "image") incomingImage = media;
           }
         }
 
         // Get AI response
         const aiResponse = await chat(conversation.id, messageContent);
+
+        // the image goes on the ticket chat() just created or updated
+        if (incomingImage) {
+          try {
+            await attachIncomingImage(
+              conversation.id,
+              Buffer.from(incomingImage.data, "base64"),
+              incomingImage.filename || "whatsapp-image.jpg"
+            );
+          } catch (error) {
+            logger.error("[WhatsApp] Failed to attach incoming image:", error);
+          }
+        }
 
         // Send response back via WhatsApp
         await message.reply(aiResponse);

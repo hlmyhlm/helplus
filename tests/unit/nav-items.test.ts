@@ -24,7 +24,7 @@ describe("isActive", () => {
   });
 
   it("keeps settings active on the old system pages", () => {
-    for (const p of ["/settings", "/team", "/sla", "/webhooks", "/admin", "/activity", "/api-docs"]) {
+    for (const p of ["/settings", "/privacy", "/team", "/sla", "/webhooks", "/admin", "/activity", "/api-docs"]) {
       expect(isActive(p, item("Settings"))).toBe(true);
     }
   });

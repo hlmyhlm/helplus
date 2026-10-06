@@ -52,6 +52,7 @@ export const sectionGroups: SectionGroup[] = [
     name: "Settings",
     items: [
       { name: "General & AI", href: "/settings" },
+      { name: "Privacy & IC", href: "/privacy" },
       { name: "Team", href: "/team" },
       { name: "Business hours", href: "/business-hours" },
       { name: "SLA rules", href: "/sla" },

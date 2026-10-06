@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { currentCompanyId } from "@/lib/tenant/context";
 import { encryptBuffer } from "@/lib/secrets";
 import { attachmentKey, fileStore } from "@/lib/storage";
+import { isAllowedImage } from "@/lib/privacy/ic-image";
 import { processAttachment } from "./process";
 
 export const MAX_BYTES = 10 * 1024 * 1024;
@@ -28,4 +29,21 @@ export async function addAttachment(input: { ticketId: string; messageId?: strin
     throw error;
   }
   return (await processAttachment(id))!;
+}
+
+// channel images go on the open ticket, next to the client's latest message
+export async function attachIncomingImage(conversationId: string, data: Buffer, fileName: string) {
+  if (data.length > MAX_BYTES || !(await isAllowedImage(data))) return null;
+  const ticket = await prisma.ticket.findFirst({
+    where: { conversationId, status: { not: "closed" } },
+    orderBy: { createdAt: "desc" },
+    select: { id: true },
+  });
+  if (!ticket) return null;
+  const message = await prisma.message.findFirst({
+    where: { conversationId, role: "customer" },
+    orderBy: { createdAt: "desc" },
+    select: { id: true },
+  });
+  return addAttachment({ ticketId: ticket.id, messageId: message?.id ?? null, fileName, data });
 }

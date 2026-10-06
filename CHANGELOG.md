@@ -19,6 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - SLA rules per company with project, priority, category and source overrides. Due times follow business hours and holidays and pause while a ticket waits on the client.
 - Answered tickets close by themselves after 3 days by default (Settings > Closing tickets). Clients with an email get a warning a day before.
 - Link-only email alerts for new, reopened, near-breach and overdue tickets, with retries and an email log.
+- Screenshots on tickets: IC numbers are covered automatically, unclear images wait for a staff check, originals are encrypted, staff-only and deleted 90 days after close (Settings > Privacy & IC). WhatsApp images arrive as screenshots on the ticket.
 
 ### Upgrade notes
 
@@ -33,6 +34,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Add an email address to each user who should get alerts (Users & roles).
 - SLA times apply to tickets created after the upgrade, and to older tickets once their priority, project, category or source changes.
 - After the upgrade, old Answered tickets get the warning first and close a day later.
+- Screenshots are stored under `storage/` in the app folder (set `HELPLUS_STORAGE_DIR` to change it). Back it up with the database.
+- The first screenshot downloads OCR language data (about 10 MB) into `.cache/tesseract`. The server needs internet access once, or copy that folder in.
 
 ## [0.2.2] - 2026-04-08
 
