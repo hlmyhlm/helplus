@@ -8,7 +8,8 @@ import { cn } from "@/lib/utils";
 import { unwrapList, listMeta } from "@/lib/api-client";
 import { TicketList, type TicketRow } from "@/components/tickets/ticket-list";
 import { QuickAddDialog } from "@/components/tickets/quick-add-dialog";
-import { STATUS_LABELS, type TicketStatus } from "@/lib/tickets/status";
+import { OPEN_STATUSES, STATUS_LABELS, type TicketStatus } from "@/lib/tickets/status";
+import { useCompany } from "@/lib/hooks/use-company";
 
 const CHIPS: { key: string; label: string; status: string; assignee?: string }[] = [
   { key: "open", label: "Open", status: "open" },
@@ -43,6 +44,8 @@ function TicketsPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const projectId = searchParams.get("projectId") ?? "";
+  const { projectLabel } = useCompany();
+  const chipLabel = projectLabel === "Projects" ? "Project" : "Client";
   const [chip, setChip] = useState("open");
   const [q, setQ] = useState("");
   const [rows, setRows] = useState<TicketRow[]>([]);
@@ -88,7 +91,7 @@ function TicketsPageInner() {
     return () => clearTimeout(t);
   }, [load, q]);
 
-  // chip needs a project name; ask the projects list (it's also how we find out the id is bad)
+  // look up the name for the chip
   useEffect(() => {
     if (!projectId) {
       setProjectName("");
@@ -120,10 +123,7 @@ function TicketsPageInner() {
     router.push("/tickets");
   };
 
-  const openCount = (["new", "ai_suggested", "answered", "reopened", "working"] as TicketStatus[]).reduce(
-    (n, s) => n + (counts[s] ?? 0),
-    0
-  );
+  const openCount = OPEN_STATUSES.reduce((n, s) => n + (counts[s] ?? 0), 0);
   const chipCount = (key: string) =>
     key === "open" ? openCount : key === "ai" ? counts.ai_suggested : key === "reopened" ? counts.reopened : key === "closed" ? counts.closed : undefined;
 
@@ -147,7 +147,7 @@ function TicketsPageInner() {
             onClick={clearProject}
             className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-helplus-border bg-helplus-surface text-xs text-helplus-text"
           >
-            Project: {projectName || "…"} <X className="h-3.5 w-3.5" />
+            {chipLabel}: {projectName || "…"} <X className="h-3.5 w-3.5" />
           </button>
         )}
         <div className="flex flex-wrap items-center gap-2">

@@ -2,8 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { prisma, systemPrisma } from "@/lib/prisma";
 import { runWithCompany } from "@/lib/tenant/context";
 
-// proves the PUT /api/projects/:id/access transaction (deleteMany + createMany)
-// stays scoped to the acting company when run inside prisma.$transaction
+// the access save runs in a transaction, it must stay in one company
 
 const A = "it-access-tx-a";
 const B = "it-access-tx-b";

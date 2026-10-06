@@ -6,7 +6,7 @@ import { chatCompletion } from "@/lib/ai/provider";
 import { titleFrom } from "@/lib/tickets/service";
 import { logger } from "@/lib/logger";
 
-// best effort: without AI, or on any error, fall back to the first line as the title
+// no AI or an error: use the first line
 export const POST = withAuth("tickets:create", async (request: NextRequest) => {
   const body = (await request.json().catch(() => ({}))) as { text?: unknown };
   const text = typeof body.text === "string" ? body.text.slice(0, 4000) : "";

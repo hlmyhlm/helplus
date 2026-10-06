@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { allowedProjectIds, conversationWhere } from "./access";
 
-// a ticket the user may see, or null. tickets in other projects look the same as missing ones.
+// a ticket the user may see, else null
 export async function loadTicketFor(auth: { role: string; userId: string }, id: string) {
   const ticket = await prisma.ticket.findUnique({ where: { id } });
   if (!ticket) return null;

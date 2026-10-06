@@ -11,8 +11,7 @@ interface CompanyInfo {
 
 const EMPTY: CompanyInfo = { name: "", slug: "", projectLabel: "Clients", canManageProjects: false };
 
-// shared across every component using the hook, so it survives route changes -
-// but a different user can log in in the same tab, so it must be cleared on login/logout
+// shared by every caller, cleared on login and logout
 export const companyCache = { value: null as CompanyInfo | null };
 
 export function clearCompanyCache() {

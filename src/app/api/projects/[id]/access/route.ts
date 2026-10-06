@@ -22,12 +22,12 @@ export const PUT = withAuth("projects:manage", async (request: NextRequest, _aut
   const validation = validateBody(projectAccessSchema, await request.json());
   if (!validation.success) return NextResponse.json({ error: validation.error }, { status: 400 });
 
-  // only staff accounts of this company; the scoped client drops anything else
+  // only this company's staff
   const users = await prisma.admin.findMany({
     where: { id: { in: validation.data.adminIds }, role: { in: ["staff", "viewer"] } },
     select: { id: true },
   });
-  // delete and recreate together, so a failure in between can't leave a project with no access rows
+  // one transaction, so a failure can't wipe access
   await prisma.$transaction(async (tx) => {
     await tx.projectAccess.deleteMany({ where: { projectId: id } });
     if (users.length) {

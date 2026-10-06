@@ -55,7 +55,7 @@ export function QuickAddDialog({
       if (d.title) setTitle(d.title);
       if (d.category) setCategory(d.category);
     } catch {
-      // suggestion is a nice-to-have - if the network drops, just leave the fields as typed
+      // optional, keep what was typed
     } finally {
       setBusy(false);
     }

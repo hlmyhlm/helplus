@@ -47,8 +47,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
       .catch(() => setLoadError("Couldn't load this project."));
   }, [id]);
 
-  // access panel is admin-only server side too, so only ask for it when we can manage.
-  // both calls must succeed before Save is allowed, or it would save an empty list over real grants
+  // no Save until both load, or we'd save an empty list
   useEffect(() => {
     if (!canManageProjects) return;
     let cancelled = false;
@@ -155,7 +154,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
     <>
       <Header
         title={project.name}
-        description={`${project.openTickets} open tickets${project.archived ? " · archived" : ""}`}
+        description={`${project.openTickets} open ticket${project.openTickets === 1 ? "" : "s"}${project.archived ? " · archived" : ""}`}
         actions={Back}
       />
       <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 max-w-2xl">

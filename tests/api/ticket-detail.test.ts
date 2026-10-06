@@ -69,6 +69,43 @@ describe("PATCH /api/tickets/:id", () => {
     });
   });
 
+  it("refuses to move a ticket into an archived project", async () => {
+    db.project.findFirst.mockResolvedValue({ id: "p2", archived: true });
+    const { PATCH } = await import("@/app/api/tickets/[id]/route");
+    const res = await PATCH(createRequest("/api/tickets/t1", { method: "PATCH", body: { projectId: "p2" } }), ctx);
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("Project is archived");
+    expect(db.ticket.update).not.toHaveBeenCalled();
+  });
+
+  it("won't hand a ticket to staff who can't see its project", async () => {
+    db.admin.findUnique.mockResolvedValue({ role: "staff" });
+    db.projectAccess.findFirst.mockResolvedValue(null);
+    const { PATCH } = await import("@/app/api/tickets/[id]/route");
+    const res = await PATCH(createRequest("/api/tickets/t1", { method: "PATCH", body: { assigneeId: "s9" } }), ctx);
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("That person can't see this project");
+    expect(db.ticket.update).not.toHaveBeenCalled();
+  });
+
+  it("hands a ticket to staff who can see its project", async () => {
+    db.admin.findUnique.mockResolvedValue({ role: "staff" });
+    db.projectAccess.findFirst.mockResolvedValue({ id: "pa1" });
+    const { PATCH } = await import("@/app/api/tickets/[id]/route");
+    const res = await PATCH(createRequest("/api/tickets/t1", { method: "PATCH", body: { assigneeId: "s9" } }), ctx);
+    expect(res.status).toBe(200);
+    expect(db.projectAccess.findFirst.mock.calls[0][0].where).toEqual({ adminId: "s9", projectId: "p1" });
+  });
+
+  it("checks the new project when assigning and moving together", async () => {
+    db.admin.findUnique.mockResolvedValue({ role: "staff" });
+    db.projectAccess.findFirst.mockResolvedValue({ id: "pa1" });
+    db.project.findFirst.mockResolvedValue({ id: "p2", archived: false });
+    const { PATCH } = await import("@/app/api/tickets/[id]/route");
+    await PATCH(createRequest("/api/tickets/t1", { method: "PATCH", body: { assigneeId: "s9", projectId: "p2" } }), ctx);
+    expect(db.projectAccess.findFirst.mock.calls[0][0].where).toEqual({ adminId: "s9", projectId: "p2" });
+  });
+
   it("hides tickets in projects the staff member can't see", async () => {
     vi.mocked(requireAuth).mockResolvedValue({
       userId: "u2",
@@ -141,7 +178,7 @@ describe("tickets outside the staff member's projects", () => {
   });
 
   it("DELETE gets 404", async () => {
-    // the mocked auth skips the role check, so this hits the project check inside the route
+    // mocked auth skips the role check
     const { DELETE } = await import("@/app/api/tickets/[id]/route");
     expect((await DELETE(createRequest("/api/tickets/t1", { method: "DELETE" }), ctx)).status).toBe(404);
     expect(db.ticket.delete).not.toHaveBeenCalled();

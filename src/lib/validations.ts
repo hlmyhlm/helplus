@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TICKET_STATUSES } from "@/lib/tickets/status";
 
 // Shared schemas
 const paginationSchema = z.object({
@@ -45,7 +46,6 @@ export const createMessageSchema = z.object({
 
 // Tickets
 const PRIORITIES = ["low", "medium", "high", "urgent"] as const;
-const STATUSES = ["new", "ai_suggested", "answered", "reopened", "working", "closed"] as const;
 
 export const createTicketSchema = z.object({
   text: z.string().trim().min(1, "Describe the issue").max(20000),
@@ -59,7 +59,7 @@ export const createTicketSchema = z.object({
 
 export const updateTicketSchema = z
   .object({
-    status: z.enum(STATUSES).optional(),
+    status: z.enum(TICKET_STATUSES).optional(),
     assigneeId: z.string().max(100).nullable().optional(),
     priority: z.enum(PRIORITIES).optional(),
     category: z.string().max(100).optional(),

@@ -26,7 +26,7 @@ export const GET = withAuth(
     const { searchParams } = new URL(request.url);
     const period = searchParams.get("period") || "7d";
     const periodStart = getPeriodStart(period);
-    // ticket figures follow project access, conversation and message totals stay company-wide
+    // only ticket figures follow project access
     const ticketScope = projectWhere(await allowedProjectIds(auth));
 
     const [

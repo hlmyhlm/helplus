@@ -7,6 +7,7 @@ import { createTicketSchema, validateBody } from "@/lib/validations";
 import { allowedProjectIds, projectWhere } from "@/lib/tickets/access";
 import { OPEN_STATUSES, TICKET_STATUSES, isTicketStatus, type TicketStatus } from "@/lib/tickets/status";
 import { createTicket } from "@/lib/tickets/service";
+import { projectProblem } from "@/lib/projects/usable";
 
 const ROW_INCLUDE = {
   project: { select: { id: true, name: true } },
@@ -79,6 +80,10 @@ export const POST = withAuth("tickets:create", async (request: NextRequest, auth
     if (allowed !== null) {
       if (!projectId) return NextResponse.json({ error: "Choose a project" }, { status: 400 });
       if (!allowed.includes(projectId)) return NextResponse.json({ error: "Not allowed for this project" }, { status: 403 });
+    }
+    if (projectId) {
+      const problem = await projectProblem(projectId);
+      if (problem) return NextResponse.json({ error: problem }, { status: 400 });
     }
 
     const ticket = await createTicket(validation.data);

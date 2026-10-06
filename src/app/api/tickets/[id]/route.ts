@@ -7,6 +7,7 @@ import { allowedProjectIds } from "@/lib/tickets/access";
 import { loadTicketFor } from "@/lib/tickets/load";
 import { statusChange, InvalidTransitionError } from "@/lib/tickets/status";
 import { STAFF_ROLES } from "@/lib/rbac";
+import { projectProblem } from "@/lib/projects/usable";
 
 type Ctx = { params: Promise<{ id: string }> };
 const notFound = () => NextResponse.json({ error: "Ticket not found" }, { status: 404 });
@@ -50,6 +51,12 @@ export const PATCH = withAuth("tickets:update", async (request: NextRequest, aut
         if (!user || !(STAFF_ROLES as readonly string[]).includes(user.role) || user.role === "viewer") {
           return NextResponse.json({ error: "Can't assign to that user" }, { status: 400 });
         }
+        if (user.role === "staff") {
+          const access = await prisma.projectAccess.findFirst({
+            where: { adminId: assigneeId, projectId: projectId ?? ticket.projectId },
+          });
+          if (!access) return NextResponse.json({ error: "That person can't see this project" }, { status: 400 });
+        }
       }
       data.assigneeId = assigneeId;
     }
@@ -59,8 +66,8 @@ export const PATCH = withAuth("tickets:update", async (request: NextRequest, aut
       if (allowed !== null && !allowed.includes(projectId)) {
         return NextResponse.json({ error: "Not allowed for this project" }, { status: 403 });
       }
-      const project = await prisma.project.findFirst({ where: { id: projectId } });
-      if (!project) return NextResponse.json({ error: "Project not found" }, { status: 400 });
+      const problem = await projectProblem(projectId);
+      if (problem) return NextResponse.json({ error: problem }, { status: 400 });
       data.projectId = projectId;
     }
 

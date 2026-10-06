@@ -35,7 +35,7 @@ export function Header({ title, description, actions }: HeaderProps) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "logout" }),
     });
-    clearCompanyCache(); // next user in this tab shouldn't inherit the old company info
+    clearCompanyCache(); // next login may be another company
     router.push("/login");
   };
 
@@ -58,8 +58,7 @@ export function Header({ title, description, actions }: HeaderProps) {
             onBlur={() => setSearchOpen(false)}
           />
         )}
-        {/* search isn't wired to anything yet, and has no other entry point - but
-            it does nothing today, so hiding it on a phone costs nothing real */}
+        {/* not wired up yet */}
         <button
           onClick={() => setSearchOpen(!searchOpen)}
           className="hidden md:inline-flex p-2 text-helplus-text-light hover:text-helplus-text hover:bg-helplus-primary-50 rounded-lg transition-colors"
@@ -68,7 +67,7 @@ export function Header({ title, description, actions }: HeaderProps) {
           <Search className="h-5 w-5" />
         </button>
 
-        {/* theme toggle has no other way in on phones (no toggle in settings), so it stays visible everywhere */}
+        {/* only theme switch on phones */}
         <button
           onClick={toggleTheme}
           className="p-2 text-helplus-text-light hover:text-helplus-text hover:bg-helplus-primary-50 rounded-lg transition-colors"
@@ -81,7 +80,7 @@ export function Header({ title, description, actions }: HeaderProps) {
           )}
         </button>
 
-        {/* bell has no click handler at all yet - same case as search */}
+        {/* not wired up yet */}
         <button className="hidden md:inline-flex relative p-2 text-helplus-text-light hover:text-helplus-text hover:bg-helplus-primary-50 rounded-lg transition-colors">
           <Bell className="h-5 w-5" />
           <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-helplus-danger rounded-full" />

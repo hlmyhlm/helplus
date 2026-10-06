@@ -91,3 +91,27 @@ describe("staff limited to p1", () => {
     expect(db.conversation.findMany.mock.calls[0][0].where.tickets).toBeUndefined();
   });
 });
+
+describe("old messages route", () => {
+  it("masks IC numbers for every role", async () => {
+    vi.mocked(requireAuth).mockResolvedValue({
+      userId: "a1",
+      role: "admin",
+      username: "a",
+      name: "A",
+      authMethod: "cookie",
+      companyId: "test-company",
+    } as never);
+    db.message.create.mockImplementation(async ({ data }) => ({ id: "m1", ...data }));
+    const { POST } = await import("@/app/api/conversations/[id]/messages/route");
+    for (const role of ["customer", "agent"]) {
+      db.message.create.mockClear();
+      const res = await POST(
+        createRequest("/api/conversations/c1/messages", { method: "POST", body: { content: "IC 900101-14-5678", role } }),
+        ctx
+      );
+      expect(res.status).toBe(201);
+      expect(db.message.create.mock.calls[0][0].data.content).not.toContain("900101");
+    }
+  });
+});

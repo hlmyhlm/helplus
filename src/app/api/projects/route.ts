@@ -8,7 +8,7 @@ import { OPEN_STATUSES } from "@/lib/tickets/status";
 
 export const GET = withAuth("projects:read", async (request: NextRequest, auth) => {
   const allowed = await allowedProjectIds(auth);
-  // ?archived=1 includes archived projects alongside active ones (the project detail page needs this)
+  // ?archived=1 includes archived ones
   const showArchived = request.nextUrl.searchParams.get("archived") === "1";
   const where = {
     ...(allowed === null ? {} : { id: { in: allowed } }),

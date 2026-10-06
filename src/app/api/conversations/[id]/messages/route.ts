@@ -4,6 +4,7 @@ import { logger } from "@/lib/logger";
 import { withAuth } from "@/lib/tenant/with-auth";
 import { loadConversationFor } from "@/lib/tickets/load";
 import { emitNewMessage } from "@/lib/realtime";
+import { maskIC } from "@/lib/privacy/ic-mask";
 
 export const GET = withAuth(
   "messages:read",
@@ -63,11 +64,12 @@ export const POST = withAuth(
       const validRoles = ["customer", "assistant", "system", "agent"];
       const messageRole = validRoles.includes(role) ? role : "assistant";
 
+      const text = maskIC(content.trim()).text;
       const message = await prisma.message.create({
         data: {
           conversationId: id,
           role: messageRole,
-          content: content.trim(),
+          content: text,
         },
       });
 
@@ -76,7 +78,7 @@ export const POST = withAuth(
         data: { updatedAt: new Date() },
       });
 
-      emitNewMessage(id, { id: message.id, role: messageRole, content: content.trim() });
+      emitNewMessage(id, { id: message.id, role: messageRole, content: text });
 
       return NextResponse.json(message, { status: 201 });
     } catch (error) {

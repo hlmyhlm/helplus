@@ -45,13 +45,6 @@ export function getStatusColor(status: string): string {
     active: "bg-green-100 text-green-700",
     resolved: "bg-blue-100 text-blue-700",
     escalated: "bg-orange-100 text-orange-700",
-    // ticket statuses
-    new: "bg-blue-100 text-blue-700",
-    ai_suggested: "bg-violet-100 text-violet-700",
-    answered: "bg-amber-100 text-amber-700",
-    reopened: "bg-red-100 text-red-700",
-    working: "bg-orange-100 text-orange-700",
-    // shared by both conversations and tickets
     closed: "bg-gray-100 text-gray-700",
     // channel statuses
     connected: "bg-green-100 text-green-700",

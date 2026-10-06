@@ -20,7 +20,7 @@ export interface OpenTicketInput {
   category?: string;
 }
 
-// parent rows are created before this runs: the link check can't see rows from an open transaction
+// no transaction, the link check can't see uncommitted rows
 export async function openTicket(input: OpenTicketInput) {
   const description = maskIC(input.description).text;
   const title = maskIC(input.title?.trim() || titleFrom(description)).text;

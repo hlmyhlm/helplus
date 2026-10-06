@@ -9,7 +9,7 @@ import { emitNewMessage } from "@/lib/realtime";
 
 type Ctx = { params: Promise<{ id: string }> };
 
-// the reply is stored on the ticket. sending it to the client's channel is up to staff for now.
+// saved on the ticket only, staff send it themselves
 export const POST = withAuth("tickets:update", async (request: NextRequest, auth, { params }: Ctx) => {
   try {
     const { id } = await params;

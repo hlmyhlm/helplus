@@ -84,4 +84,22 @@ describe("POST /api/tickets", () => {
     expect(res.status).toBe(201);
     expect(db.ticket.create.mock.calls[0][0].data.number).toBe(7);
   });
+
+  it("refuses a project that doesn't exist", async () => {
+    db.project.findFirst.mockResolvedValue(null);
+    const { POST } = await import("@/app/api/tickets/route");
+    const res = await POST(createRequest("/api/tickets", { method: "POST", body: { text: "x", projectId: "ghost" } }), {} as never);
+    expect(res.status).toBe(400);
+    expect((await parseJsonResponse(res)).error).toBe("Project not found");
+    expect(db.conversation.create).not.toHaveBeenCalled();
+  });
+
+  it("refuses an archived project", async () => {
+    db.project.findFirst.mockResolvedValue({ id: "p1", archived: true });
+    const { POST } = await import("@/app/api/tickets/route");
+    const res = await POST(createRequest("/api/tickets", { method: "POST", body: { text: "x", projectId: "p1" } }), {} as never);
+    expect(res.status).toBe(400);
+    expect((await parseJsonResponse(res)).error).toBe("Project is archived");
+    expect(db.conversation.create).not.toHaveBeenCalled();
+  });
 });

@@ -46,6 +46,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
   const { id } = use(params);
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [missing, setMissing] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [staff, setStaff] = useState<Person[]>([]);
   const [reply, setReply] = useState("");
   const [note, setNote] = useState("");
@@ -56,12 +57,21 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
   const [savingNote, setSavingNote] = useState(false);
 
   const load = useCallback(async () => {
-    const res = await fetch(`/api/tickets/${id}`);
-    if (!res.ok) {
-      setMissing(true);
-      return;
+    setLoadFailed(false);
+    try {
+      const res = await fetch(`/api/tickets/${id}`);
+      if (res.status === 404) {
+        setMissing(true);
+        return;
+      }
+      if (!res.ok) {
+        setLoadFailed(true);
+        return;
+      }
+      setTicket(await res.json());
+    } catch {
+      setLoadFailed(true);
     }
-    setTicket(await res.json());
   }, [id]);
 
   useEffect(() => {
@@ -87,11 +97,8 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
     if (!reply.trim() || sending) return;
     setError("");
     setCopyNotice("");
-    // mark busy synchronously, before anything is awaited, so a fast double
-    // tap sees the button already disabled instead of racing in behind it
-    setSending(true);
-    // clipboard write has to happen first await in this function, still inside
-    // the click's call stack, or iOS Safari refuses it once we've awaited a fetch
+    setSending(true); // before any await, stops a double tap
+    // copy before any await, ios blocks it after
     if (markAnswered) {
       try {
         await navigator.clipboard.writeText(reply);
@@ -151,6 +158,22 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
           <Link href="/tickets" className="text-helplus-link">
             Back to tickets
           </Link>
+        </div>
+      </>
+    );
+  }
+  if (!ticket && loadFailed) {
+    return (
+      <>
+        <Header title="Couldn't load the ticket" />
+        <div className="p-6 text-sm text-helplus-text-light space-y-3">
+          <p>Check your connection and try again.</p>
+          <button
+            onClick={() => load()}
+            className="inline-flex items-center h-9 px-3 rounded-md border border-helplus-border text-sm text-helplus-text"
+          >
+            Retry
+          </button>
         </div>
       </>
     );

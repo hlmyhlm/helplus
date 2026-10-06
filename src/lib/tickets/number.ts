@@ -1,8 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { currentCompanyId } from "@/lib/tenant/context";
 
-// counter row per company; the update is a single atomic increment.
-// the first ever call can race on the insert, so retry once on a unique clash.
+// first call can race on the insert, so retry once
 export async function nextTicketNumber(): Promise<number> {
   for (let attempt = 0; ; attempt++) {
     try {
