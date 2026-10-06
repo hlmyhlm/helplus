@@ -66,7 +66,8 @@ describe("startup secret check", () => {
         : { settings: { twilioToken: "plain-secret" }, undecryptable: [] }
     );
     const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
-    const { register, checkStoredSecrets } = await import("@/instrumentation");
+    const { register } = await import("@/instrumentation");
+    const { checkStoredSecrets } = await import("@/lib/startup-checks");
     await expect(register()).resolves.toBeUndefined();
     await checkStoredSecrets();
     const logged = errorLog.mock.calls.flat().join(" ");
@@ -81,7 +82,7 @@ describe("startup secret check", () => {
   it("doesn't crash when the database is down", async () => {
     company.findMany.mockRejectedValue(new Error("connect ECONNREFUSED"));
     const warnLog = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const { checkStoredSecrets } = await import("@/instrumentation");
+    const { checkStoredSecrets } = await import("@/lib/startup-checks");
     await expect(checkStoredSecrets()).resolves.toBeUndefined();
     expect(warnLog).toHaveBeenCalled();
     warnLog.mockRestore();
