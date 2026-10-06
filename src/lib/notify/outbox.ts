@@ -1,10 +1,12 @@
 import nodemailer from "nodemailer";
 import { prisma } from "@/lib/prisma";
 import { getSettings } from "@/lib/settings";
+import { logger } from "@/lib/logger";
 import type { EmailKind } from "./templates";
 
 export const MAX_ATTEMPTS = 5;
 const BATCH = 50;
+const STUCK_MINS = 10;
 
 export type Sender = (msg: { to: string; subject: string; text: string }) => Promise<void>;
 
@@ -37,7 +39,18 @@ async function smtpSender(): Promise<Sender> {
   };
 }
 
+// a worker that crashed mid-send leaves a row stuck in "sending" forever, so
+// anything that's been due for more than STUCK_MINS goes back to "pending"
+async function recoverStuckRows(now: Date) {
+  const cutoff = new Date(now.getTime() - STUCK_MINS * 60_000);
+  await prisma.emailOutbox.updateMany({
+    where: { status: "sending", nextAttemptAt: { lte: cutoff } },
+    data: { status: "pending" },
+  });
+}
+
 export async function drainOutbox(now = new Date(), send?: Sender): Promise<{ sent: number; failed: number }> {
+  await recoverStuckRows(now);
   const rows = await prisma.emailOutbox.findMany({
     where: { status: "pending", nextAttemptAt: { lte: now } },
     orderBy: { createdAt: "asc" },
@@ -48,23 +61,38 @@ export async function drainOutbox(now = new Date(), send?: Sender): Promise<{ se
   let sent = 0;
   let failed = 0;
   for (const row of rows) {
+    // claim it first, so a second worker running the same batch can't send it twice
+    const claim = await prisma.emailOutbox.updateMany({
+      where: { id: row.id, status: "pending" },
+      data: { status: "sending" },
+    });
+    if (claim.count !== 1) continue;
+
     try {
       await sender({ to: row.to, subject: row.subject, text: row.body });
-      await prisma.emailOutbox.update({ where: { id: row.id }, data: { status: "sent", sentAt: now, lastError: "" } });
-      sent++;
+      try {
+        await prisma.emailOutbox.update({ where: { id: row.id }, data: { status: "sent", sentAt: now, lastError: "" } });
+        sent++;
+      } catch (markError) {
+        // the send went out but we couldn't record it; leave it "sending" and
+        // let recoverStuckRows retry it later. rare, and better than a failed attempt
+        logger.error(`sent email ${row.id} but couldn't mark it sent`, markError);
+      }
     } catch (error) {
       const attempts = row.attempts + 1;
       const gaveUp = attempts >= MAX_ATTEMPTS;
       if (gaveUp) failed++;
-      await prisma.emailOutbox.update({
-        where: { id: row.id },
-        data: {
-          status: gaveUp ? "failed" : "pending",
-          attempts,
-          lastError: (error instanceof Error ? error.message : String(error)).slice(0, 500),
-          nextAttemptAt: nextAttemptAt(attempts, now),
-        },
-      });
+      const data: Record<string, unknown> = {
+        status: gaveUp ? "failed" : "pending",
+        attempts,
+        lastError: (error instanceof Error ? error.message : String(error)).slice(0, 500),
+      };
+      if (!gaveUp) data.nextAttemptAt = nextAttemptAt(attempts, now);
+      try {
+        await prisma.emailOutbox.update({ where: { id: row.id }, data });
+      } catch (updateError) {
+        logger.error(`couldn't record failed send for email ${row.id}`, updateError);
+      }
     }
   }
   return { sent, failed };

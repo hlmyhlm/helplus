@@ -4,8 +4,7 @@ import { hashPassword } from "@/lib/auth";
 import { logger } from "@/lib/logger";
 import { withAuth } from "@/lib/tenant/with-auth";
 import { STAFF_ROLES } from "@/lib/rbac";
-
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+import { EMAIL_RE } from "@/lib/validations";
 
 export const PUT = withAuth(
   "admin:update",

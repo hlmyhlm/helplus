@@ -10,6 +10,7 @@ import {
   updateSettingsSchema,
   createCustomerSchema,
   createTeamMemberSchema,
+  EMAIL_RE,
 } from "@/lib/validations";
 
 describe("Input Validation Schemas", () => {
@@ -306,6 +307,16 @@ describe("Input Validation Schemas", () => {
         title: "A".repeat(201),
       });
       expect(result.success).toBe(false);
+    });
+  });
+
+  describe("EMAIL_RE", () => {
+    it("accepts a plain address", () => {
+      expect(EMAIL_RE.test("staff@acme.test")).toBe(true);
+    });
+
+    it("rejects an address missing a domain", () => {
+      expect(EMAIL_RE.test("not-an-email")).toBe(false);
     });
   });
 });

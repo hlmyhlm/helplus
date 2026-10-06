@@ -624,7 +624,7 @@ model EmailOutbox {
   kind          String
   ticketId      String?
   ticket        Ticket?   @relation(fields: [ticketId], references: [id], onDelete: SetNull)
-  status        String    @default("pending") // pending, sent, failed
+  status        String    @default("pending") // pending, sending, sent, failed
   attempts      Int       @default(0)
   lastError     String    @default("")
   nextAttemptAt DateTime  @default(now())

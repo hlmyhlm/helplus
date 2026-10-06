@@ -5,10 +5,10 @@ import { logger } from "@/lib/logger";
 import { parsePagination, paginatedResponse } from "@/lib/pagination";
 import { withAuth } from "@/lib/tenant/with-auth";
 import { STAFF_ROLES } from "@/lib/rbac";
+import { EMAIL_RE } from "@/lib/validations";
 
 // usernames are unique across all companies, so say the same thing whoever owns the name
 const USERNAME_TAKEN = { error: "Username already exists" };
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export const GET = withAuth(
   "admin:read",
