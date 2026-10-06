@@ -52,7 +52,7 @@ export function getStatusColor(status: string): string {
     reopened: "bg-red-100 text-red-700",
     working: "bg-orange-100 text-orange-700",
     // shared by both conversations and tickets
-    closed: "bg-emerald-100 text-emerald-700",
+    closed: "bg-gray-100 text-gray-700",
     // channel statuses
     connected: "bg-green-100 text-green-700",
     disconnected: "bg-red-100 text-red-700",
