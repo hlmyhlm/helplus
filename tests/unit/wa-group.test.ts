@@ -64,3 +64,40 @@ describe("keys", () => {
     expect(issueKey("p1", issues[0])).toBe(messageKey("p1", issues[0].messages[0]).replace(/^wa:/, "wa-issue:"));
   });
 });
+
+describe("late answers", () => {
+  it("attaches a staff answer more than 4h after the question", () => {
+    const { issues, announcements } = groupIssues([msg(0, "Aminah"), msg(5 * 60, "Support Ali")], staff);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].answered).toBe(true);
+    expect(announcements).toBe(0);
+  });
+
+  it("treats staff after 72h as an announcement", () => {
+    const { issues, announcements } = groupIssues([msg(0, "Aminah"), msg(73 * 60, "Support Ali")], staff);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].answered).toBe(false);
+    expect(announcements).toBe(1);
+  });
+
+  it("still counts staff after an answered issue goes quiet", () => {
+    const { announcements } = groupIssues([msg(0, "Aminah"), msg(10, "Support Ali"), msg(10 + 5 * 60, "Support Ali")], staff);
+    expect(announcements).toBe(1);
+  });
+});
+
+describe("re-import keys", () => {
+  it("match android with and without media", () => {
+    const withMedia = { ...msg(0, "Aminah", ""), attachment: "IMG-20261012-WA0001.jpg" };
+    const noMedia = msg(0, "Aminah", "<Media omitted>");
+    expect(messageKey("p1", withMedia)).toBe(messageKey("p1", noMedia));
+  });
+
+  it("match iphone and android media placeholders", () => {
+    expect(messageKey("p1", msg(0, "Aminah", "‎image omitted"))).toBe(messageKey("p1", msg(0, "Aminah", "<Media omitted>")));
+  });
+
+  it("ignore the invisible mark and outer spaces", () => {
+    expect(messageKey("p1", msg(0, "Aminah", "‎ hello "))).toBe(messageKey("p1", msg(0, "Aminah", "hello")));
+  });
+});

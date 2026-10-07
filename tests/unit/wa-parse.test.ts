@@ -79,3 +79,104 @@ describe("parseChat other formats", () => {
     expect(parseChat("random first line\n12/10/2026, 10:00 - A: hi").skippedLines).toBe(1);
   });
 });
+
+describe("parseChat system lines", () => {
+  const probes = [
+    "Ali: I added Siti to the system but it fails",
+    "Ali: Saya left the meeting early",
+    "Ali: I joined yesterday",
+    "Ali: I removed the file",
+    "Ali: we changed the subject line",
+    "Ali: is this end-to-end encrypted?",
+    "Ali: security code changed when I login",
+    "Ali: I created group in app",
+  ];
+
+  it.each(probes)("keeps client line as a message: %s", (body) => {
+    const [m] = parseChat(`12/10/2026, 10:00 - ${body}`).messages;
+    expect(m.system).toBe(false);
+    expect(m.sender).toBe("Ali");
+  });
+
+  it.each(probes)("keeps iphone client line as a message: %s", (body) => {
+    const [m] = parseChat(`[12/10/2026, 10:00:00] ${body}`).messages;
+    expect(m.system).toBe(false);
+  });
+
+  it("marks iphone group lines as system", () => {
+    const { messages } = parseChat(
+      "[12/10/2026, 10:00:00] Support Group: ‎Ali added Siti\n" +
+        "[12/10/2026, 10:01:00] Support Group: ‎Messages and calls are end-to-end encrypted."
+    );
+    expect(messages.map((m) => m.system)).toEqual([true, true]);
+  });
+
+  it("marks android added lines with no sender as system", () => {
+    expect(parseChat("12/10/2026, 10:00 - Ali added Siti").messages[0].system).toBe(true);
+  });
+
+  it("marks a subject change with a colon in it as system", () => {
+    const [m] = parseChat('12/10/2026, 10:00 - Ali changed the subject from "A" to "Help: billing"').messages;
+    expect(m.system).toBe(true);
+  });
+});
+
+describe("parseChat edge cases", () => {
+  it("reads malay pg and ptg markers", () => {
+    const { messages } = parseChat("13/10/2026, 2:15 PTG - Aminah: hi\n13/10/2026, 9:00 pg - Aminah: pagi\n13/10/2026, 3:00 Petang - Aminah: lagi");
+    expect(messages[0].sender).toBe("Aminah");
+    expect(messages[0].at).toEqual(utc("2026-10-13T06:15:00Z"));
+    expect(messages[1].at).toEqual(utc("2026-10-13T01:00:00Z"));
+    expect(messages[2].at).toEqual(utc("2026-10-13T07:00:00Z"));
+  });
+
+  it("keeps a dated line without a separator as a continuation", () => {
+    const { messages } = parseChat("12/10/2026, 9:00 - Ali: notes\n13/10/2026, 10:00 meeting with boss");
+    expect(messages).toHaveLength(1);
+    expect(messages[0].text).toBe("notes\n13/10/2026, 10:00 meeting with boss");
+  });
+
+  it("treats impossible dates and minutes as continuation", () => {
+    const { messages, skippedLines } = parseChat(
+      "30/02/2026, 10:00 - Ali: no\n12/10/2026, 9:00 - Ali: yes\n30/02/2026, 10:00 - Ali: feb\n12/10/2026, 10:61 - Ali: min"
+    );
+    expect(skippedLines).toBe(1);
+    expect(messages).toHaveLength(1);
+    expect(messages[0].text).toBe("yes\n30/02/2026, 10:00 - Ali: feb\n12/10/2026, 10:61 - Ali: min");
+  });
+
+  it("keeps long sender names", () => {
+    const name = "Encik Ahmad bin Abdullah (Jabatan Kewangan Negeri Sembilan, Seremban)";
+    const [m] = parseChat(`12/10/2026, 9:00 - ${name}: hello`).messages;
+    expect(m.sender).toBe(name);
+    expect(m.system).toBe(false);
+  });
+
+  it("reads android attachments with spaces in the name", () => {
+    const [m] = parseChat("12/10/2026, 9:00 - Ali: Laporan Bulanan Okt.pdf (file attached)\nsila semak").messages;
+    expect(m.attachment).toBe("Laporan Bulanan Okt.pdf");
+    expect(m.text).toBe("sila semak");
+  });
+
+  it("finds iphone attachments anywhere in the text", () => {
+    const [m] = parseChat("[12/10/2026, 09:00:00] Ali: ‎Report.pdf • 3 pages ‎<attached: 00000013-Report.pdf>").messages;
+    expect(m.attachment).toBe("00000013-Report.pdf");
+    expect(m.text).toBe("Report.pdf • 3 pages");
+  });
+
+  it("strips the invisible mark from text", () => {
+    const [m] = parseChat("[12/10/2026, 09:00:00] Ali: ‎image omitted").messages;
+    expect(m.text).toBe("image omitted");
+  });
+
+  it("reads a narrow no-break space before pm", () => {
+    const [m] = parseChat("[12/10/2026, 9:45:00 PM] Ali: hi").messages;
+    expect(m.at).toEqual(utc("2026-10-12T13:45:00Z"));
+    expect(m.sender).toBe("Ali");
+  });
+
+  it("reads windows line endings", () => {
+    const { messages } = parseChat("12/10/2026, 9:00 - Ali: one\r\nmore\r\n12/10/2026, 9:01 - Ben: two\r\n");
+    expect(messages.map((m) => m.text)).toEqual(["one\nmore", "two"]);
+  });
+});

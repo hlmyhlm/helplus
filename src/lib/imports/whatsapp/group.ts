@@ -3,6 +3,7 @@ import type { ChatMessage } from "./parse";
 
 export const QUIET_GAP_MS = 4 * 3600_000;
 export const AFTER_ANSWER_GAP_MS = 30 * 60_000;
+export const LATE_ANSWER_MS = 72 * 3600_000;
 
 export interface Issue {
   messages: ChatMessage[];
@@ -22,7 +23,9 @@ export function groupIssues(messages: ChatMessage[], isStaff: (sender: string) =
     if (m.system || !m.sender) continue;
     const gap = current ? m.at.getTime() - current.lastAt.getTime() : Infinity;
     if (isStaff(m.sender)) {
-      if (!current || gap >= QUIET_GAP_MS) {
+      // an unanswered issue takes a late staff answer, up to 72h
+      const late = current && !current.answered ? gap > LATE_ANSWER_MS : gap >= QUIET_GAP_MS;
+      if (!current || late) {
         announcements++;
         current = null;
         continue;
@@ -52,8 +55,24 @@ function minuteIso(d: Date): string {
   return new Date(Math.floor(d.getTime() / 60_000) * 60_000).toISOString();
 }
 
+const INVISIBLE = /[‎‏‪-‮﻿]/g;
+const MEDIA_LINE = /^(?:<media omitted>|(?:image|video|audio|sticker|gif|document) omitted|.+ \(file attached\))$/i;
+const MEDIA_TAIL = /\s*(?:image|video|audio|sticker|gif|document) omitted$/i;
+
+// media placeholders differ between android, iphone and with/without media exports
+function keyText(text: string): string {
+  return text
+    .replace(INVISIBLE, "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => !MEDIA_LINE.test(line))
+    .map((line) => line.replace(MEDIA_TAIL, ""))
+    .join("\n")
+    .trim();
+}
+
 export function messageKey(projectId: string, m: ChatMessage): string {
-  const raw = [projectId, minuteIso(m.at), m.sender, m.text, m.attachment ?? ""].join("\u0001");
+  const raw = [projectId, minuteIso(m.at), m.sender.replace(INVISIBLE, "").trim(), keyText(m.text)].join("\u0001");
   return `wa:${createHash("sha256").update(raw).digest("hex")}`;
 }
 
