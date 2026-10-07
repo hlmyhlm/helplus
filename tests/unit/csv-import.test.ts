@@ -1,0 +1,241 @@
+import { describe, expect, it } from "vitest";
+import { readCsv, headersSignature } from "@/lib/imports/csv/parse";
+import {
+  badRowsCsv,
+  checkRows,
+  guessMapping,
+  parseLooseDate,
+  type CsvMapping,
+} from "@/lib/imports/csv/rows";
+
+describe("readCsv", () => {
+  it("reads quoted fields with commas and newlines", () => {
+    const text = 'ID,Question\n1,"Hello, world\nsecond line"\n';
+    const { headers, rows } = readCsv(text);
+    expect(headers).toEqual(["ID", "Question"]);
+    expect(rows).toEqual([{ ID: "1", Question: "Hello, world\nsecond line" }]);
+  });
+
+  it("ignores a BOM", () => {
+    const text = "﻿ID,Question\n1,Hi\n";
+    const { headers } = readCsv(text);
+    expect(headers).toEqual(["ID", "Question"]);
+  });
+
+  it("trims header names", () => {
+    const text = " ID , Question \n1,Hi\n";
+    const { headers } = readCsv(text);
+    expect(headers).toEqual(["ID", "Question"]);
+  });
+
+  it("skips fully empty lines", () => {
+    const text = "ID,Question\n1,Hi\n\n2,Bye\n";
+    const { rows } = readCsv(text);
+    expect(rows).toEqual([
+      { ID: "1", Question: "Hi" },
+      { ID: "2", Question: "Bye" },
+    ]);
+  });
+});
+
+describe("headersSignature", () => {
+  it("lower-cases, trims and joins headers with |", () => {
+    expect(headersSignature([" ID ", "Question", "Answer"])).toBe("id|question|answer");
+  });
+});
+
+describe("guessMapping", () => {
+  it("maps ID / Ticket ID / No to oldId", () => {
+    expect(guessMapping(["ID"]).oldId).toBe("ID");
+    expect(guessMapping(["Ticket ID"]).oldId).toBe("Ticket ID");
+    expect(guessMapping(["No"]).oldId).toBe("No");
+  });
+
+  it("maps Question / Issue / Description / Masalah to question", () => {
+    expect(guessMapping(["Question"]).question).toBe("Question");
+    expect(guessMapping(["Issue"]).question).toBe("Issue");
+    expect(guessMapping(["Description"]).question).toBe("Description");
+    expect(guessMapping(["Masalah"]).question).toBe("Masalah");
+  });
+
+  it("maps Answer / Reply / Solution / Jawapan to answer", () => {
+    expect(guessMapping(["Answer"]).answer).toBe("Answer");
+    expect(guessMapping(["Reply"]).answer).toBe("Reply");
+    expect(guessMapping(["Solution"]).answer).toBe("Solution");
+    expect(guessMapping(["Jawapan"]).answer).toBe("Jawapan");
+  });
+
+  it("maps Client / Customer / Name to clientName", () => {
+    expect(guessMapping(["Client"]).clientName).toBe("Client");
+    expect(guessMapping(["Customer"]).clientName).toBe("Customer");
+    expect(guessMapping(["Name"]).clientName).toBe("Name");
+  });
+
+  it("maps Phone / Email / Contact to clientContact", () => {
+    expect(guessMapping(["Phone"]).clientContact).toBe("Phone");
+    expect(guessMapping(["Email"]).clientContact).toBe("Email");
+    expect(guessMapping(["Contact"]).clientContact).toBe("Contact");
+  });
+
+  it("maps Created / Date / Tarikh to createdAt", () => {
+    expect(guessMapping(["Created"]).createdAt).toBe("Created");
+    expect(guessMapping(["Date"]).createdAt).toBe("Date");
+    expect(guessMapping(["Tarikh"]).createdAt).toBe("Tarikh");
+  });
+
+  it("maps Closed / Resolved to closedAt", () => {
+    expect(guessMapping(["Closed"]).closedAt).toBe("Closed");
+    expect(guessMapping(["Resolved"]).closedAt).toBe("Resolved");
+  });
+
+  it("maps Category and Priority directly", () => {
+    expect(guessMapping(["Category"]).category).toBe("Category");
+    expect(guessMapping(["Priority"]).priority).toBe("Priority");
+  });
+
+  it("matches case-insensitively and on contains", () => {
+    const mapping = guessMapping(["ticket id", "Issue Description", "Primary Contact Number"]);
+    expect(mapping.oldId).toBe("ticket id");
+    expect(mapping.question).toBe("Issue Description");
+    expect(mapping.clientContact).toBe("Primary Contact Number");
+  });
+});
+
+describe("checkRows", () => {
+  const mapping: CsvMapping = {
+    oldId: "ID",
+    question: "Question",
+    answer: "Answer",
+    createdAt: "Created",
+    closedAt: "Closed",
+  };
+
+  it("flags a missing ID", () => {
+    const { good, bad } = checkRows([{ ID: "", Question: "Why?" }], mapping, "dmy");
+    expect(good).toHaveLength(0);
+    expect(bad).toEqual([{ line: 2, reason: "Missing ID", raw: { ID: "", Question: "Why?" } }]);
+  });
+
+  it("flags a missing question", () => {
+    const { good, bad } = checkRows([{ ID: "1", Question: "" }], mapping, "dmy");
+    expect(good).toHaveLength(0);
+    expect(bad).toEqual([{ line: 2, reason: "Missing question", raw: { ID: "1", Question: "" } }]);
+  });
+
+  it("flags an ID repeated in the file, keeping the first good", () => {
+    const rows = [
+      { ID: "1", Question: "First" },
+      { ID: "1", Question: "Second" },
+    ];
+    const { good, bad } = checkRows(rows, mapping, "dmy");
+    expect(good).toHaveLength(1);
+    expect(good[0]).toMatchObject({ line: 2, oldId: "1", question: "First" });
+    expect(bad).toEqual([
+      { line: 3, reason: "ID repeated in the file", raw: rows[1] },
+    ]);
+  });
+
+  it("flags an unreadable date in a mapped date column", () => {
+    const { good, bad } = checkRows(
+      [{ ID: "1", Question: "Why?", Created: "yesterday" }],
+      mapping,
+      "dmy"
+    );
+    expect(good).toHaveLength(0);
+    expect(bad).toEqual([
+      {
+        line: 2,
+        reason: "Can't read date: yesterday",
+        raw: { ID: "1", Question: "Why?", Created: "yesterday" },
+      },
+    ]);
+  });
+
+  it("returns good rows with trimmed values and correct line numbers", () => {
+    const rows = [
+      { ID: " 1 ", Question: " Why? ", Answer: " Because ", Created: "", Closed: "" },
+      { ID: "2", Question: "How?", Answer: "", Created: "", Closed: "" },
+    ];
+    const { good, bad } = checkRows(rows, mapping, "dmy");
+    expect(bad).toHaveLength(0);
+    expect(good).toEqual([
+      {
+        line: 2,
+        oldId: "1",
+        question: "Why?",
+        answer: "Because",
+        title: "",
+        clientName: "",
+        clientContact: "",
+        createdAt: null,
+        closedAt: null,
+        category: "",
+        priority: "",
+      },
+      {
+        line: 3,
+        oldId: "2",
+        question: "How?",
+        answer: "",
+        title: "",
+        clientName: "",
+        clientContact: "",
+        createdAt: null,
+        closedAt: null,
+        category: "",
+        priority: "",
+      },
+    ]);
+  });
+});
+
+describe("parseLooseDate", () => {
+  const expected = new Date(Date.UTC(2026, 9, 12, 0, 0, 0) - 480 * 60_000);
+  const expectedWithTime = new Date(Date.UTC(2026, 9, 12, 14, 30, 0) - 480 * 60_000);
+
+  it("reads ISO dates without a time", () => {
+    expect(parseLooseDate("2026-10-12", "dmy")).toEqual(expected);
+  });
+
+  it("reads ISO dates with a time", () => {
+    expect(parseLooseDate("2026-10-12 14:30", "dmy")).toEqual(expectedWithTime);
+  });
+
+  it("reads slash dates in day/month order", () => {
+    expect(parseLooseDate("12/10/2026", "dmy")).toEqual(expected);
+  });
+
+  it("reads slash dates with a 12-hour time", () => {
+    expect(parseLooseDate("12/10/2026 2:30 PM", "dmy")).toEqual(expectedWithTime);
+  });
+
+  it("reads slash dates in month/day order", () => {
+    expect(parseLooseDate("10/12/2026", "mdy")).toEqual(expected);
+  });
+
+  it("returns null for unreadable text", () => {
+    expect(parseLooseDate("yesterday", "dmy")).toBeNull();
+  });
+
+  it("rejects impossible dates instead of rolling them over", () => {
+    expect(parseLooseDate("31/02/2026", "dmy")).toBeNull();
+  });
+
+  it("uses a custom offset when given one", () => {
+    const utcDate = parseLooseDate("2026-10-12 00:00", "dmy", 0);
+    expect(utcDate).toEqual(new Date(Date.UTC(2026, 9, 12, 0, 0, 0)));
+  });
+});
+
+describe("badRowsCsv", () => {
+  it("writes a reason column first, then the original columns, quoted correctly", () => {
+    const bad = [
+      { line: 2, reason: "Missing ID", raw: { ID: "", Question: "Hello, world" } },
+      { line: 3, reason: "Missing question", raw: { ID: "2", Question: "" } },
+    ];
+    const csv = badRowsCsv(bad);
+    expect(csv).toBe(
+      'reason,ID,Question\r\nMissing ID,,"Hello, world"\r\nMissing question,2,'
+    );
+  });
+});
