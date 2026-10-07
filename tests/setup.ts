@@ -102,6 +102,8 @@ function createMockPrismaClient() {
     "importJob",
     "chatSender",
     "importMapping",
+    "waChat",
+    "waInbound",
   ];
 
   const client: Record<string, unknown> = {
