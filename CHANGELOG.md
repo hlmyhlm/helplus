@@ -22,6 +22,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Screenshots on tickets: IC numbers are covered automatically, unclear images wait for a staff check, originals are encrypted, staff-only and deleted 90 days after close (Settings > Privacy & IC). WhatsApp images arrive as screenshots on the ticket.
 - Imports: WhatsApp chat exports (.txt or .zip with images) and old-system CSV become tickets, with IC numbers hidden. Re-imports skip what's already in. Answers wait in Library > Waiting approval before the AI can use them.
 
+### Imports
+
+- **Permission:** only supervisors, admins and owners can run imports.
+- **Storage:** uploads are kept encrypted under `storage/` (`c/<company>/imports/`) until the import finishes. Unstarted uploads are deleted after 7 days, failed ones after 14 days.
+- **Limits:** 50 MB per file, 5000 issues or 20000 CSV rows per file. Videos, voice notes and documents are skipped. The worker checks images for ICs.
+- **Known limits:**
+  - Sender names are as saved on the exporting phone, so the same chat exported from another phone may not dedupe.
+  - Times are read as UTC+8.
+  - A client's late "thanks" can start a new issue.
+  - A staff message up to 72 hours after an unanswered question is taken as its answer.
+  - WhatsApp chat parsing was only tested on made-up samples, not real Android or iPhone exports. Check the preview counts before starting an import, and report any chat that comes in wrong.
+- **Imported tickets:** they get no SLA times and send no emails. CSV rows always come in closed. A WhatsApp issue with a staff reply comes in closed. One without a reply comes in as New if its last message is within 14 days of the newest message in the export. Otherwise it's closed with the note "No reply in the imported chat".
+- **Library:** once approved, an imported answer is used by the AI for the whole company until Library entries can be limited to one project.
+- **Worker:** imports only move forward while the worker runs.
+
 ### Upgrade notes
 
 - Set `HELPLUS_SECRET_KEY` (see `.env.example`), then run `npx tsx --env-file=.env scripts/encrypt-secrets.ts` once.
