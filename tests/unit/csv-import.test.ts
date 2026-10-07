@@ -140,11 +140,11 @@ describe("guessMapping", () => {
     expect(mapping.clientContact).toBe("Contact Email");
   });
 
-  it("still maps Malay question/answer headers, leaving an unrecognised name header unmapped", () => {
+  it("maps Malay question/answer/name headers", () => {
     const mapping = guessMapping(["Nama Pelanggan", "Masalah", "Jawapan"]);
     expect(mapping.question).toBe("Masalah");
     expect(mapping.answer).toBe("Jawapan");
-    expect(mapping.clientName).toBeUndefined();
+    expect(mapping.clientName).toBe("Nama Pelanggan");
   });
 
   it("maps both date columns correctly regardless of column order", () => {
@@ -172,6 +172,41 @@ describe("guessMapping", () => {
   it("maps Malay date headers by their qualifier word", () => {
     const mapping = guessMapping(["Tarikh Tutup", "Tarikh"]);
     expect(mapping.closedAt).toBe("Tarikh Tutup");
+    expect(mapping.createdAt).toBe("Tarikh");
+  });
+
+  it("never sends a header ending in a number word to oldId", () => {
+    const mapping = guessMapping([
+      "Customer Name",
+      "Phone No",
+      "Issue",
+      "Reply",
+      "Status",
+      "Created At",
+    ]);
+    expect(mapping.clientContact).toBe("Phone No");
+    expect(mapping.oldId).toBeUndefined();
+    expect(mapping.createdAt).toBe("Created At");
+  });
+
+  it("sends Contact No to clientContact, not oldId", () => {
+    const mapping = guessMapping(["Contact Name", "Contact No"]);
+    expect(mapping.clientName).toBe("Contact Name");
+    expect(mapping.clientContact).toBe("Contact No");
+  });
+
+  it("still sends a real ID header to oldId alongside a phone number header", () => {
+    const mapping = guessMapping(["Ticket No", "Phone Number"]);
+    expect(mapping.oldId).toBe("Ticket No");
+    expect(mapping.clientContact).toBe("Phone Number");
+  });
+
+  it("maps Malay client/contact/question/answer/date headers together", () => {
+    const mapping = guessMapping(["Nama", "No Telefon", "Masalah", "Jawapan", "Tarikh"]);
+    expect(mapping.clientName).toBe("Nama");
+    expect(mapping.clientContact).toBe("No Telefon");
+    expect(mapping.question).toBe("Masalah");
+    expect(mapping.answer).toBe("Jawapan");
     expect(mapping.createdAt).toBe("Tarikh");
   });
 });

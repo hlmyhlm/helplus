@@ -39,7 +39,7 @@ const FIELD_DEFS: { field: CsvField; tier: number; hints: string[] }[] = [
   { field: "oldId", tier: 2, hints: ["id", "ticket id", "no"] },
   { field: "question", tier: 2, hints: ["question", "issue", "description", "masalah"] },
   { field: "answer", tier: 2, hints: ["answer", "reply", "solution", "jawapan"] },
-  { field: "clientName", tier: 1, hints: ["client", "customer", "name"] },
+  { field: "clientName", tier: 1, hints: ["client", "customer", "name", "nama"] },
   { field: "clientContact", tier: 3, hints: ["phone", "email", "contact", "tel", "mobile"] },
   { field: "createdAt", tier: 2, hints: ["created", "date", "tarikh", "opened", "dibuka"] },
   { field: "closedAt", tier: 2, hints: ["closed", "resolved", "tutup"] },
@@ -51,6 +51,10 @@ const FIELD_DEFS: { field: CsvField; tier: number; hints: string[] }[] = [
 // end in one of these, so the qualifier word must decide instead
 const GENERIC_LAST_WORDS = new Set(["date", "time", "tarikh", "masa"]);
 const DATE_FIELDS: ReadonlySet<CsvField> = new Set(["createdAt", "closedAt"]);
+
+// a trailing number word doesn't name the field either - "Phone No" is a phone, not an id
+const NUMBER_WORDS = new Set(["no", "number", "num", "nombor", "bil"]);
+const NO_BONUS_WORDS = new Set([...GENERIC_LAST_WORDS, ...NUMBER_WORDS]);
 
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -82,7 +86,7 @@ function hintScore(
   if (whole) score = tier * 100 + hint.length * 10 + 5;
   else if (header.includes(hint)) score = tier * 100 + hint.length * 10;
   else return null;
-  if (hint === last && !GENERIC_LAST_WORDS.has(hint)) score += 1000;
+  if (hint === last && !NO_BONUS_WORDS.has(hint)) score += 1000;
   return score;
 }
 
