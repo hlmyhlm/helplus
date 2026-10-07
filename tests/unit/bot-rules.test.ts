@@ -26,6 +26,10 @@ describe("isStaffSender", () => {
   it("never counts the bot itself", () => {
     expect(isStaffSender({ senderId: "60111111111@c.us", senderName: "Support Ali" }, staff)).toBe(false);
   });
+  it("never matches empty digits, even if the phones set has an empty entry", () => {
+    const staffWithBlank = { phones: new Set(["60123456789", ""]), names: new Set<string>(), botPhone: "60111111111" };
+    expect(isStaffSender({ senderId: "xyz@lid", senderName: "Nobody" }, staffWithBlank)).toBe(false);
+  });
 });
 
 describe("plan", () => {
@@ -77,5 +81,8 @@ describe("placeUnquoted", () => {
   it("ignores staff chatter with nothing open recently", () => {
     expect(placeUnquoted([], at(0))).toBe("ignore");
     expect(placeUnquoted([{ id: "t1", lastActivityAt: at(0) }], at(FOLLOW_UP_MS + 1))).toBe("ignore");
+  });
+  it("treats exactly FOLLOW_UP_MS as no longer recent", () => {
+    expect(placeUnquoted([{ id: "t1", lastActivityAt: at(0) }], at(FOLLOW_UP_MS))).toBe("ignore");
   });
 });

@@ -17,7 +17,7 @@ export function isStaffSender(
 ): boolean {
   const digits = senderDigits(s.senderId);
   if (digits && digits === staff.botPhone) return false;
-  return staff.phones.has(digits) || staff.names.has(s.senderName);
+  return (digits !== "" && staff.phones.has(digits)) || staff.names.has(s.senderName);
 }
 
 export interface PendingMsg {
