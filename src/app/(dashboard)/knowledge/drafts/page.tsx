@@ -7,6 +7,7 @@ import { Check, Inbox, Loader2, Pencil, Trash2, X } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { unwrapList, listMeta } from "@/lib/api-client";
 import { useCompany } from "@/lib/hooks/use-company";
+import { hasPermission } from "@/lib/rbac";
 
 interface Draft {
   id: string;
@@ -28,7 +29,9 @@ export default function DraftsPage() {
       fallback={
         <>
           <Header title={TITLE} description={DESCRIPTION} />
-          <div className="flex-1 overflow-y-auto p-4 md:p-6 text-sm text-helplus-text-light">Loading…</div>
+          <div className="flex-1 overflow-y-auto p-4 md:p-6 text-sm text-helplus-text-light">
+            Loading…
+          </div>
         </>
       }
     >
@@ -56,9 +59,16 @@ function Clamped({ label, text }: { label: string; text: string }) {
   return (
     <div>
       <p className="text-xs font-semibold text-helplus-text-light mb-1">{label}</p>
-      <p className={`text-sm text-helplus-text whitespace-pre-wrap break-words ${open ? "" : "line-clamp-6"}`}>{text}</p>
+      <p
+        className={`text-sm text-helplus-text whitespace-pre-wrap break-words ${open ? "" : "line-clamp-6"}`}
+      >
+        {text}
+      </p>
       {long && (
-        <button onClick={() => setOpen(!open)} className="mt-1 text-xs font-medium text-helplus-link hover:underline">
+        <button
+          onClick={() => setOpen(!open)}
+          className="mt-1 text-xs font-medium text-helplus-link hover:underline"
+        >
           {open ? "Show less" : "Show more"}
         </button>
       )}
@@ -66,7 +76,22 @@ function Clamped({ label, text }: { label: string; text: string }) {
   );
 }
 
-function DraftCard({ draft, projectWord, onGone }: { draft: Draft; projectWord: string; onGone: (id: string) => void }) {
+interface Can {
+  update: boolean;
+  remove: boolean;
+}
+
+function DraftCard({
+  draft,
+  projectWord,
+  can,
+  onGone,
+}: {
+  draft: Draft;
+  projectWord: string;
+  can: Can;
+  onGone: () => void;
+}) {
   const [current, setCurrent] = useState(draft);
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(draft.title);
@@ -110,15 +135,16 @@ function DraftCard({ draft, projectWord, onGone }: { draft: Draft; projectWord: 
   }
 
   async function approve() {
-    if (await send("POST", { action: "approve" })) onGone(current.id);
+    if (await send("POST", { action: "approve" })) onGone();
   }
 
   async function reject() {
-    if (await send("POST", { action: "reject" })) onGone(current.id);
+    if (await send("POST", { action: "reject" })) onGone();
   }
 
   const qa = splitQA(current.content);
-  const btn = "inline-flex items-center gap-1.5 h-8 px-3 text-xs font-medium rounded-lg transition-colors disabled:opacity-50";
+  const btn =
+    "inline-flex items-center gap-1.5 h-8 px-3 text-xs font-medium rounded-lg transition-colors disabled:opacity-50";
 
   return (
     <div className="bg-helplus-surface rounded-xl border border-helplus-border p-4">
@@ -145,7 +171,10 @@ function DraftCard({ draft, projectWord, onGone }: { draft: Draft; projectWord: 
           <h3 className="text-sm font-semibold text-helplus-text break-words">{current.title}</h3>
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-helplus-text-light">
             {current.sourceTicketId && (
-              <Link href={`/tickets/${current.sourceTicketId}`} className="text-helplus-link hover:underline">
+              <Link
+                href={`/tickets/${current.sourceTicketId}`}
+                className="text-helplus-link hover:underline"
+              >
                 From ticket #{current.sourceTicket?.number ?? "?"}
               </Link>
             )}
@@ -173,8 +202,16 @@ function DraftCard({ draft, projectWord, onGone }: { draft: Draft; projectWord: 
       <div className="mt-4 flex flex-wrap items-center gap-2">
         {editing ? (
           <>
-            <button onClick={save} disabled={busy} className={`${btn} text-white bg-helplus-primary hover:bg-helplus-primary-dark`}>
-              {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+            <button
+              onClick={save}
+              disabled={busy}
+              className={`${btn} text-white bg-helplus-primary hover:bg-helplus-primary-dark`}
+            >
+              {busy ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Check className="h-3.5 w-3.5" />
+              )}
               Save
             </button>
             <button
@@ -194,8 +231,16 @@ function DraftCard({ draft, projectWord, onGone }: { draft: Draft; projectWord: 
         ) : confirmReject ? (
           <>
             <span className="text-xs text-helplus-text">Reject and delete this answer?</span>
-            <button onClick={reject} disabled={busy} className={`${btn} text-white bg-red-600 hover:bg-red-700`}>
-              {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+            <button
+              onClick={reject}
+              disabled={busy}
+              className={`${btn} text-white bg-red-600 hover:bg-red-700`}
+            >
+              {busy ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="h-3.5 w-3.5" />
+              )}
               Yes, reject
             </button>
             <button
@@ -208,32 +253,46 @@ function DraftCard({ draft, projectWord, onGone }: { draft: Draft; projectWord: 
           </>
         ) : (
           <>
-            <button onClick={approve} disabled={busy} className={`${btn} text-white bg-helplus-primary hover:bg-helplus-primary-dark`}>
-              {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-              Approve
-            </button>
-            <button
-              onClick={() => {
-                setEditing(true);
-                setError("");
-              }}
-              disabled={busy}
-              className={`${btn} text-helplus-text border border-helplus-border hover:bg-helplus-bg`}
-            >
-              <Pencil className="h-3.5 w-3.5" />
-              Edit
-            </button>
-            <button
-              onClick={() => {
-                setConfirmReject(true);
-                setError("");
-              }}
-              disabled={busy}
-              className={`${btn} text-helplus-danger border border-helplus-border hover:bg-helplus-bg`}
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-              Reject
-            </button>
+            {can.update && (
+              <>
+                <button
+                  onClick={approve}
+                  disabled={busy}
+                  className={`${btn} text-white bg-helplus-primary hover:bg-helplus-primary-dark`}
+                >
+                  {busy ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Check className="h-3.5 w-3.5" />
+                  )}
+                  Approve
+                </button>
+                <button
+                  onClick={() => {
+                    setEditing(true);
+                    setError("");
+                  }}
+                  disabled={busy}
+                  className={`${btn} text-helplus-text border border-helplus-border hover:bg-helplus-bg`}
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                  Edit
+                </button>
+              </>
+            )}
+            {can.remove && (
+              <button
+                onClick={() => {
+                  setConfirmReject(true);
+                  setError("");
+                }}
+                disabled={busy}
+                className={`${btn} text-helplus-danger border border-helplus-border hover:bg-helplus-bg`}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Reject
+              </button>
+            )}
           </>
         )}
       </div>
@@ -254,6 +313,22 @@ function DraftsPageInner() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  const [can, setCan] = useState<Can>({ update: false, remove: false });
+
+  // buttons follow the same permissions the api checks
+  useEffect(() => {
+    fetch("/api/auth")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        const role = d?.user?.role ?? "";
+        setCan({
+          update: hasPermission(role, "knowledge:update"),
+          remove:
+            hasPermission(role, "knowledge:update") && hasPermission(role, "knowledge:delete"),
+        });
+      })
+      .catch(() => setCan({ update: false, remove: false }));
+  }, []);
 
   useEffect(() => {
     fetch("/api/projects")
@@ -270,6 +345,7 @@ function DraftsPageInner() {
     try {
       const res = await fetch(`/api/knowledge/drafts?${params}`);
       if (!res.ok) {
+        setDrafts([]);
         setLoadError(await errorText(res));
         return;
       }
@@ -279,6 +355,7 @@ function DraftsPageInner() {
       setPages(Math.max(1, meta?.totalPages ?? 1));
       setTotal(meta?.total ?? 0);
     } catch {
+      setDrafts([]);
       setLoadError("Couldn't load drafts. Try again.");
     } finally {
       setLoading(false);
@@ -291,12 +368,15 @@ function DraftsPageInner() {
 
   function pickProject(id: string) {
     setPage(1);
-    router.replace(id ? `/knowledge/drafts?projectId=${encodeURIComponent(id)}` : "/knowledge/drafts");
+    router.replace(
+      id ? `/knowledge/drafts?projectId=${encodeURIComponent(id)}` : "/knowledge/drafts"
+    );
   }
 
-  function gone(id: string) {
-    setDrafts((list) => list.filter((d) => d.id !== id));
-    setTotal((t) => Math.max(0, t - 1));
+  // reload so the page refills, and step back when the last page empties
+  function gone() {
+    if (drafts.length === 1 && page > 1) setPage(page - 1);
+    else load();
   }
 
   return (
@@ -318,7 +398,9 @@ function DraftsPageInner() {
                 </option>
               ))}
             </select>
-            {!loading && !loadError && <span className="text-xs text-helplus-text-light">{total} waiting</span>}
+            {!loading && !loadError && (
+              <span className="text-xs text-helplus-text-light">{total} waiting</span>
+            )}
           </div>
 
           {loadError && <p className="text-sm text-helplus-danger">{loadError}</p>}
@@ -330,12 +412,14 @@ function DraftsPageInner() {
           ) : !loadError && drafts.length === 0 ? (
             <div className="text-center py-12">
               <Inbox className="h-10 w-10 mx-auto mb-3 text-helplus-text-light opacity-40" />
-              <p className="text-sm text-helplus-text-light">Nothing waiting. Imported answers show up here.</p>
+              <p className="text-sm text-helplus-text-light">
+                Nothing waiting. Imported answers show up here.
+              </p>
             </div>
           ) : (
             <div className="space-y-3">
               {drafts.map((d) => (
-                <DraftCard key={d.id} draft={d} projectWord={projectWord} onGone={gone} />
+                <DraftCard key={d.id} draft={d} projectWord={projectWord} can={can} onGone={gone} />
               ))}
             </div>
           )}

@@ -70,7 +70,7 @@ ${context.customerHistory.length > 0 ? context.customerHistory.join("\n") : "Thi
 
 async function getKnowledgeBase(): Promise<KnowledgeItem[]> {
   const entries = await prisma.knowledgeEntry.findMany({
-    where: { isActive: true },
+    where: { isActive: true, status: "approved" },
     include: { category: true },
     orderBy: { priority: "desc" },
   });

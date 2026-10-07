@@ -33,7 +33,7 @@ export const POST = withAuth(
 
       // Load all active knowledge entries
       const entries = await prisma.knowledgeEntry.findMany({
-        where: { isActive: true },
+        where: { isActive: true, status: "approved" },
         include: {
           category: {
             select: { id: true, name: true, color: true },

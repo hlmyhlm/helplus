@@ -11,7 +11,9 @@ export const GET = withAuth("knowledge:read", async (request: NextRequest, auth)
     const ids = await allowedProjectIds(auth);
     const projectId = searchParams.get("projectId");
     // a picked project only narrows the scope, never widens it
-    const scope = projectId ? projectWhere(ids === null || ids.includes(projectId) ? [projectId] : []) : projectWhere(ids);
+    const scope = projectId
+      ? projectWhere(ids === null || ids.includes(projectId) ? [projectId] : [])
+      : projectWhere(ids);
     const where = { status: "draft", ...scope };
 
     if (searchParams.get("count") === "1") {

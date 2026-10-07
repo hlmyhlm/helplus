@@ -244,6 +244,16 @@ describe("AI Engine", () => {
     expect(systemMessage.content).toContain("30-day returns allowed");
   }));
 
+  it("only reads approved, active knowledge", inCompany(async () => {
+    mockOpenAICreateFn.mockResolvedValue({ choices: [{ finish_reason: "stop", message: { content: "ok" } }] });
+
+    const { chat } = await import("@/lib/ai/engine");
+    await chat("conv-1", "hi");
+
+    const where = mockPrisma.knowledgeEntry.findMany.mock.calls.at(-1)?.[0].where;
+    expect(where).toEqual({ isActive: true, status: "approved" });
+  }));
+
   it("should handle tool calls and recurse", inCompany(async () => {
     // First call returns tool_calls
     mockOpenAICreateFn
