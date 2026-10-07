@@ -2,12 +2,15 @@
 
 import { use, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ChevronLeft } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { ChevronLeft, Paperclip } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { formatRelativeTime } from "@/lib/utils";
 import { unwrapList } from "@/lib/api-client";
 import { StatusDot, sourceLabel } from "@/components/tickets/status-dot";
 import { SlaBadge, closesOn } from "@/components/tickets/sla-badge";
+import { Screenshots } from "@/components/tickets/screenshots";
+import type { AttachmentRow } from "@/lib/attachments/row";
 import { STATUS_LABELS, TICKET_STATUSES, canMove, isTicketStatus } from "@/lib/tickets/status";
 import { useCompany } from "@/lib/hooks/use-company";
 
@@ -44,6 +47,7 @@ interface Ticket {
   project: { id: string; name: string };
   assignee: { id: string; name: string } | null;
   conversation: { customerName: string; customerContact: string; messages: Msg[]; notes: Note[] } | null;
+  attachments: AttachmentRow[];
 }
 interface Person {
   id: string;
@@ -55,8 +59,10 @@ const WHO: Record<string, string> = { customer: "Client", agent: "Support", admi
 
 export default function TicketDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const { autoCloseDays } = useCompany();
+  const { autoCloseDays, canCheckScreens } = useCompany();
+  const searchParams = useSearchParams();
   const [ticket, setTicket] = useState<Ticket | null>(null);
+  const [uploadError, setUploadError] = useState("");
   const ticketRef = useRef<Ticket | null>(null);
   const [missing, setMissing] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -96,6 +102,12 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
   useEffect(() => {
     ticketRef.current = ticket;
   }, [ticket]);
+
+  // shown once, from the quick add dialog's upload failing
+  useEffect(() => {
+    const e = searchParams.get("uploadError");
+    if (e) setUploadError(e);
+  }, [searchParams]);
 
   useEffect(() => {
     load();
@@ -242,20 +254,30 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                 </button>
               </div>
             )}
-            {ticket.conversation?.messages.map((m) => (
-              <div key={m.id} className="flex gap-3">
-                <div className="h-7 w-7 shrink-0 rounded-full bg-helplus-primary-50 text-helplus-link text-[11px] font-semibold grid place-items-center">
-                  {(WHO[m.role] ?? m.role).slice(0, 2).toUpperCase()}
-                </div>
-                <div className="flex-1">
-                  <div className="text-xs text-helplus-text-light">
-                    <span className="font-semibold text-helplus-text">{m.role === "customer" ? ticket.conversation?.customerName : WHO[m.role] ?? m.role}</span>{" "}
-                    · {formatRelativeTime(m.createdAt)}
+            {ticket.conversation?.messages.map((m) => {
+              const attCount = ticket.attachments.filter((a) => a.messageId === m.id).length;
+              return (
+                <div key={m.id} className="flex gap-3">
+                  <div className="h-7 w-7 shrink-0 rounded-full bg-helplus-primary-50 text-helplus-link text-[11px] font-semibold grid place-items-center">
+                    {(WHO[m.role] ?? m.role).slice(0, 2).toUpperCase()}
                   </div>
-                  <div className="text-sm text-helplus-text whitespace-pre-wrap">{m.content}</div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-1 text-xs text-helplus-text-light">
+                      <span className="font-semibold text-helplus-text">{m.role === "customer" ? ticket.conversation?.customerName : WHO[m.role] ?? m.role}</span>
+                      <span>· {formatRelativeTime(m.createdAt)}</span>
+                      {attCount > 0 && (
+                        <span className="inline-flex items-center gap-0.5">
+                          <Paperclip className="h-3.5 w-3.5 text-helplus-text-light" /> {attCount}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-sm text-helplus-text whitespace-pre-wrap">{m.content}</div>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
+            {uploadError && <p className="text-sm text-helplus-danger">{uploadError}</p>}
+            <Screenshots ticketId={ticket.id} attachments={ticket.attachments} canCheck={canCheckScreens} onChanged={load} />
             {ticket.status !== "closed" && (
               <div className="space-y-2">
                 <textarea

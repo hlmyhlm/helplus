@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Sparkles, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ImagePlus, Sparkles, X } from "lucide-react";
 import { unwrapList } from "@/lib/api-client";
+import { uploadScreenshots } from "@/lib/attachments/client";
 
 interface Project {
   id: string;
@@ -17,7 +18,7 @@ export function QuickAddDialog({
 }: {
   open: boolean;
   onClose: () => void;
-  onCreated: (ticketId: string) => void;
+  onCreated: (ticketId: string, uploadError?: string) => void;
 }) {
   const [text, setText] = useState("");
   const [title, setTitle] = useState("");
@@ -25,8 +26,11 @@ export function QuickAddDialog({
   const [customerName, setCustomerName] = useState("");
   const [projectId, setProjectId] = useState("");
   const [projects, setProjects] = useState<Project[]>([]);
+  const [files, setFiles] = useState<File[]>([]);
+  const [dragOver, setDragOver] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -86,11 +90,17 @@ export function QuickAddDialog({
         return;
       }
       const ticket = await res.json();
+      let uploadError: string | undefined;
+      if (files.length) {
+        const up = await uploadScreenshots(ticket.id, files);
+        if (!up.ok) uploadError = up.error;
+      }
       setText("");
       setTitle("");
       setCategory("");
       setCustomerName("");
-      onCreated(ticket.id);
+      setFiles([]);
+      onCreated(ticket.id, uploadError);
     } catch {
       setError("Couldn't create the ticket.");
     } finally {
@@ -130,6 +140,52 @@ export function QuickAddDialog({
             <Sparkles className="h-4 w-4" /> Suggest title and category
           </button>
         </div>
+        <div
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragOver(true);
+          }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragOver(false);
+            setFiles((f) => [...f, ...Array.from(e.dataTransfer.files)]);
+          }}
+          onPaste={(e) => {
+            const pasted = Array.from(e.clipboardData.files).filter((f) => f.type.startsWith("image/"));
+            if (pasted.length) setFiles((f) => [...f, ...pasted]);
+          }}
+          onClick={() => fileInputRef.current?.click()}
+          className={`rounded-md border border-dashed px-3 py-3 text-xs text-helplus-text-light text-center cursor-pointer ${
+            dragOver ? "border-helplus-primary bg-helplus-primary-50" : "border-helplus-border"
+          }`}
+        >
+          <ImagePlus className="h-4 w-4 mx-auto mb-1" />
+          Drop or paste screenshots (PNG, JPEG, WebP)
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              setFiles((f) => [...f, ...Array.from(e.target.files ?? [])]);
+              e.target.value = "";
+            }}
+          />
+        </div>
+        {files.length > 0 && (
+          <ul className="flex flex-wrap gap-2">
+            {files.map((f, i) => (
+              <li key={i} className="inline-flex items-center gap-1.5 h-7 px-2 rounded-md border border-helplus-border text-xs text-helplus-text">
+                {f.name}
+                <button onClick={() => setFiles((cur) => cur.filter((_, j) => j !== i))} aria-label={`Remove ${f.name}`} className="text-helplus-text-light">
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <input className={field} placeholder="Title (optional)" value={title} onChange={(e) => setTitle(e.target.value)} />
           <input className={field} placeholder="Category (optional)" value={category} onChange={(e) => setCategory(e.target.value)} />
