@@ -10,9 +10,12 @@ import { MAX_BYTES } from "@/lib/attachments/client";
 import { isAllowedImage } from "@/lib/privacy/ic-image";
 import { fileStore } from "@/lib/storage";
 import { decryptBuffer } from "@/lib/secrets";
+import { defaultProjectId } from "@/lib/projects/default";
 import { plan, placeUnquoted, senderDigits, FOLLOW_UP_MS, type OpenTicketLite } from "./rules";
 
 const KEEP_MS = 7 * 86_400_000;
+const MAX_ATTEMPTS = 5;
+const PLACING_STALE_MS = 5 * 60_000;
 const ANSWERABLE = ["new", "ai_suggested", "working", "reopened"];
 const key = (waMessageId: string) => `wam:${waMessageId}`;
 const isP2002 = (error: unknown) => (error as { code?: string })?.code === "P2002";
@@ -20,6 +23,11 @@ const inChat = (chatId: string) => ({ metadata: { path: ["waChatId"], equals: ch
 
 export async function runBotIntake(now: Date) {
   const stats = { tickets: 0, answers: 0, picks: 0 };
+  // a placing that never finished goes back to the list
+  await prisma.waInbound.updateMany({
+    where: { state: "placing", doneAt: { lt: new Date(now.getTime() - PLACING_STALE_MS) } },
+    data: { state: "pick", doneAt: null },
+  });
   const chats = await prisma.waChat.findMany({
     where: { projectId: { not: null }, inbound: { some: { state: "pending" } } },
   });
@@ -37,10 +45,24 @@ export async function runBotIntake(now: Date) {
         }
       } catch (error) {
         logger.error("bot intake step failed", error, { chatId: chat.id });
+        await countFailure(step.kind === "client" ? step.ids : [step.id], now).catch((e) =>
+          logger.error("couldn't count a bot failure", e)
+        );
+        // later replies could land on the wrong ticket without this one
+        if (step.kind === "client") break;
       }
     }
   }
   return stats;
+}
+
+async function countFailure(ids: string[], now: Date): Promise<void> {
+  await prisma.waInbound.updateMany({ where: { id: { in: ids }, state: "pending" }, data: { attempts: { increment: 1 } } });
+  const { count } = await prisma.waInbound.updateMany({
+    where: { id: { in: ids }, state: "pending", attempts: { gte: MAX_ATTEMPTS } },
+    data: { state: "failed", doneAt: now },
+  });
+  if (count) logger.error("bot rows kept failing, giving up", undefined, { ids });
 }
 
 // open tickets of this chat with the latest whatsapp time seen on each
@@ -120,7 +142,7 @@ async function clientStep(chat: WaChat, rows: WaInbound[], now: Date): Promise<b
       conversationId: conversationId!,
       description: rows.map((r) => r.text).filter(Boolean).join("\n") || "[image]",
       source: chat.isGroup ? "whatsapp_group" : "whatsapp",
-      projectId: chat.projectId!,
+      projectId: await chatProject(chat.projectId!),
     });
     opened = true;
   } else if (ticket.status === "answered" || ticket.status === "ai_suggested") {
@@ -132,10 +154,16 @@ async function clientStep(chat: WaChat, rows: WaInbound[], now: Date): Promise<b
 
   for (const r of rows) await attachImage(r, ticket.id, messageIds.get(r.id) ?? null);
   await prisma.waInbound.updateMany({
-    where: { id: { in: rows.map((r) => r.id) } },
+    // an unlink may have set them to ignored meanwhile
+    where: { id: { in: rows.map((r) => r.id) }, state: "pending" },
     data: { state: "done", ticketId: ticket.id, doneAt: now },
   });
   return opened;
+}
+
+async function chatProject(projectId: string): Promise<string> {
+  const project = await prisma.project.findUnique({ where: { id: projectId }, select: { archived: true } });
+  return project && !project.archived ? projectId : defaultProjectId();
 }
 
 // skips messages a dead run already saved
@@ -157,13 +185,17 @@ async function saveMessages(conversationId: string, rows: WaInbound[], role: str
   return ids;
 }
 
+// best effort: a bad image never holds up the message
 async function attachImage(row: WaInbound, ticketId: string, messageId: string | null): Promise<void> {
   if (!row.mediaKey) return;
-  const fileName = row.mediaName || "whatsapp-image.jpg";
-  const data = decryptBuffer(await fileStore().get(row.mediaKey));
-  const already = messageId ? await prisma.attachment.count({ where: { messageId, fileName } }) : 0;
-  if (!already && data.length <= MAX_BYTES && (await isAllowedImage(data))) {
-    await addAttachment({ ticketId, messageId, fileName, data });
+  try {
+    const already = messageId ? await prisma.attachment.count({ where: { messageId } }) : 0;
+    const data = already ? null : decryptBuffer(await fileStore().get(row.mediaKey));
+    if (data && data.length <= MAX_BYTES && (await isAllowedImage(data))) {
+      await addAttachment({ ticketId, messageId, fileName: row.mediaName || "whatsapp-image.jpg", data }, { process: false });
+    }
+  } catch (error) {
+    logger.error("couldn't attach a bot image", error, { inboundId: row.id });
   }
   await fileStore().remove(row.mediaKey).catch(() => {});
   await prisma.waInbound.update({ where: { id: row.id }, data: { mediaKey: null } });
@@ -175,11 +207,11 @@ async function staffStep(chat: WaChat, row: WaInbound, now: Date): Promise<"answ
   if (!ticketId) {
     const placed = placeUnquoted(await openInChat(chat.id), row.at);
     if (placed === "pick") {
-      await prisma.waInbound.update({ where: { id: row.id }, data: { state: "pick" } });
+      await prisma.waInbound.updateMany({ where: { id: row.id, state: "pending" }, data: { state: "pick" } });
       return "pick";
     }
     if (placed === "ignore") {
-      await prisma.waInbound.update({ where: { id: row.id }, data: { state: "ignored", doneAt: now } });
+      await prisma.waInbound.updateMany({ where: { id: row.id, state: "pending" }, data: { state: "ignored", doneAt: now } });
       return "ignored";
     }
     ticketId = placed.ticketId;
@@ -195,7 +227,10 @@ async function answer(ticketId: string, row: WaInbound, now: Date, actorId?: str
   if (ANSWERABLE.includes(ticket.status)) {
     await saveTicket(ticket, statusChange(ticket, "answered"), actorId ? { actorId } : {});
   }
-  await prisma.waInbound.update({ where: { id: row.id }, data: { state: "done", ticketId: ticket.id, doneAt: now } });
+  await prisma.waInbound.updateMany({
+    where: { id: row.id, state: { in: ["pending", "placing"] } },
+    data: { state: "done", ticketId: ticket.id, doneAt: now },
+  });
 }
 
 export async function placeReply(
@@ -204,17 +239,24 @@ export async function placeReply(
   actorId?: string
 ): Promise<"placed" | "ignored" | "gone"> {
   const now = new Date();
-  const { count } = await prisma.waInbound.updateMany({ where: { id: inboundId, state: "pick" }, data: { state: "placing" } });
+  const { count } = await prisma.waInbound.updateMany({
+    where: { id: inboundId, state: "pick" },
+    data: { state: "placing", doneAt: now },
+  });
   if (!count) return "gone";
-  const release = () => prisma.waInbound.update({ where: { id: inboundId }, data: { state: "pick" } });
+  const release = () =>
+    prisma.waInbound.updateMany({ where: { id: inboundId, state: "placing" }, data: { state: "pick", doneAt: null } });
 
   if (!ticketId) {
-    await prisma.waInbound.update({ where: { id: inboundId }, data: { state: "ignored", doneAt: now } });
+    await prisma.waInbound.updateMany({ where: { id: inboundId, state: "placing" }, data: { state: "ignored", doneAt: now } });
     return "ignored";
   }
   try {
     const row = await prisma.waInbound.findUniqueOrThrow({ where: { id: inboundId } });
-    const ticket = await prisma.ticket.findFirst({ where: { id: ticketId, conversation: inChat(row.chatId) }, select: { id: true } });
+    const ticket = await prisma.ticket.findFirst({
+      where: { id: ticketId, status: { in: OPEN_STATUSES }, conversation: inChat(row.chatId) },
+      select: { id: true },
+    });
     if (!ticket) {
       await release();
       return "gone";
@@ -222,14 +264,15 @@ export async function placeReply(
     await answer(ticket.id, row, now, actorId);
     return "placed";
   } catch (error) {
-    await release();
+    // keep the real error if the release fails too
+    await release().catch((e) => logger.error("couldn't release a reply to place", e));
     throw error;
   }
 }
 
 export async function cleanBotInbound(now: Date): Promise<number> {
   const old = await prisma.waInbound.findMany({
-    where: { state: { in: ["done", "ignored"] }, doneAt: { lt: new Date(now.getTime() - KEEP_MS) } },
+    where: { state: { in: ["done", "ignored", "failed"] }, doneAt: { lt: new Date(now.getTime() - KEEP_MS) } },
     select: { id: true, mediaKey: true },
     take: 500,
   });

@@ -824,7 +824,8 @@ model WaInbound {
   quotedWaId  String?
   mediaKey    String?
   mediaName   String?
-  state       String    @default("pending") // pending | done | pick | ignored
+  state       String    @default("pending") // pending | done | pick | placing | ignored | failed
+  attempts    Int       @default(0)
   ticketId    String?
   ticket      Ticket?   @relation(fields: [ticketId], references: [id], onDelete: SetNull)
   doneAt      DateTime?
