@@ -312,6 +312,26 @@ describe("POST /api/attachments/:id/check", () => {
   });
 });
 
+describe("POST /api/attachments/:id/check when two people check at once", () => {
+  it("returns 409 for confirm", async () => {
+    vi.mocked(confirmAttachment).mockRejectedValue(new Error("changed by someone else"));
+    const { POST } = await import("@/app/api/attachments/[id]/check/route");
+    const res = await POST(createRequest("/api/attachments/a1/check", { method: "POST", body: { action: "confirm" } }), ctx);
+    expect(res.status).toBe(409);
+    expect((await parseJsonResponse(res)).error).toBe("Someone else just changed this image. Reload and try again.");
+  });
+
+  it("returns 409 for mask", async () => {
+    vi.mocked(remask).mockRejectedValue(new Error("changed by someone else"));
+    const { POST } = await import("@/app/api/attachments/[id]/check/route");
+    const res = await POST(
+      createRequest("/api/attachments/a1/check", { method: "POST", body: { action: "mask", boxes: [{ x: 0, y: 0, w: 10, h: 10 }] } }),
+      ctx
+    );
+    expect(res.status).toBe(409);
+  });
+});
+
 describe("an attachment on a ticket outside the user's projects", () => {
   beforeEach(() => {
     asRole("staff");

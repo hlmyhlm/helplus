@@ -28,6 +28,8 @@ export const POST = withAuth("attachments:original", async (request: NextRequest
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
     if (message === "the original was deleted") return NextResponse.json({ error: "The original was deleted" }, { status: 410 });
+    if (message === "changed by someone else")
+      return NextResponse.json({ error: "Someone else just changed this image. Reload and try again." }, { status: 409 });
     throw error;
   }
 });

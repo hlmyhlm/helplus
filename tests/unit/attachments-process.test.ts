@@ -49,11 +49,12 @@ beforeEach(async () => {
   vi.mocked(ocrImage).mockReset().mockResolvedValue(ocr);
   vi.mocked(findIcBoxes).mockReset().mockReturnValue([]);
   vi.mocked(needsCheck).mockReset().mockReturnValue(false);
-  row = { id: "a1", status: "pending", originalKey: ORIGINAL, maskedKey: null, icCount: 0, autoBoxes: [], manualBoxes: [] };
+  row = { id: "a1", status: "pending", originalKey: ORIGINAL, maskedKey: null, icCount: 0, autoBoxes: [], manualBoxes: [], updatedAt: new Date(1000) };
   attachment.findUnique.mockImplementation(async () => ({ ...row }));
   attachment.updateMany.mockImplementation(async ({ where, data }) => {
-    if (row.status !== where.status) return { count: 0 };
-    row = { ...row, ...data };
+    const same = (a: unknown, b: unknown) => (a instanceof Date && b instanceof Date ? a.getTime() === b.getTime() : a === b);
+    if (!Object.entries(where as Record<string, unknown>).every(([k, v]) => same(row[k], v))) return { count: 0 };
+    row = { ...row, ...data, updatedAt: new Date((row.updatedAt as Date).getTime() + 1) };
     return { count: 1 };
   });
   attachment.update.mockImplementation(async ({ data }) => (row = { ...row, ...data }));
@@ -138,10 +139,25 @@ describe("confirmAttachment", () => {
     expect(a).toMatchObject({ status: "clean", maskedKey: expect.stringMatching(RENDER), checkedById: null });
   });
 
+  it("refuses when someone changed the row while it rendered", async () => {
+    const theirs = "c/co/attachments/a1/masked-theirs.png";
+    row = { ...row, status: "needs_check", icCount: 1, autoBoxes: [{ x: 0, y: 0, w: 10, h: 10 }] };
+    store.get.mockImplementationOnce(async (k: string) => {
+      files.set(theirs, Buffer.from("their render"));
+      row = { ...row, status: "masked", maskedKey: theirs, updatedAt: new Date(5000) };
+      return files.get(k)!;
+    });
+    await expect(confirmAttachment("a1", staff)).rejects.toThrow("changed by someone else");
+    expect(row).toMatchObject({ status: "masked", maskedKey: theirs });
+    expect(files.get(theirs)?.toString()).toBe("their render");
+    expect(renders()).toEqual([theirs]);
+  });
+
   it("throws when the original was deleted", async () => {
     row = { ...row, status: "needs_check", originalKey: null };
     await expect(confirmAttachment("a1", staff)).rejects.toThrow("the original was deleted");
     expect(attachment.update).not.toHaveBeenCalled();
+    expect(attachment.updateMany).not.toHaveBeenCalled();
   });
 });
 
@@ -154,6 +170,20 @@ describe("remask", () => {
     expect(a.maskedKey).toMatch(RENDER);
     expect(a.maskedKey).not.toBe(old);
     expect(renders()).toEqual([a.maskedKey]);
+  });
+
+  it("refuses when someone changed the row while it rendered", async () => {
+    const theirs = "c/co/attachments/a1/masked-theirs.png";
+    files.set(theirs, Buffer.from("their render"));
+    row = { ...row, status: "masked", maskedKey: theirs };
+    store.get.mockImplementationOnce(async (k: string) => {
+      row = { ...row, manualBoxes: [{ x: 2, y: 2, w: 3, h: 3 }], updatedAt: new Date(5000) };
+      return files.get(k)!;
+    });
+    await expect(remask("a1", [{ x: 1, y: 1, w: 5, h: 5 }], staff)).rejects.toThrow("changed by someone else");
+    expect(row).toMatchObject({ maskedKey: theirs, manualBoxes: [{ x: 2, y: 2, w: 3, h: 3 }] });
+    expect(files.get(theirs)?.toString()).toBe("their render");
+    expect(renders()).toEqual([theirs]);
   });
 
   it("confirm then remask keeps the row and the file in step", async () => {

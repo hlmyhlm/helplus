@@ -216,6 +216,7 @@ function Viewer({
       if (!res.ok) {
         if (res.status === 410) setError(ORIGINAL_GONE_MESSAGE);
         else setError((await res.json().catch(() => ({}))).error ?? "Couldn't check");
+        if (res.status === 409) onChanged();
         return;
       }
       onChanged();
@@ -246,6 +247,7 @@ function Viewer({
           <MaskEditor
             attachmentId={attachment.id}
             onCancel={() => setEditingMask(false)}
+            onStale={onChanged}
             onSaved={() => {
               setEditingMask(false);
               onChanged();

@@ -14,10 +14,12 @@ export function MaskEditor({
   attachmentId,
   onCancel,
   onSaved,
+  onStale,
 }: {
   attachmentId: string;
   onCancel: () => void;
   onSaved: () => void;
+  onStale?: () => void;
 }) {
   const imgRef = useRef<HTMLImageElement>(null);
   const startRef = useRef<{ x: number; y: number } | null>(null);
@@ -83,6 +85,7 @@ export function MaskEditor({
       if (!res.ok) {
         if (res.status === 410) setError(ORIGINAL_GONE_MESSAGE);
         else setError((await res.json().catch(() => ({}))).error ?? "Couldn't save");
+        if (res.status === 409) onStale?.();
         return;
       }
       onSaved();

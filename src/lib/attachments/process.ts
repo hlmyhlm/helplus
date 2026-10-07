@@ -83,26 +83,37 @@ async function load(id: string) {
 
 const boxesOf = (value: unknown) => (Array.isArray(value) ? (value as Box[]) : []);
 
-// auto boxes stay, manual boxes go on top, always from the original
-// the row moves to the new render first, then the old file goes
+type Loaded = Awaited<ReturnType<typeof load>>;
+
+// only write if nobody touched the row since we read it, otherwise our render goes
+async function swapRender(a: Loaded, data: Record<string, unknown>, maskedKey: string) {
+  const { count } = await prisma.attachment.updateMany({
+    where: { id: a.id, maskedKey: a.maskedKey, updatedAt: a.updatedAt },
+    data: { ...data, maskedKey },
+  });
+  if (!count) {
+    await dropRender(maskedKey);
+    throw new Error("changed by someone else");
+  }
+  await dropRender(a.maskedKey);
+  return (await prisma.attachment.findUnique({ where: { id: a.id } }))!;
+}
+
+// auto boxes stay and manual ones go on top, always rendered from the original
 export async function remask(id: string, manualBoxes: Box[], actor: { id: string; name: string }) {
   const a = await load(id);
-  const auto = (a.autoBoxes as unknown as Box[]) ?? [];
-  const manual = [...((a.manualBoxes as unknown as Box[]) ?? []), ...manualBoxes];
+  const auto = boxesOf(a.autoBoxes);
+  const manual = [...boxesOf(a.manualBoxes), ...manualBoxes];
   const { png } = await originalPng(a.originalKey);
-  const updated = await prisma.attachment.update({
-    where: { id },
-    data: {
-      status: "masked",
-      manualBoxes: manual as unknown as object,
-      icCount: auto.length + manual.length,
-      maskedKey: await saveMasked(id, png, [...auto, ...manual]),
-      checkedById: checker(actor),
-      checkedAt: new Date(),
-      checkNote: "",
-    },
-  });
-  await dropRender(a.maskedKey);
+  const data = {
+    status: "masked",
+    manualBoxes: manual as unknown as object,
+    icCount: auto.length + manual.length,
+    checkedById: checker(actor),
+    checkedAt: new Date(),
+    checkNote: "",
+  };
+  const updated = await swapRender(a, data, await saveMasked(id, png, [...auto, ...manual]));
   await logActivity("attachment.masked", "attachment", id, `Covered ${manualBoxes.length} area(s) on a screenshot`, actor.name);
   return updated;
 }
@@ -111,17 +122,13 @@ export async function remask(id: string, manualBoxes: Box[], actor: { id: string
 export async function confirmAttachment(id: string, actor: { id: string; name: string }) {
   const a = await load(id);
   const { png } = await originalPng(a.originalKey);
-  const updated = await prisma.attachment.update({
-    where: { id },
-    data: {
-      status: a.icCount > 0 ? "masked" : "clean",
-      maskedKey: await saveMasked(id, png, [...boxesOf(a.autoBoxes), ...boxesOf(a.manualBoxes)]),
-      checkedById: checker(actor),
-      checkedAt: new Date(),
-      checkNote: "",
-    },
-  });
-  await dropRender(a.maskedKey);
+  const data = {
+    status: a.icCount > 0 ? "masked" : "clean",
+    checkedById: checker(actor),
+    checkedAt: new Date(),
+    checkNote: "",
+  };
+  const updated = await swapRender(a, data, await saveMasked(id, png, [...boxesOf(a.autoBoxes), ...boxesOf(a.manualBoxes)]));
   await logActivity("attachment.checked", "attachment", id, `Checked a screenshot, ${a.icCount} IC covered`, actor.name);
   return updated;
 }
