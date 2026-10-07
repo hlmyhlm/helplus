@@ -28,6 +28,8 @@ export interface WriteResult {
   skippedImages: number;
 }
 
+type QaMessage = ImportedQa["messages"][number];
+
 const mask = (s: string) => maskIC(s).text;
 const IMPORTED = "Imported";
 const isP2002 = (error: unknown) => (error as { code?: string })?.code === "P2002";
@@ -53,7 +55,8 @@ const isPlaceholderName = (name: string) => name === "Unknown" || name.includes(
 // a sender that looks like a number is matched by phone, anyone else by name
 async function customerFor(projectId: string, client: { name: string; contact?: string }): Promise<string> {
   const raw = client.contact || client.name;
-  // an IC can look like a phone number too, so only trust it as one when it isn't an IC
+  // an IC can look like a phone number too (even a bare 12-digit run), so only trust it
+  // as one when it isn't IC-shaped - missing a real phone match beats storing an IC
   const phone = maskIC(raw).count === 0 ? phoneDigits(raw) : null;
   const name = mask(client.name).slice(0, 200) || "Unknown";
 
@@ -73,16 +76,109 @@ async function customerFor(projectId: string, client: { name: string; contact?: 
   return (await prisma.customer.create({ data: { name, phone: "", projectId } })).id;
 }
 
-export async function writeImportedTicket(qa: ImportedQa): Promise<WriteResult> {
-  if (await prisma.ticket.findFirst({ where: { importKey: qa.importKey }, select: { id: true } })) {
-    return { created: false, images: 0, skippedImages: 0 };
-  }
+function maskedFileName(name: string): string {
+  return mask(name).slice(0, 200) || "screenshot.png";
+}
 
-  // sort by time but keep each message's original position, so images can still point back by it
-  const order = qa.messages.map((_, i) => i).sort((a, b) => qa.messages[a].at.getTime() - qa.messages[b].at.getTime());
-  const msgs = order.map((i) => qa.messages[i]);
+// sort by time but remember each message's original position, so images can point back by it
+function sortByTime(messages: QaMessage[]): { order: number[]; msgs: QaMessage[] } {
+  const order = messages.map((_, i) => i).sort((a, b) => messages[a].at.getTime() - messages[b].at.getTime());
+  return { order, msgs: order.map((i) => messages[i]) };
+}
+
+function questionAndAnswers(msgs: QaMessage[]): { question: string; answers: string } {
   const question = msgs.filter((m) => m.role === "customer").map((m) => mask(m.text)).join("\n").trim();
   const answers = msgs.filter((m) => m.role === "agent").map((m) => mask(m.text)).join("\n").trim();
+  return { question, answers };
+}
+
+// a crash mid-write can leave a ticket holding the importKey with little else saved; top it up
+async function repairImportedTicket(qa: ImportedQa, ticketId: string): Promise<WriteResult> {
+  const ticket = await prisma.ticket.findUniqueOrThrow({
+    where: { id: ticketId },
+    select: { id: true, conversationId: true, title: true },
+  });
+  const conversationId = ticket.conversationId;
+  if (!conversationId) return { created: false, ticketId: ticket.id, images: 0, skippedImages: 0 };
+
+  const { order, msgs } = sortByTime(qa.messages);
+  const { question, answers } = questionAndAnswers(msgs);
+  const hadNoMessages = (await prisma.message.count({ where: { conversationId } })) === 0;
+
+  const savedByInput: ({ id: string } | null)[] = new Array(qa.messages.length).fill(null);
+  for (let k = 0; k < msgs.length; k++) {
+    const m = msgs[k];
+    // an unkeyed (csv) message has no dedupe key, so it's only safe to add when nothing landed yet
+    if (!m.importKey && !hadNoMessages) continue;
+    try {
+      const row = await prisma.message.create({
+        data: { conversationId, role: m.role, content: mask(m.text), createdAt: m.at, importKey: m.importKey ?? null },
+      });
+      savedByInput[order[k]] = row;
+    } catch (error) {
+      if (!isP2002(error)) throw error;
+    }
+  }
+
+  if (qa.closeNote) {
+    const hasNote = await prisma.internalNote.count({ where: { conversationId } });
+    if (!hasNote) {
+      await prisma.internalNote.create({ data: { conversationId, content: mask(qa.closeNote), authorName: "Help+" } });
+    }
+  }
+
+  let draftId: string | undefined;
+  if (question && answers) {
+    const existingDraft = await prisma.knowledgeEntry.findFirst({ where: { sourceTicketId: ticket.id }, select: { id: true } });
+    if (existingDraft) {
+      draftId = existingDraft.id;
+    } else {
+      const draft = await prisma.knowledgeEntry.create({
+        data: {
+          categoryId: await importedCategoryId(),
+          title: ticket.title,
+          content: `Q: ${question}\n\nA: ${answers}`,
+          isActive: false,
+          status: "draft",
+          projectId: qa.projectId,
+          sourceTicketId: ticket.id,
+        },
+      });
+      draftId = draft.id;
+    }
+  }
+
+  let images = 0;
+  let skippedImages = 0;
+  for (const img of qa.images ?? []) {
+    if (!(await isAllowedImage(img.data))) {
+      skippedImages++;
+      continue;
+    }
+    const already = await prisma.attachment.findFirst({
+      where: { ticketId: ticket.id, fileName: maskedFileName(img.fileName) },
+      select: { id: true },
+    });
+    if (already) {
+      skippedImages++;
+      continue;
+    }
+    await addAttachment(
+      { ticketId: ticket.id, messageId: savedByInput[img.messageIndex]?.id ?? null, fileName: img.fileName, data: img.data },
+      { process: false }
+    );
+    images++;
+  }
+
+  return { created: false, ticketId: ticket.id, draftId, images, skippedImages };
+}
+
+export async function writeImportedTicket(qa: ImportedQa): Promise<WriteResult> {
+  const existing = await prisma.ticket.findFirst({ where: { importKey: qa.importKey }, select: { id: true } });
+  if (existing) return repairImportedTicket(qa, existing.id);
+
+  const { order, msgs } = sortByTime(qa.messages);
+  const { question, answers } = questionAndAnswers(msgs);
   const firstReply = msgs.find((m) => m.role === "agent")?.at ?? null;
   const first = msgs[0]?.at ?? new Date();
   const last = msgs.at(-1)?.at ?? first;
@@ -125,7 +221,11 @@ export async function writeImportedTicket(qa: ImportedQa): Promise<WriteResult> 
     // the importKey race was real only if another ticket actually holds it; otherwise this
     // was a plain ticket-number collision, which must not be swallowed
     const already = await prisma.ticket.findFirst({ where: { importKey: qa.importKey }, select: { id: true } });
-    await prisma.conversation.delete({ where: { id: conversation.id } });
+    try {
+      await prisma.conversation.delete({ where: { id: conversation.id } });
+    } catch {
+      // best-effort cleanup; the conflict below is the error that matters
+    }
     if (already) return { created: false, images: 0, skippedImages: 0 };
     throw error;
   }

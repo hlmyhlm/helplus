@@ -135,9 +135,14 @@ describe("writeImportedTicket", () => {
     const first = await asA(() => writeImportedTicket(q));
     expect(first.created).toBe(true);
     const second = await asA(() => writeImportedTicket(q));
-    expect(second).toEqual({ created: false, images: 0, skippedImages: 0 });
+    expect(second.created).toBe(false);
+    expect(second.ticketId).toBe(first.ticketId);
     const count = await asA(() => prisma.ticket.count({ where: { importKey: "wa:reimport-1" } }));
     expect(count).toBe(1);
+    // the one message it had has no import key, so a no-op repair must not duplicate it
+    const ticket = await asA(() => prisma.ticket.findUniqueOrThrow({ where: { id: first.ticketId! } }));
+    const msgs = await asA(() => prisma.message.findMany({ where: { conversationId: ticket.conversationId! } }));
+    expect(msgs).toHaveLength(1);
   });
 
   it("leaves no orphan ticket or conversation when two imports race on the same key", async () => {
@@ -406,5 +411,62 @@ describe("writeImportedTicket", () => {
     const attachments = await asA(() => prisma.attachment.findMany({ where: { ticketId: ticket.id } }));
     expect(attachments).toHaveLength(1);
     expect(attachments[0].messageId).toBe(laterMsg.id);
+  });
+
+  it("repairs a crashed partial write: a re-run fills in the messages, the draft and the note", async () => {
+    const q = qa({
+      importKey: "wa:crash-1",
+      status: "closed",
+      closeNote: "handled it",
+      messages: [
+        { role: "customer", text: "need help", at: new Date("2026-01-17T00:00:00Z"), importKey: "wa:crash-1-a" },
+        { role: "agent", text: "here you go", at: new Date("2026-01-17T00:05:00Z"), importKey: "wa:crash-1-b" },
+      ],
+    });
+    const first = await asA(() => writeImportedTicket(q));
+    expect(first.created).toBe(true);
+    const ticketId = first.ticketId!;
+    const ticket = await asA(() => prisma.ticket.findUniqueOrThrow({ where: { id: ticketId } }));
+    // simulate a crash that got the ticket and conversation written, but nothing else
+    await asA(() => prisma.message.deleteMany({ where: { conversationId: ticket.conversationId! } }));
+    await asA(() => prisma.internalNote.deleteMany({ where: { conversationId: ticket.conversationId! } }));
+    await asA(() => prisma.knowledgeEntry.deleteMany({ where: { sourceTicketId: ticketId } }));
+
+    const repaired = await asA(() => writeImportedTicket(q));
+    expect(repaired.created).toBe(false);
+    expect(repaired.ticketId).toBe(ticketId);
+    const msgs = await asA(() => prisma.message.findMany({ where: { conversationId: ticket.conversationId! } }));
+    expect(msgs).toHaveLength(2);
+    const notes = await asA(() => prisma.internalNote.findMany({ where: { conversationId: ticket.conversationId! } }));
+    expect(notes).toHaveLength(1);
+    expect(notes[0].content).toBe("handled it");
+    const draft = await asA(() => prisma.knowledgeEntry.findFirst({ where: { sourceTicketId: ticketId } }));
+    expect(draft).toBeTruthy();
+
+    // a second re-run is a no-op
+    const again = await asA(() => writeImportedTicket(q));
+    expect(again.created).toBe(false);
+    expect(again.ticketId).toBe(ticketId);
+    const msgsAgain = await asA(() => prisma.message.findMany({ where: { conversationId: ticket.conversationId! } }));
+    expect(msgsAgain).toHaveLength(2);
+    const notesAgain = await asA(() => prisma.internalNote.findMany({ where: { conversationId: ticket.conversationId! } }));
+    expect(notesAgain).toHaveLength(1);
+    const draftsAgain = await asA(() => prisma.knowledgeEntry.findMany({ where: { sourceTicketId: ticketId } }));
+    expect(draftsAgain).toHaveLength(1);
+  });
+
+  it("treats a bare 12-digit run as IC-shaped and never stores it as a phone (safe side)", async () => {
+    // "+601123456789" reads as a valid intl number too, but 12 contiguous digits also match
+    // the IC shape, and refusing to store a possible IC beats catching every real phone number
+    const q = qa({
+      client: { name: "+601123456789" },
+      messages: [{ role: "customer", text: "hi", at: new Date("2026-01-18T00:00:00Z") }],
+      status: "new",
+    });
+    const result = await asA(() => writeImportedTicket(q));
+    const ticket = await asA(() => prisma.ticket.findUniqueOrThrow({ where: { id: result.ticketId! } }));
+    const conv = await asA(() => prisma.conversation.findUniqueOrThrow({ where: { id: ticket.conversationId! } }));
+    const customer = await asA(() => prisma.customer.findUniqueOrThrow({ where: { id: conv.customerId! } }));
+    expect(customer.phone).toBe("");
   });
 });
