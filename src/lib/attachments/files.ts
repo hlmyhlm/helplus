@@ -11,8 +11,7 @@ export async function imageForAi(id: string): Promise<Buffer | null> {
   return fileStore().get(a.maskedKey);
 }
 
-// call before deleting rows, the database cascade can't reach the disk
-// the whole folder goes, so spare renders from a race don't outlive a delete
+// call before deleting rows, the cascade can't reach the disk
 export async function removeAttachmentFiles(where: Record<string, unknown>): Promise<number> {
   const rows = await prisma.attachment.findMany({ where, select: { id: true, companyId: true } });
   const store = fileStore();

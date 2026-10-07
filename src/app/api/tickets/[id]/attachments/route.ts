@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { withAuth } from "@/lib/tenant/with-auth";
 import { loadTicketFor } from "@/lib/tickets/load";
-import { addAttachment, MAX_BYTES } from "@/lib/attachments/service";
+import { addAttachment } from "@/lib/attachments/service";
+import { MAX_BYTES, MAX_FILES } from "@/lib/attachments/client";
 import { isAllowedImage } from "@/lib/privacy/ic-image";
 import { toRow } from "@/lib/attachments/row";
 import { logger } from "@/lib/logger";
 
 type Ctx = { params: Promise<{ id: string }> };
-const MAX_FILES = 5;
 const MAX_UPLOAD_BYTES = MAX_FILES * MAX_BYTES + 1024 * 1024;
 
 export const POST = withAuth("tickets:update", async (request: NextRequest, auth, { params }: Ctx) => {
@@ -16,9 +16,9 @@ export const POST = withAuth("tickets:update", async (request: NextRequest, auth
   if (!ticket) return NextResponse.json({ error: "Ticket not found" }, { status: 404 });
 
   // a chunked request has no length to check, so it can't skip this gate
-  const contentLength = request.headers.get("content-length");
-  if (!contentLength) return NextResponse.json({ error: "A Content-Length header is required" }, { status: 411 });
-  if (Number(contentLength) > MAX_UPLOAD_BYTES) return NextResponse.json({ error: "Upload is too large" }, { status: 413 });
+  const contentLength = Number(request.headers.get("content-length") ?? NaN);
+  if (!Number.isFinite(contentLength)) return NextResponse.json({ error: "A Content-Length header is required" }, { status: 411 });
+  if (contentLength > MAX_UPLOAD_BYTES) return NextResponse.json({ error: "Upload is too large" }, { status: 413 });
 
   let form;
   try {

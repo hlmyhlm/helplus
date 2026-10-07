@@ -10,6 +10,8 @@ import { loadAttachmentFor } from "@/lib/attachments/load";
 type Ctx = { params: Promise<{ id: string }> };
 
 export const GET = withAuth("attachments:original", async (_request: NextRequest, auth, { params }: Ctx) => {
+  if (auth.authMethod === "api_key")
+    return NextResponse.json({ error: "Originals can only be opened by a signed-in staff member" }, { status: 403 });
   const { id } = await params;
   const a = await loadAttachmentFor(auth, id);
   if (!a) return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -31,7 +33,13 @@ export const GET = withAuth("attachments:original", async (_request: NextRequest
     return NextResponse.json({ error: "Couldn't record this view" }, { status: 500 });
   }
 
-  const { png } = await normalizeImage(decryptBuffer(await fileStore().get(a.originalKey)));
+  let png: Buffer;
+  try {
+    ({ png } = await normalizeImage(decryptBuffer(await fileStore().get(a.originalKey))));
+  } catch (error) {
+    logger.error("couldn't read an original", error);
+    return NextResponse.json({ error: "The original is no longer available" }, { status: 410 });
+  }
   return new NextResponse(new Uint8Array(png), {
     headers: { "content-type": "image/png", "cache-control": "private, no-store", "x-content-type-options": "nosniff" },
   });

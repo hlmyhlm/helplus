@@ -5,9 +5,9 @@ import { encryptBuffer } from "@/lib/secrets";
 import { attachmentKey, fileStore } from "@/lib/storage";
 import { isAllowedImage } from "@/lib/privacy/ic-image";
 import { maskIC } from "@/lib/privacy/ic-mask";
+import { logger } from "@/lib/logger";
 import { processAttachment } from "./process";
-
-export const MAX_BYTES = 10 * 1024 * 1024;
+import { MAX_BYTES } from "./client";
 
 // the original is written before the row so a row never points at nothing
 export async function addAttachment(input: { ticketId: string; messageId?: string | null; fileName: string; data: Buffer }) {
@@ -29,7 +29,13 @@ export async function addAttachment(input: { ticketId: string; messageId?: strin
     await store.remove(originalKey);
     throw error;
   }
-  return (await processAttachment(id))!;
+  try {
+    return (await processAttachment(id))!;
+  } catch (error) {
+    // the row stays pending and the worker retries it
+    logger.error("couldn't check a new screenshot", error);
+    return (await prisma.attachment.findUnique({ where: { id } }))!;
+  }
 }
 
 // channel images go on the open ticket, next to the client's latest message

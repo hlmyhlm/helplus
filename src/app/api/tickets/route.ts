@@ -60,7 +60,7 @@ export const GET = withAuth("tickets:read", async (request: NextRequest, auth) =
       prisma.ticket.count({ where: { AND: [...filters, slaWhere("breached", now)] } }),
     ]);
 
-    // counted the same way as near/breached: before sla and attention are pushed, so neither counts itself
+    // counted before the sla and attention filters, like near/breached
     const canSeeOriginals = hasPermission(auth.role, "attachments:original");
     const screensToCheck = canSeeOriginals
       ? await prisma.ticket.count({

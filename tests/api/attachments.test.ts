@@ -3,19 +3,19 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/route-auth";
 import { createRequest, parseJsonResponse } from "../helpers/request";
-import { addAttachment, MAX_BYTES } from "@/lib/attachments/service";
+import { addAttachment } from "@/lib/attachments/service";
+import { MAX_BYTES, MAX_FILES } from "@/lib/attachments/client";
 import { confirmAttachment, remask } from "@/lib/attachments/process";
 import { fileStore } from "@/lib/storage";
 import { decryptBuffer } from "@/lib/secrets";
 import { isAllowedImage, normalizeImage } from "@/lib/privacy/ic-image";
 
-vi.mock("@/lib/attachments/service", () => ({ addAttachment: vi.fn(), MAX_BYTES: 1000 }));
+vi.mock("@/lib/attachments/service", () => ({ addAttachment: vi.fn() }));
 vi.mock("@/lib/attachments/process", () => ({ confirmAttachment: vi.fn(), remask: vi.fn() }));
 vi.mock("@/lib/storage", () => ({ fileStore: vi.fn() }));
 vi.mock("@/lib/secrets", () => ({ decryptBuffer: vi.fn((b: Buffer) => b) }));
 vi.mock("@/lib/privacy/ic-image", () => ({ isAllowedImage: vi.fn(), normalizeImage: vi.fn() }));
 
-const MAX_FILES = 5;
 const MAX_UPLOAD_BYTES = MAX_FILES * MAX_BYTES + 1024 * 1024;
 
 const db = prisma as unknown as Record<string, Record<string, ReturnType<typeof vi.fn>>>;
@@ -112,6 +112,17 @@ describe("POST /api/tickets/:id/attachments", () => {
   it("returns 411 when Content-Length is missing", async () => {
     const { POST } = await import("@/app/api/tickets/[id]/attachments/route");
     const res = await POST(multipart("/api/tickets/t1/attachments", [{ name: "a.png", bytes: 10 }], null), ticketCtx);
+    expect(res.status).toBe(411);
+  });
+
+  it("returns 411 when Content-Length isn't a number", async () => {
+    const { POST } = await import("@/app/api/tickets/[id]/attachments/route");
+    const fd = new FormData();
+    fd.append("files", new File([Buffer.alloc(10, 1)], "a.png", { type: "image/png" }));
+    const req = new NextRequest(new URL("/api/tickets/t1/attachments", "http://localhost:3000"), { method: "POST", body: fd });
+    // undici won't let a request carry a bad length, so hand the route a fake header bag
+    Object.defineProperty(req, "headers", { value: new Headers({ "content-length": "abc" }) });
+    const res = await POST(req, ticketCtx);
     expect(res.status).toBe(411);
   });
 
@@ -251,6 +262,41 @@ describe("GET /api/attachments/:id/original", () => {
     const res = await GET(createRequest("/api/attachments/a1/original"), ctx);
     expect(res.status).toBe(500);
     expect(store.get).not.toHaveBeenCalled();
+  });
+
+  it("refuses an api key with 403", async () => {
+    vi.mocked(requireAuth).mockResolvedValue({
+      userId: "api-key:k1",
+      role: "admin",
+      username: "k",
+      name: "Key",
+      authMethod: "api_key",
+      companyId: "test-company",
+    } as never);
+    const { GET } = await import("@/app/api/attachments/[id]/original/route");
+    const res = await GET(createRequest("/api/attachments/a1/original"), ctx);
+    expect(res.status).toBe(403);
+    expect((await parseJsonResponse(res)).error).toBe("Originals can only be opened by a signed-in staff member");
+    expect(db.activityLog.create).not.toHaveBeenCalled();
+    expect(store.get).not.toHaveBeenCalled();
+  });
+
+  it("returns 410 after the audit row when the file is missing", async () => {
+    store.get.mockRejectedValue(new Error("ENOENT"));
+    const { GET } = await import("@/app/api/attachments/[id]/original/route");
+    const res = await GET(createRequest("/api/attachments/a1/original"), ctx);
+    expect(res.status).toBe(410);
+    expect((await parseJsonResponse(res)).error).toBe("The original is no longer available");
+    expect(db.activityLog.create).toHaveBeenCalled();
+  });
+
+  it("returns 410 when the file won't decrypt", async () => {
+    vi.mocked(decryptBuffer).mockImplementation(() => {
+      throw new Error("bad tag");
+    });
+    const { GET } = await import("@/app/api/attachments/[id]/original/route");
+    const res = await GET(createRequest("/api/attachments/a1/original"), ctx);
+    expect(res.status).toBe(410);
   });
 
   it("returns 410 when originalKey is null", async () => {

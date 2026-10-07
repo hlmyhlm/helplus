@@ -34,6 +34,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Add an email address to each user who should get alerts (Users & roles).
 - SLA times apply to tickets created after the upgrade, and to older tickets once their priority, project, category or source changes.
 - After the upgrade, old Answered tickets get the warning first and close a day later.
+- Uploads need a Content-Length header. Keep request buffering on in your proxy and allow bodies of about 52 MB (e.g. nginx `client_max_body_size 52m`).
+- The worker also retries stuck screenshots and deletes old originals. Without it, originals are kept forever.
+- Back up `HELPLUS_SECRET_KEY` with `storage/`. Originals can't be opened without it.
+- `sharp` has native binaries. Run `npm ci` on the server itself.
 - Screenshots are stored under `storage/` in the app folder (set `HELPLUS_STORAGE_DIR` to change it). Back it up with the database.
 - The first screenshot downloads OCR language data (about 10 MB) into `.cache/tesseract`. The server needs internet access once, or copy that folder in.
 

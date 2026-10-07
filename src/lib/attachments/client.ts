@@ -29,7 +29,7 @@ export function toImageBox(
   return { x: Math.round(x0), y: Math.round(y0), w: Math.round(x1 - x0), h: Math.round(y1 - y0) };
 }
 
-// mirrors the server's own checks, so the user sees the problem before a request is even sent
+// same checks as the server, so problems show before uploading
 export function checkFiles(files: File[]): { ok: boolean; error?: string } {
   if (files.length > MAX_FILES) return { ok: false, error: `At most ${MAX_FILES} images at a time` };
   for (const f of files) {

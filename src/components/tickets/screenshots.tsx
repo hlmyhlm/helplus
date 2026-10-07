@@ -8,6 +8,7 @@ import { MaskEditor } from "./mask-editor";
 
 const ACCEPT = ALLOWED_TYPES.join(",");
 const ORIGINAL_GONE_MESSAGE = "The original was deleted, this image can't be checked any more";
+const ORIGINAL_LOAD_MESSAGE = "Couldn't load the original. It may have been deleted.";
 const POLL_FAST_MS = 3000;
 const POLL_SLOW_MS = 30000;
 const POLL_FAST_LIMIT = 20;
@@ -52,7 +53,9 @@ export function Screenshots({
   canUpload: boolean;
   onChanged: () => void;
 }) {
-  const [viewing, setViewing] = useState<AttachmentRow | null>(null);
+  const [viewingId, setViewingId] = useState<string | null>(null);
+  // the latest row after a poll, not the copy from when it was opened
+  const viewing = attachments.find((a) => a.id === viewingId) ?? null;
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -84,6 +87,9 @@ export function Screenshots({
     if (!canUpload) return;
     const handler = (e: ClipboardEvent) => {
       if (uploading) return;
+      const target = e.target as HTMLElement | null;
+      const typing = !!target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA");
+      if (typing && e.clipboardData?.types.includes("text/plain")) return;
       const files = Array.from(e.clipboardData?.files ?? []).filter((f) => f.type.startsWith("image/"));
       if (!files.length) return;
       e.preventDefault();
@@ -93,9 +99,12 @@ export function Screenshots({
     return () => window.removeEventListener("paste", handler);
   }, [canUpload, uploading, doUpload]);
 
-  const hasPending = attachments.some((a) => a.status === "pending");
+  const pendingIds = attachments
+    .filter((a) => a.status === "pending")
+    .map((a) => a.id)
+    .join(",");
   useEffect(() => {
-    if (!hasPending) return;
+    if (!pendingIds) return;
     pollCountRef.current = 0;
     let id: ReturnType<typeof setInterval>;
     const tick = () => {
@@ -108,7 +117,7 @@ export function Screenshots({
     };
     id = setInterval(tick, POLL_FAST_MS);
     return () => clearInterval(id);
-  }, [hasPending, onChanged]);
+  }, [pendingIds, onChanged]);
 
   return (
     <div className="space-y-2">
@@ -117,7 +126,7 @@ export function Screenshots({
           <button
             key={a.id}
             type="button"
-            onClick={() => openable(a, canCheck) && setViewing(a)}
+            onClick={() => openable(a, canCheck) && setViewingId(a.id)}
             className="flex flex-col items-center gap-1 w-24 text-left"
           >
             {hasMaskedImage(a) ? (
@@ -170,7 +179,7 @@ export function Screenshots({
       {canUpload && <p className="text-xs text-helplus-text-light">{FILE_LIMITS_HINT}</p>}
       {uploadError && <p className="text-sm text-helplus-danger">{uploadError}</p>}
       {viewing && (
-        <Viewer attachment={viewing} canCheck={canCheck} onClose={() => setViewing(null)} onChanged={onChanged} />
+        <Viewer attachment={viewing} canCheck={canCheck} onClose={() => setViewingId(null)} onChanged={onChanged} />
       )}
     </div>
   );
@@ -197,11 +206,11 @@ function Viewer({
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape" && !editingMask) onClose();
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [onClose]);
+  }, [onClose, editingMask]);
 
   const confirm = async () => {
     if (busy) return;
@@ -263,7 +272,7 @@ function Viewer({
                 alt={attachment.fileName}
                 className="w-full h-auto rounded-md border border-helplus-border"
                 onError={() => {
-                  if (showingOriginal) setError(ORIGINAL_GONE_MESSAGE);
+                  if (showingOriginal) setError(ORIGINAL_LOAD_MESSAGE);
                 }}
               />
             )}

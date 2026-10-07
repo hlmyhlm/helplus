@@ -30,7 +30,7 @@ export function MaskEditor({
   const [error, setError] = useState("");
   const [imageGone, setImageGone] = useState(false);
 
-  // always measured against the image itself, not the overlay, so a mismatch can't creep in
+  // measure against the image, not the overlay
   const localPoint = (e: React.PointerEvent) => {
     const rect = imgRef.current!.getBoundingClientRect();
     return { x: e.clientX - rect.left, y: e.clientY - rect.top };
