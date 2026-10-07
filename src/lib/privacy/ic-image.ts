@@ -23,6 +23,8 @@ export const MIN_PAGE_CONFIDENCE = 70;
 export const MIN_NUMBER_CONFIDENCE = 80;
 const PAD = 6;
 const ALLOWED = new Set(["png", "jpeg", "webp"]);
+// a tiny file can still decode to a huge bitmap
+export const MAX_PIXELS = 40_000_000;
 
 // chars allowed between or inside ic groups: space, dashes, dot, tilde, slash, comma, underscore, colon
 const SEP_CLASS = String.raw`\s\-–—.~/,_:`;
@@ -50,7 +52,6 @@ interface Run {
   qualifies: boolean;
 }
 
-// a run is a maximal stretch of digit, lookalike and separator characters
 function scanRuns(chars: string[]): Run[] {
   const runs: Run[] = [];
   let i = 0;
@@ -126,7 +127,6 @@ interface Span {
   word: OcrWord;
 }
 
-// words joined by a single space, each word's character range recorded for later
 function buildLine(words: OcrWord[]): { raw: string; spans: Span[] } {
   let text = "";
   const spans: Span[] = [];
@@ -151,8 +151,7 @@ const rectsOverlap = (a: Rect, b: Rect) => a.x0 < b.x1 && a.x1 > b.x0 && a.y0 < 
 // a lookalike letter is already resolved by the variant, so expansion only chases digits and separators
 const isExpandChar = (c: string) => isDigit(c) || EXPAND_SEP_RE.test(c);
 
-// widen a match to its whole surrounding run, checked against the raw text so a variant's own
-// converted lookalikes don't pull in a neighbouring word that was never part of a number
+// widen on the raw text, so a converted lookalike can't pull in the next word
 function expandRun(raw: string, from: number, to: number): { from: number; to: number } {
   let a = from;
   while (a > 0 && isExpandChar(raw[a - 1])) a--;
@@ -161,7 +160,6 @@ function expandRun(raw: string, from: number, to: number): { from: number; to: n
   return { from: a, to: b };
 }
 
-// merge overlapping or identical rects until none are left touching
 function mergeRects(rects: Rect[]): Rect[] {
   let merged = rects.slice();
   let changed = true;
@@ -228,13 +226,13 @@ export function needsCheck(result: OcrResult): boolean {
 }
 
 // rotate by exif, drop metadata, png so box coordinates always match
-export async function normalizeImage(data: Buffer): Promise<{ png: Buffer; width: number; height: number }> {
-  const { data: png, info } = await sharp(data).rotate().png().toBuffer({ resolveWithObject: true });
+export async function normalizeImage(data: Buffer, maxPixels = MAX_PIXELS): Promise<{ png: Buffer; width: number; height: number }> {
+  const { data: png, info } = await sharp(data, { limitInputPixels: maxPixels }).rotate().png().toBuffer({ resolveWithObject: true });
   return { png, width: info.width, height: info.height };
 }
 
 export async function coverBoxes(png: Buffer, boxes: Box[]): Promise<Buffer> {
-  const { width = 0, height = 0 } = await sharp(png).metadata();
+  const { width = 0, height = 0 } = await sharp(png, { limitInputPixels: MAX_PIXELS }).metadata();
   const layers = boxes
     .map((b) => {
       const left = Math.max(0, Math.floor(b.x));
@@ -250,13 +248,13 @@ export async function coverBoxes(png: Buffer, boxes: Box[]): Promise<Buffer> {
       top: b.top,
     }));
   if (!layers.length) return png;
-  return sharp(png).composite(layers).png().toBuffer();
+  return sharp(png, { limitInputPixels: MAX_PIXELS }).composite(layers).png().toBuffer();
 }
 
-export async function isAllowedImage(data: Buffer): Promise<boolean> {
+export async function isAllowedImage(data: Buffer, maxPixels = MAX_PIXELS): Promise<boolean> {
   try {
-    const { format } = await sharp(data).metadata();
-    return !!format && ALLOWED.has(format);
+    const { format, width = 0, height = 0 } = await sharp(data, { limitInputPixels: maxPixels }).metadata();
+    return !!format && ALLOWED.has(format) && width > 0 && width * height <= maxPixels;
   } catch {
     return false;
   }

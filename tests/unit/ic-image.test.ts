@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import sharp from "sharp";
-import { findIcBoxes, needsCheck, normalizeImage, coverBoxes, isAllowedImage, type OcrLine } from "@/lib/privacy/ic-image";
+import { findIcBoxes, needsCheck, normalizeImage, coverBoxes, isAllowedImage, MAX_PIXELS, type OcrLine } from "@/lib/privacy/ic-image";
 
 let x = 0;
 const word = (text: string, confidence = 95, width = 60) => {
@@ -175,5 +175,28 @@ describe("images", () => {
     expect(await isAllowedImage(Buffer.from("%PDF-1.4 not an image"))).toBe(false);
     const gif = await sharp({ create: { width: 2, height: 2, channels: 3, background: "#fff" } }).gif().toBuffer();
     expect(await isAllowedImage(gif)).toBe(false);
+  });
+
+  describe("pixel limit", () => {
+    // 50 megapixels of one colour compresses to almost nothing
+    const huge = () => sharp({ create: { width: 10000, height: 5000, channels: 3, background: "#fff" } }).png().toBuffer();
+
+    it("is 40 megapixels", () => {
+      expect(MAX_PIXELS).toBe(40_000_000);
+    });
+
+    it("refuses an image over the limit", async () => {
+      expect(await isAllowedImage(await huge())).toBe(false);
+    }, 30_000);
+
+    it("takes an image right at a smaller limit", async () => {
+      expect(await isAllowedImage(await red(), 5000)).toBe(true);
+      expect(await isAllowedImage(await red(), 4999)).toBe(false);
+    });
+
+    it("normalizeImage throws over the limit", async () => {
+      await expect(normalizeImage(await huge())).rejects.toThrow(/pixel limit/i);
+      await expect(normalizeImage(await red(), 4999)).rejects.toThrow(/pixel limit/i);
+    }, 30_000);
   });
 });

@@ -34,7 +34,7 @@ export const POST = withAuth("tickets:update", async (request: NextRequest, auth
   for (const f of files) {
     if (f.size > MAX_BYTES) return NextResponse.json({ error: `${f.name} is over 10 MB` }, { status: 413 });
     const data = Buffer.from(await f.arrayBuffer());
-    if (!(await isAllowedImage(data))) return NextResponse.json({ error: `${f.name} isn't a PNG, JPEG or WebP image` }, { status: 415 });
+    if (!(await isAllowedImage(data))) return NextResponse.json({ error: `${f.name} isn't a PNG, JPEG or WebP image under 40 megapixels` }, { status: 415 });
     buffers.push({ name: f.name, data });
   }
 
