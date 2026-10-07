@@ -22,3 +22,7 @@ export function attachmentKey(companyId: string, id: string, kind: "original" | 
   const file = kind === "original" ? "original.bin" : renderId ? `masked-${renderId}.png` : "masked.png";
   return `${attachmentFolder(companyId, id)}/${file}`;
 }
+
+export function importFileKey(companyId: string, jobId: string): string {
+  return `c/${companyId}/imports/${jobId}.bin`;
+}

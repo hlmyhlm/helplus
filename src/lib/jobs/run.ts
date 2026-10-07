@@ -5,6 +5,7 @@ import { drainOutbox } from "@/lib/notify/outbox";
 import { runAutoClose } from "./auto-close";
 import { runSlaAlerts } from "./sla-alerts";
 import { runOriginalRetention, runPendingAttachments } from "./attachments";
+import { runImports } from "./imports";
 
 const JOBS: [string, (now: Date) => Promise<unknown>][] = [
   ["auto-close", runAutoClose],
@@ -12,6 +13,7 @@ const JOBS: [string, (now: Date) => Promise<unknown>][] = [
   ["email", (now) => drainOutbox(now)],
   ["attachments", runPendingAttachments],
   ["original retention", runOriginalRetention],
+  ["imports", runImports],
 ];
 
 // one failing job shouldn't stop the others

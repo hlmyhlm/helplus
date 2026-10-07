@@ -1,0 +1,231 @@
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+import { mkdtempSync, readFileSync, rmSync } from "fs";
+import { tmpdir } from "os";
+import path from "path";
+import { prisma, systemPrisma } from "@/lib/prisma";
+import { runWithCompany } from "@/lib/tenant/context";
+import { fileStore, importFileKey } from "@/lib/storage";
+import { encryptBuffer } from "@/lib/secrets";
+import { runImportBatch } from "@/lib/imports/run";
+import { runImports } from "@/lib/jobs/imports";
+import { closeOcr } from "@/lib/ocr/tesseract";
+import { aiReady, sameProblem, tidyIssues } from "@/lib/imports/ai-tidy";
+
+import { writeImportedTicket } from "@/lib/imports/write";
+
+vi.mock("@/lib/imports/write", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/lib/imports/write")>();
+  return { ...real, writeImportedTicket: vi.fn(real.writeImportedTicket) };
+});
+vi.mock("@/lib/imports/ai-tidy", () => ({
+  aiReady: vi.fn(async () => false),
+  sameProblem: vi.fn(async () => false),
+  tidyIssues: vi.fn(async () => new Map()),
+}));
+
+const A = "it-3b-run";
+const asA = <T>(fn: () => Promise<T>) => runWithCompany(A, fn);
+let dir: string;
+let projectId: string;
+
+const android = readFileSync(path.join(__dirname, "../fixtures/wa/android-en.txt"));
+
+async function queueJob(kind: "whatsapp" | "csv", fileName: string, data: Buffer, options: Record<string, unknown>) {
+  return asA(async () => {
+    const job = await prisma.importJob.create({ data: { projectId, kind, fileName, options: options as never, status: "queued" } });
+    const key = importFileKey(A, job.id);
+    await fileStore().put(key, encryptBuffer(data));
+    return prisma.importJob.update({ where: { id: job.id }, data: { fileKey: key } });
+  });
+}
+
+const readJob = (id: string) => asA(() => prisma.importJob.findUniqueOrThrow({ where: { id } }));
+const stats = (job: { stats: unknown }) => job.stats as Record<string, number>;
+
+beforeAll(async () => {
+  await systemPrisma.company.deleteMany({ where: { id: A } });
+  await systemPrisma.company.create({ data: { id: A, name: "Run", slug: A } });
+  projectId = (await asA(() => prisma.project.create({ data: { name: "General", isDefault: true } }))).id;
+  dir = mkdtempSync(path.join(tmpdir(), "helplus-import-run-"));
+  process.env.HELPLUS_STORAGE_DIR = dir;
+});
+
+afterAll(async () => {
+  await closeOcr();
+  await systemPrisma.company.deleteMany({ where: { id: A } });
+  await systemPrisma.$disconnect();
+  rmSync(dir, { recursive: true, force: true });
+});
+
+describe("whatsapp import", () => {
+  it("writes the android fixture as 2 tickets and 1 draft", async () => {
+    const job = await queueJob("whatsapp", "android-en.txt", android, { staff: ["Support Ali"] });
+    expect(await asA(() => runImportBatch(job.id, new Date()))).toBe("done");
+
+    const tickets = await asA(() => prisma.ticket.findMany({ where: { projectId }, orderBy: { createdAt: "asc" } }));
+    expect(tickets).toHaveLength(2);
+    expect(tickets[0].status).toBe("closed");
+    expect(tickets[0].description).toContain("[IC HIDDEN]");
+    expect(tickets[1].status).toBe("new");
+    expect(await asA(() => prisma.knowledgeEntry.count({ where: { status: "draft" } }))).toBe(1);
+
+    const done = await readJob(job.id);
+    expect(done.status).toBe("done");
+    expect(done.finishedAt).not.toBeNull();
+    expect(done.fileKey).toBeNull();
+    await expect(fileStore().get(job.fileKey!)).rejects.toThrow();
+    expect(stats(done)).toMatchObject({ created: 2, skipped: 0, announcements: 0, missingMedia: 1 });
+  });
+
+  it("skips everything when the same file comes in again, letting the writer top up known tickets", async () => {
+    const known = await asA(() => prisma.ticket.findMany({ where: { projectId }, select: { importKey: true } }));
+    const job = await queueJob("whatsapp", "android-en.txt", android, { staff: ["Support Ali"] });
+    vi.mocked(writeImportedTicket).mockClear();
+    await asA(() => runImports(new Date()));
+    const keys = vi.mocked(writeImportedTicket).mock.calls.map((c) => c[0].importKey);
+    expect(keys.sort()).toEqual(known.map((t) => t.importKey).sort());
+    const done = await readJob(job.id);
+    expect(done.status).toBe("done");
+    expect(stats(done)).toMatchObject({ created: 0, skipped: 2 });
+    expect(await asA(() => prisma.ticket.count({ where: { projectId } }))).toBe(2);
+  });
+
+  it("skips an issue an overlapping export cut in the middle", async () => {
+    const first = [
+      "5/4/2026, 10:00 - Cut Client: first part of the problem",
+      "5/4/2026, 10:05 - Cut Client: second part of the problem",
+      "5/4/2026, 10:10 - Support Ali: fixed it",
+    ];
+    const later = [...first.slice(1), "6/4/2026, 10:00 - Fresh Client: a brand new question"];
+    const a = await queueJob("whatsapp", "cut-a.txt", Buffer.from(first.join("\n")), { staff: ["Support Ali"] });
+    await asA(() => runImportBatch(a.id, new Date()));
+    expect(stats(await readJob(a.id)).created).toBe(1);
+    const b = await queueJob("whatsapp", "cut-b.txt", Buffer.from(later.join("\n")), { staff: ["Support Ali"] });
+    vi.mocked(writeImportedTicket).mockClear();
+    await asA(() => runImportBatch(b.id, new Date()));
+    expect(stats(await readJob(b.id))).toMatchObject({ created: 1, skipped: 1 });
+    // the cut issue never reaches the writer
+    expect(vi.mocked(writeImportedTicket).mock.calls.map((c) => c[0].client.name)).toEqual(["Fresh Client"]);
+  });
+
+  it("carries on past an issue that fails to write", async () => {
+    const chat = [
+      "7/5/2026, 10:00 - Fail Client: this one breaks",
+      "7/5/2026, 16:00 - Fine Client: this one is fine",
+    ].join("\n");
+    vi.mocked(writeImportedTicket).mockRejectedValueOnce(new Error("clash for IC 900101-14-5678"));
+    const job = await queueJob("whatsapp", "fail.txt", Buffer.from(chat), { staff: [] });
+    expect(await asA(() => runImportBatch(job.id, new Date()))).toBe("done");
+    const done = await readJob(job.id);
+    expect(stats(done)).toMatchObject({ created: 1, failed: 1 });
+    const errors = (done.progress as { errors: string[] }).errors;
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain("Fail Client");
+    expect(errors[0]).not.toContain("900101");
+  });
+
+  it("fails with a message and keeps the file when the export is bad", async () => {
+    const job = await queueJob("whatsapp", "broken.zip", Buffer.from("not a zip"), {});
+    expect(await asA(() => runImportBatch(job.id, new Date()))).toBe("failed");
+    const failed = await readJob(job.id);
+    expect(failed.error).toBe("This isn't a WhatsApp export");
+    expect(failed.fileKey).not.toBeNull();
+    await asA(() => prisma.importJob.delete({ where: { id: job.id } }));
+  });
+
+  it("runs a big chat over several batches", { timeout: 120_000 }, async () => {
+    const lines: string[] = [];
+    const start = Date.UTC(2025, 0, 1, 0, 0);
+    for (let i = 0; i < 205; i++) {
+      const d = new Date(start + i * 5 * 3600_000);
+      const date = `${d.getUTCDate()}/${d.getUTCMonth() + 1}/${d.getUTCFullYear()}, ${String(d.getUTCHours()).padStart(2, "0")}:00`;
+      lines.push(`${date} - Batch Client ${i}: help with thing ${i}`);
+    }
+    const job = await queueJob("whatsapp", "big.txt", Buffer.from(lines.join("\n")), { staff: [] });
+    expect(await asA(() => runImportBatch(job.id, new Date()))).toBe("running");
+    const mid = await readJob(job.id);
+    expect((mid.progress as { next: number }).next).toBe(200);
+    expect(stats(mid).created).toBe(200);
+    expect(await asA(() => runImportBatch(job.id, new Date()))).toBe("done");
+    expect(stats(await readJob(job.id)).created).toBe(205);
+  });
+});
+
+describe("ai tidy", () => {
+  const chat = [
+    "1/3/2026, 09:00 - Merge Client: printer is jammed",
+    "1/3/2026, 15:00 - Merge Client: still jammed, any update?",
+    "1/3/2026, 15:10 - Support Ali: Open the back tray",
+    "2/3/2026, 09:00 - Other Client: new question",
+  ].join("\n");
+
+  it("folds a split issue into the next one, even across batches", async () => {
+    vi.mocked(aiReady).mockResolvedValue(true);
+    vi.mocked(sameProblem).mockResolvedValue(true);
+    vi.mocked(tidyIssues).mockImplementation(async (list) => new Map(list.map((i) => [i.key, { title: "Printer jam", category: "Hardware" }])));
+    try {
+      const job = await queueJob("whatsapp", "merge.txt", Buffer.from(chat), { staff: ["Support Ali"] });
+      expect(await asA(() => runImportBatch(job.id, new Date(), 1))).toBe("running");
+      expect(stats(await readJob(job.id)).created).toBe(0);
+      expect(await asA(() => runImportBatch(job.id, new Date(), 1))).toBe("running");
+      expect(await asA(() => runImportBatch(job.id, new Date(), 1))).toBe("done");
+      const t = await asA(() => prisma.ticket.findFirstOrThrow({ where: { title: "Printer jam", category: "Hardware", status: "closed" } }));
+      const msgs = await asA(() => prisma.message.count({ where: { conversationId: t.conversationId! } }));
+      expect(msgs).toBe(3);
+      expect(stats(await readJob(job.id)).created).toBe(2);
+      // the other client's issue was never a merge candidate
+      expect(vi.mocked(sameProblem)).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.mocked(aiReady).mockResolvedValue(false);
+      vi.mocked(sameProblem).mockResolvedValue(false);
+      vi.mocked(tidyIssues).mockResolvedValue(new Map());
+    }
+  });
+});
+
+describe("csv import", () => {
+  const csv = [
+    "Ticket ID,Question,Answer,Created",
+    "T1,Can't login,Reset the password,01/02/2026",
+    "T2,Report is empty,Clear the cache,02/02/2026",
+    "T3,Slow page,,03/02/2026",
+    "T4,,No question here,04/02/2026",
+    "T5,Bad date,Answer,99/99/2026",
+  ].join("\n");
+  const options = {
+    order: "dmy",
+    mapping: { oldId: "Ticket ID", question: "Question", answer: "Answer", createdAt: "Created" },
+  };
+
+  it("writes the good rows as closed tickets and keeps the bad ones", async () => {
+    const job = await queueJob("csv", "old.csv", Buffer.from(csv), options);
+    expect(await asA(() => runImportBatch(job.id, new Date()))).toBe("done");
+    const tickets = await asA(() => prisma.ticket.findMany({ where: { importKey: { startsWith: "csv:" } } }));
+    expect(tickets.map((t) => t.importKey).sort()).toEqual(["csv:T1", "csv:T2", "csv:T3"]);
+    expect(tickets.every((t) => t.status === "closed" && t.closedAt)).toBe(true);
+    const done = await readJob(job.id);
+    const bad = done.badRows as { reason: string }[];
+    expect(bad.map((b) => b.reason)).toEqual(["Missing question", "Can't read date: 99/99/2026"]);
+    expect(stats(done)).toMatchObject({ created: 3, bad: 2 });
+    const saved = await asA(() => prisma.importMapping.findFirst({ where: { headers: "ticket id|question|answer|created" } }));
+    expect(saved?.mapping).toEqual(options.mapping);
+  });
+
+  it("creates nothing on a second import of the same file", async () => {
+    const job = await queueJob("csv", "old.csv", Buffer.from(csv), options);
+    expect(await asA(() => runImportBatch(job.id, new Date()))).toBe("done");
+    expect(stats(await readJob(job.id))).toMatchObject({ created: 0, skipped: 3 });
+  });
+});
+
+describe("runImports", () => {
+  it("takes one job per company per run, oldest first", async () => {
+    const first = await queueJob("csv", "a.csv", Buffer.from("ID,Question\nR1,one"), { mapping: { oldId: "ID", question: "Question" } });
+    const second = await queueJob("csv", "b.csv", Buffer.from("ID,Question\nR2,two"), { mapping: { oldId: "ID", question: "Question" } });
+    await asA(() => runImports(new Date()));
+    expect((await readJob(first.id)).status).toBe("done");
+    expect((await readJob(second.id)).status).toBe("queued");
+    await asA(() => runImports(new Date()));
+    expect((await readJob(second.id)).status).toBe("done");
+  });
+});
