@@ -121,6 +121,35 @@ describe("guessMapping", () => {
     expect(mapping.clientName).toBe("Name");
     expect(mapping.clientContact).toBe("Phone");
   });
+
+  it("uses the last word to split Contact Name from Contact Phone", () => {
+    const mapping = guessMapping(["Contact Name", "Contact Phone"]);
+    expect(mapping.clientName).toBe("Contact Name");
+    expect(mapping.clientContact).toBe("Contact Phone");
+  });
+
+  it("uses the last word to split Customer Contact Name from Customer Contact Phone", () => {
+    const mapping = guessMapping(["Customer Contact Name", "Customer Contact Phone"]);
+    expect(mapping.clientName).toBe("Customer Contact Name");
+    expect(mapping.clientContact).toBe("Customer Contact Phone");
+  });
+
+  it("uses the last word to split Contact Name from Contact Email", () => {
+    const mapping = guessMapping(["Contact Name", "Contact Email"]);
+    expect(mapping.clientName).toBe("Contact Name");
+    expect(mapping.clientContact).toBe("Contact Email");
+  });
+
+  it("uses the last word to send Issue Date to createdAt, not question", () => {
+    expect(guessMapping(["Issue Date"]).createdAt).toBe("Issue Date");
+  });
+
+  it("still maps Malay question/answer headers, leaving an unrecognised name header unmapped", () => {
+    const mapping = guessMapping(["Nama Pelanggan", "Masalah", "Jawapan"]);
+    expect(mapping.question).toBe("Masalah");
+    expect(mapping.answer).toBe("Jawapan");
+    expect(mapping.clientName).toBeUndefined();
+  });
 });
 
 describe("checkRows", () => {

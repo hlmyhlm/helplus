@@ -51,24 +51,35 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function lastWord(header: string): string {
+  const words = header.split(/[\s_\-.]+/).filter(Boolean);
+  return words[words.length - 1] ?? "";
+}
+
 // an exact full match always wins; otherwise score by tier, then by word length,
-// with a whole-word match beating a plain substring of the same word
-function hintScore(header: string, hint: string, tier: number): number | null {
+// with a whole-word match beating a plain substring of the same word. A hint that
+// is the header's last word gets a strong bonus too - "Contact Name" is a name,
+// "Contact Phone" is a phone, even though both contain "contact".
+function hintScore(header: string, hint: string, tier: number, last: string): number | null {
   if (header === hint) return 10_000;
   const whole = new RegExp(`\\b${escapeRegExp(hint)}\\b`).test(header);
-  if (whole) return tier * 100 + hint.length * 10 + 5;
-  if (header.includes(hint)) return tier * 100 + hint.length * 10;
-  return null;
+  let score: number;
+  if (whole) score = tier * 100 + hint.length * 10 + 5;
+  else if (header.includes(hint)) score = tier * 100 + hint.length * 10;
+  else return null;
+  if (hint === last) score += 1000;
+  return score;
 }
 
 export function guessMapping(headers: string[]): CsvMapping {
   const candidates: { header: string; field: CsvField; score: number }[] = [];
   for (const header of headers) {
     const h = header.toLowerCase().trim();
+    const last = lastWord(h);
     for (const { field, tier, hints } of FIELD_DEFS) {
       let best: number | null = null;
       for (const hint of hints) {
-        const score = hintScore(h, hint, tier);
+        const score = hintScore(h, hint, tier, last);
         if (score !== null && (best === null || score > best)) best = score;
       }
       if (best !== null) candidates.push({ header, field, score: best });
