@@ -4,6 +4,7 @@ import { currentCompanyId } from "@/lib/tenant/context";
 import { encryptBuffer } from "@/lib/secrets";
 import { attachmentKey, fileStore } from "@/lib/storage";
 import { isAllowedImage } from "@/lib/privacy/ic-image";
+import { maskIC } from "@/lib/privacy/ic-mask";
 import { processAttachment } from "./process";
 
 export const MAX_BYTES = 10 * 1024 * 1024;
@@ -20,7 +21,7 @@ export async function addAttachment(input: { ticketId: string; messageId?: strin
         id,
         ticketId: input.ticketId,
         messageId: input.messageId ?? null,
-        fileName: input.fileName.slice(0, 200) || "screenshot.png",
+        fileName: maskIC(input.fileName).text.slice(0, 200) || "screenshot.png",
         originalKey,
       },
     });
