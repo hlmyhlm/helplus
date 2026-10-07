@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { currentCompanyId } from "@/lib/tenant/context";
 import { maskIC } from "@/lib/privacy/ic-mask";
@@ -29,7 +30,11 @@ async function chatFor(e: IncomingEvent) {
   if (existing) {
     return prisma.waChat.update({
       where: { id: existing.id },
-      data: { name: name || existing.name, lastMessageAt: e.at },
+      data: {
+        name: name || existing.name,
+        // late deliveries don't move it back
+        lastMessageAt: existing.lastMessageAt && existing.lastMessageAt > e.at ? existing.lastMessageAt : e.at,
+      },
     });
   }
   const projectId = e.isGroup ? null : await privateChatProject(e.senderId);
@@ -48,18 +53,19 @@ async function privateChatProject(senderId: string): Promise<string> {
   const digits = senderDigits(senderId);
   // an empty contains would match every customer
   if (!digits) return defaultProjectId();
-  const customer = await prisma.customer.findFirst({
-    where: {
-      OR: [{ whatsapp: { contains: digits } }, { phone: { contains: digits } }],
-      project: { archived: false },
-    },
-    select: { projectId: true },
+  const customers = await prisma.customer.findMany({
+    where: { project: { archived: false } },
+    select: { whatsapp: true, phone: true, projectId: true, updatedAt: true },
+    orderBy: { updatedAt: "desc" },
   });
-  return customer?.projectId ?? defaultProjectId();
+  const same = (stored: string) => stored !== "" && phoneDigits(stored.split("@")[0]) === digits;
+  const match = customers.find((c) => same(c.whatsapp) || same(c.phone));
+  return match?.projectId ?? defaultProjectId();
 }
 
 function mediaNote(media: NonNullable<IncomingEvent["media"]>): string {
-  if (media.mime.startsWith("audio/")) return "[voice message]";
+  if (media.mime.startsWith("audio/ogg")) return "[voice message]";
+  if (media.mime.startsWith("audio/")) return "[audio]";
   if (media.mime.startsWith("video/")) return "[video]";
   return `[document: ${maskedFileName(media.fileName || "file")}]`;
 }
@@ -84,15 +90,21 @@ export async function recordInbound(
     { senderId: e.senderId, senderName },
     {
       phones: new Set(team.map((t) => phoneDigits(t.phone)).filter(Boolean)),
-      names: new Set(senders.map((s) => s.name)),
+      names: new Set(senders.map((s) => s.name).filter(Boolean)),
       botPhone,
     }
   );
 
-  let row;
+  // the image goes first so a row never points at a missing file
+  const id = randomUUID();
+  const store = fileStore();
+  const mediaKey = image ? botMediaKey(currentCompanyId(), id) : null;
+  if (image && mediaKey) await store.put(mediaKey, encryptBuffer(image.data));
+
   try {
-    row = await prisma.waInbound.create({
+    await prisma.waInbound.create({
       data: {
+        id,
         chatId: chat.id,
         waMessageId: e.waMessageId,
         senderId: e.senderId,
@@ -101,20 +113,14 @@ export async function recordInbound(
         text: maskIC(text).text,
         at: e.at,
         quotedWaId: e.quotedWaId,
+        mediaKey,
+        mediaName: image ? maskedFileName(image.fileName || "whatsapp-image.jpg") : null,
       },
     });
   } catch (error) {
+    if (mediaKey) await store.remove(mediaKey).catch(() => {});
     if (isP2002(error)) return "duplicate";
     throw error;
-  }
-
-  if (image) {
-    const key = botMediaKey(currentCompanyId(), row.id);
-    await fileStore().put(key, encryptBuffer(image.data));
-    await prisma.waInbound.update({
-      where: { id: row.id },
-      data: { mediaKey: key, mediaName: maskedFileName(image.fileName || "whatsapp-image.jpg") },
-    });
   }
   return "saved";
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { mkdtempSync, rmSync } from "fs";
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import path from "path";
 import { prisma, systemPrisma } from "@/lib/prisma";
@@ -8,8 +8,9 @@ import { defaultProjectId } from "@/lib/projects/default";
 import { recordInbound, type IncomingEvent } from "@/lib/bot/record";
 import { fileStore, botMediaKey } from "@/lib/storage";
 
-const ids = ["rec-1", "rec-2", "rec-3", "rec-4", "rec-5", "rec-6", "rec-7", "rec-8"].map((s) => `it-3c-${s}`);
+const ids = ["rec-1", "rec-2", "rec-3", "rec-4", "rec-5", "rec-6", "rec-7", "rec-8", "rec-9", "rec-10", "rec-11"].map((s) => `it-3c-${s}`);
 let dir: string;
+const savedDir = process.env.HELPLUS_STORAGE_DIR;
 
 async function makeCompany(name: string): Promise<string> {
   const id = `it-3c-${name}`;
@@ -34,6 +35,8 @@ afterAll(async () => {
   await systemPrisma.company.deleteMany({ where: { id: { in: ids } } });
   await systemPrisma.$disconnect();
   rmSync(dir, { recursive: true, force: true });
+  if (savedDir === undefined) delete process.env.HELPLUS_STORAGE_DIR;
+  else process.env.HELPLUS_STORAGE_DIR = savedDir;
 });
 
 describe("recordInbound", () => {
@@ -137,13 +140,70 @@ describe("recordInbound", () => {
       await prisma.teamMember.create({ data: { name: "Bot", email: "b@x.my", phone: "0111111111", departmentId: dept.id } });
       await prisma.teamMember.create({ data: { name: "No phone", email: "n@x.my", departmentId: dept.id } });
       await prisma.chatSender.create({ data: { name: "Siti", isStaff: true } });
+      await prisma.chatSender.create({ data: { name: "", isStaff: true } });
       const project = await prisma.project.findFirstOrThrow();
       await prisma.waChat.create({ data: { waId: "120@g.us", projectId: project.id } });
       await recordInbound(base({ waMessageId: "a", senderId: "60111111111@c.us" }), "60111111111");
-      await recordInbound(base({ waMessageId: "b", senderId: "@lid" }), "60111111111");
-      await recordInbound(base({ waMessageId: "c", senderId: "@lid", senderName: "Siti" }), "60111111111");
+      await recordInbound(base({ waMessageId: "b", senderId: "123456789012345@lid" }), "60111111111");
+      await recordInbound(base({ waMessageId: "d", senderId: "123456789012345@lid", senderName: "" }), "60111111111");
+      await recordInbound(base({ waMessageId: "c", senderId: "123456789012345@lid", senderName: "Siti" }), "60111111111");
       const rows = await prisma.waInbound.findMany({ orderBy: { waMessageId: "asc" } });
-      expect(rows.map((r) => r.isStaff)).toEqual([false, false, true]);
+      expect(rows.map((r) => r.isStaff)).toEqual([false, false, true, false]);
+    });
+  });
+
+  it("matches a private chat customer saved in local format", async () => {
+    await runWithCompany(await makeCompany("rec-9"), async () => {
+      const a = await prisma.project.create({ data: { name: "A" } });
+      const b = await prisma.project.create({ data: { name: "B" } });
+      await prisma.customer.create({ data: { name: "Aminah", whatsapp: "012-345 6789", projectId: a.id } });
+      await prisma.customer.create({ data: { name: "Badrul", phone: "+60 19-999 9999", projectId: b.id } });
+      // a longer number that only contains the digits must not match
+      await prisma.customer.create({ data: { name: "Other", whatsapp: "601234567890", projectId: b.id } });
+      await recordInbound(base({ chatWaId: "60123456789@c.us", isGroup: false }), "60111111111");
+      await recordInbound(
+        base({ waMessageId: "m2", chatWaId: "60199999999@c.us", senderId: "60199999999@c.us", isGroup: false }),
+        "60111111111"
+      );
+      expect((await prisma.waChat.findFirstOrThrow({ where: { waId: "60123456789@c.us" } })).projectId).toBe(a.id);
+      expect((await prisma.waChat.findFirstOrThrow({ where: { waId: "60199999999@c.us" } })).projectId).toBe(b.id);
+    });
+  });
+
+  it("saves no row when the image can't be stored, so a redelivery works", async () => {
+    const co = await makeCompany("rec-10");
+    await runWithCompany(co, async () => {
+      const project = await prisma.project.findFirstOrThrow();
+      await prisma.waChat.create({ data: { waId: "120@g.us", projectId: project.id } });
+      const img = base({ media: { data: Buffer.from("png"), fileName: "a.png", mime: "image/png" } });
+      const blocker = path.join(dir, "not-a-folder");
+      writeFileSync(blocker, "x");
+      process.env.HELPLUS_STORAGE_DIR = blocker;
+      try {
+        await expect(recordInbound(img, "60111111111")).rejects.toThrow();
+      } finally {
+        process.env.HELPLUS_STORAGE_DIR = dir;
+      }
+      expect(await prisma.waInbound.count()).toBe(0);
+      expect(await recordInbound(img, "60111111111")).toBe("saved");
+      // a duplicate image leaves no stray file behind
+      expect(await recordInbound(img, "60111111111")).toBe("duplicate");
+      expect(readdirSync(path.join(dir, "c", co, "bot"))).toHaveLength(1);
+    });
+  });
+
+  it("keeps lastMessageAt moving forward and labels audio", async () => {
+    await runWithCompany(await makeCompany("rec-11"), async () => {
+      const project = await prisma.project.findFirstOrThrow();
+      await prisma.waChat.create({ data: { waId: "120@g.us", projectId: project.id } });
+      const late = new Date("2026-10-07T10:00:00Z");
+      const voice = { data: Buffer.from("x"), fileName: "", mime: "audio/ogg; codecs=opus" };
+      const mp3 = { data: Buffer.from("x"), fileName: "lagu.mp3", mime: "audio/mpeg" };
+      await recordInbound(base({ waMessageId: "a", at: late, text: "", media: voice }), "60111111111");
+      await recordInbound(base({ waMessageId: "b", at: new Date("2026-10-07T09:00:00Z"), text: "", media: mp3 }), "x");
+      expect((await prisma.waChat.findFirstOrThrow()).lastMessageAt).toEqual(late);
+      const rows = await prisma.waInbound.findMany({ orderBy: { waMessageId: "asc" } });
+      expect(rows.map((r) => r.text)).toEqual(["[voice message]", "[audio]"]);
     });
   });
 });
