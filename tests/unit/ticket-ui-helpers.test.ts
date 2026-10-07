@@ -11,6 +11,8 @@ describe("ticket ui helpers", () => {
   it("names the sources", () => {
     expect(sourceLabel("whatsapp")).toBe("WhatsApp");
     expect(sourceLabel("quick_add")).toBe("Quick add");
+    expect(sourceLabel("whatsapp_export")).toBe("WhatsApp export");
+    expect(sourceLabel("old_system")).toBe("Old system");
     expect(sourceLabel("something_new")).toBe("Something new");
   });
 });
