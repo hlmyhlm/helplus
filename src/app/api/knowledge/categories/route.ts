@@ -18,7 +18,7 @@ export const GET = withAuth(
           take,
           include: {
             _count: {
-              select: { entries: true },
+              select: { entries: { where: { status: "approved" } } },
             },
           },
         }),

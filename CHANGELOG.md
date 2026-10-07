@@ -20,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Answered tickets close by themselves after 3 days by default (Settings > Closing tickets). Clients with an email get a warning a day before.
 - Link-only email alerts for new, reopened, near-breach and overdue tickets, with retries and an email log.
 - Screenshots on tickets: IC numbers are covered automatically, unclear images wait for a staff check, originals are encrypted, staff-only and deleted 90 days after close (Settings > Privacy & IC). WhatsApp images arrive as screenshots on the ticket.
+- Imports: WhatsApp chat exports (.txt or .zip with images) and old-system CSV become tickets, with IC numbers hidden. Re-imports skip what's already in. Answers wait in Library > Waiting approval before the AI can use them.
 
 ### Upgrade notes
 
@@ -40,6 +41,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `sharp` has native binaries. Run `npm ci` on the server itself.
 - Screenshots are stored under `storage/` in the app folder (set `HELPLUS_STORAGE_DIR` to change it). Back it up with the database.
 - The first screenshot downloads OCR language data (about 10 MB) into `.cache/tesseract`. The server needs internet access once, or copy that folder in.
+- Imports run in the worker. Keep `npm run worker` running.
+- Import uploads are limited to 50 MB. Export big chats without media or in parts.
 
 ## [0.2.2] - 2026-04-08
 
