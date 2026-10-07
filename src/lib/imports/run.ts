@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { currentCompanyId } from "@/lib/tenant/context";
 import { fileStore } from "@/lib/storage";
@@ -10,9 +11,15 @@ import { readCsv, headersSignature } from "./csv/parse";
 import { checkRows, guessMapping, type BadRow, type CsvMapping } from "./csv/rows";
 import { writeImportedTicket, type ImportedQa, type WriteResult } from "./write";
 import { aiReady, sameProblem, tidyIssues } from "./ai-tidy";
+import { staffMatcher } from "./whatsapp/staff";
+import { ImportError } from "./errors";
 import { logger } from "@/lib/logger";
 
 export const BATCH = 200;
+// keep one company's big file from holding up the others
+const BUDGET_MS = 20_000;
+const GONE = "The uploaded file is gone, upload it again";
+const FAILED = "Something went wrong with this import, try again";
 const DAY = 86_400_000;
 const STALE_MS = 14 * DAY;
 const MERGE_WINDOW_MS = DAY;
@@ -56,21 +63,18 @@ function countWrite(stats: Stats, r: WriteResult) {
   add(stats, "skippedImages", r.skippedImages);
 }
 
-// staff names are stored masked, so senders are compared masked too
-export function staffMatcher(names: string[]): (sender: string) => boolean {
-  const staff = new Set(names.map((n) => maskIC(n).text));
-  const seen = new Map<string, boolean>();
-  return (sender) => {
-    let hit = seen.get(sender);
-    if (hit === undefined) seen.set(sender, (hit = staff.has(maskIC(sender).text)));
-    return hit;
-  };
-}
-
 const customerText = (messages: ChatMessage[], isStaff: (sender: string) => boolean) =>
   messages.filter((m) => !isStaff(m.sender)).map((m) => m.text).join("\n");
 
-export async function runImportBatch(jobId: string, now: Date, limit = BATCH): Promise<"running" | "done" | "failed"> {
+const csvKey = (projectId: string, oldId: string) =>
+  `csv:${createHash("sha256").update(`${projectId}\u0001${oldId}`).digest("hex")}`;
+
+export async function runImportBatch(
+  jobId: string,
+  now: Date,
+  limit = BATCH,
+  budgetMs = BUDGET_MS
+): Promise<"running" | "done" | "failed"> {
   const job = await prisma.importJob.findFirst({ where: { id: jobId } });
   if (!job) return "failed";
   if (job.status === "done") return "done";
@@ -79,25 +83,38 @@ export async function runImportBatch(jobId: string, now: Date, limit = BATCH): P
     await prisma.importJob.update({ where: { id: job.id }, data: { status: "running", startedAt: now } });
   }
 
+  const started = Date.now();
+  const spent = () => Date.now() - started >= budgetMs;
   try {
-    if (!job.fileKey) throw new Error("The uploaded file is gone, upload it again");
-    const data = decryptBuffer(await fileStore().get(job.fileKey));
-    const finished = job.kind === "csv" ? await csvBatch(job, data, now, limit) : await whatsappBatch(job, data, limit);
+    if (!job.fileKey) throw new ImportError(GONE);
+    const fileKey = job.fileKey;
+    const stored = await fileStore()
+      .get(fileKey)
+      .catch((error) => {
+        logger.error("import file missing", error);
+        throw new ImportError(GONE);
+      });
+    const data = decryptBuffer(stored);
+    const finished = job.kind === "csv" ? await csvBatch(job, data, now, limit, spent) : await whatsappBatch(job, data, limit, spent);
     if (!finished) return "running";
 
-    await fileStore().remove(job.fileKey);
+    await fileStore().remove(fileKey);
     await prisma.importJob.update({ where: { id: job.id }, data: { status: "done", finishedAt: now, fileKey: null } });
     return "done";
   } catch (error) {
-    const message = maskIC(error instanceof Error ? error.message : String(error)).text;
-    logger.error("import failed", message);
+    // only file problems the user can fix are shown, the rest just gets logged
+    const message = error instanceof ImportError ? error.message : FAILED;
+    logger.error("import failed", maskIC(error instanceof Error ? (error.stack ?? error.message) : String(error)).text);
     // only a running job can fail, so a run that already finished it stays done
-    await prisma.importJob.updateMany({ where: { id: job.id, status: "running" }, data: { status: "failed", error: message.slice(0, 500) } });
+    await prisma.importJob.updateMany({
+      where: { id: job.id, status: "running" },
+      data: { status: "failed", error: message, finishedAt: now, ...(message === GONE ? { fileKey: null } : {}) },
+    });
     return "failed";
   }
 }
 
-async function whatsappBatch(job: Job, data: Buffer, limit: number): Promise<boolean> {
+async function whatsappBatch(job: Job, data: Buffer, limit: number, spent: () => boolean): Promise<boolean> {
   const options = job.options as ImportOptions;
   const progress = { ...(job.progress as Progress) };
   const stats = { ...(job.stats as Stats) };
@@ -110,12 +127,16 @@ async function whatsappBatch(job: Job, data: Buffer, limit: number): Promise<boo
   const keys = issues.map((i) => issueKey(job.projectId, i));
 
   const start = progress.next ?? 0;
-  const end = Math.min(start + limit, issues.length);
+  let end = Math.min(start + limit, issues.length);
   const merge = { ...(progress.merge ?? {}) };
 
   // merge decisions are saved so a later batch sees the same issues as this one
   if (await aiReady()) {
     for (let i = start; i < end; i++) {
+      if (i > start && spent()) {
+        end = i;
+        break;
+      }
       const a = issues[i];
       const b = issues[i + 1];
       if (!b || a.answered || a.client !== b.client || keys[i] in merge) continue;
@@ -132,7 +153,7 @@ async function whatsappBatch(job: Job, data: Buffer, limit: number): Promise<boo
     carryKey = keys[j];
   }
 
-  const ready: { key: string; issue: Issue }[] = [];
+  const ready: { key: string; issue: Issue; last: number }[] = [];
   for (let i = start; i < end; i++) {
     const issue = issues[i];
     const key = carryKey ?? keys[i];
@@ -143,28 +164,36 @@ async function whatsappBatch(job: Job, data: Buffer, limit: number): Promise<boo
       continue;
     }
     const all = [...carry, ...issue.messages];
-    ready.push({ key, issue: { ...issue, messages: all, firstAt: all[0].at } });
+    ready.push({ key, issue: { ...issue, messages: all, firstAt: all[0].at }, last: i });
     carry = [];
     carryKey = null;
   }
   progress.next = end;
 
-  // known tickets go back through the writer to fill crash gaps, known messages mean an overlap cut the issue
-  const todo: { key: string; issue: Issue; sorted: ChatMessage[]; messageKeys: string[]; known: boolean }[] = [];
-  for (const { key, issue } of ready) {
+  // a known ticket goes back through the writer to fill gaps, a known message means an overlap cut the issue
+  const todo: { key: string; issue: Issue; last: number; sorted: ChatMessage[]; messageKeys: string[]; known: boolean; cut: boolean }[] = [];
+  for (const { key, issue, last } of ready) {
     const sorted = [...issue.messages].sort((a, b) => a.at.getTime() - b.at.getTime());
     const messageKeys = sorted.map((m) => messageKey(job.projectId, m));
     const ticket = await prisma.ticket.findFirst({ where: { importKey: key }, select: { id: true } });
-    if (!ticket && (await prisma.message.findFirst({ where: { importKey: { in: messageKeys } }, select: { id: true } }))) {
+    const cut = !ticket && !!(await prisma.message.findFirst({ where: { importKey: { in: messageKeys } }, select: { id: true } }));
+    todo.push({ key, issue, last, sorted, messageKeys, known: !!ticket, cut });
+  }
+
+  const labels = await tidyIssues(
+    todo.filter((r) => !r.known && !r.cut).map((r) => ({ key: r.key, text: customerText(r.issue.messages, isStaff) }))
+  );
+
+  for (let n = 0; n < todo.length; n++) {
+    if (n > 0 && spent()) {
+      progress.next = todo[n - 1].last + 1;
+      break;
+    }
+    const { key, issue, sorted, messageKeys, cut } = todo[n];
+    if (cut) {
       add(stats, "skipped", 1);
       continue;
     }
-    todo.push({ key, issue, sorted, messageKeys, known: !!ticket });
-  }
-
-  const labels = await tidyIssues(todo.filter((r) => !r.known).map((r) => ({ key: r.key, text: customerText(r.issue.messages, isStaff) })));
-
-  for (const { key, issue, sorted, messageKeys } of todo) {
     const images: NonNullable<ImportedQa["images"]> = [];
     let missing = 0;
     sorted.forEach((m, index) => {
@@ -189,7 +218,6 @@ async function whatsappBatch(job: Job, data: Buffer, limit: number): Promise<boo
           text: m.text || m.attachment || "",
           at: m.at,
           importKey: messageKeys[i],
-          author: m.sender,
         })),
         status: issue.answered || stale ? "closed" : "new",
         closeNote: stale ? "No reply in the imported chat" : undefined,
@@ -215,7 +243,7 @@ async function whatsappBatch(job: Job, data: Buffer, limit: number): Promise<boo
   return progress.next >= issues.length;
 }
 
-async function csvBatch(job: Job, data: Buffer, now: Date, limit: number): Promise<boolean> {
+async function csvBatch(job: Job, data: Buffer, now: Date, limit: number, spent: () => boolean): Promise<boolean> {
   const options = job.options as ImportOptions;
   const progress = { ...(job.progress as Progress) };
   const stats = { ...(job.stats as Stats) };
@@ -241,7 +269,10 @@ async function csvBatch(job: Job, data: Buffer, now: Date, limit: number): Promi
 
   const start = progress.next ?? 0;
   const end = Math.min(start + limit, good.length);
-  for (const row of good.slice(start, end)) {
+  let next = start;
+  for (; next < end; next++) {
+    if (next > start && spent()) break;
+    const row = good[next];
     const askedAt = row.createdAt ?? now;
     const closedAt = row.closedAt ?? askedAt;
     const messages: ImportedQa["messages"] = [{ role: "customer", text: row.question, at: askedAt }];
@@ -249,7 +280,7 @@ async function csvBatch(job: Job, data: Buffer, now: Date, limit: number): Promi
     const priority = row.priority.toLowerCase();
     try {
       const result = await writeImportedTicket({
-        importKey: `csv:${row.oldId}`,
+        importKey: csvKey(job.projectId, row.oldId),
         projectId: job.projectId,
         source: "old_system",
         channel: "import",
@@ -270,6 +301,6 @@ async function csvBatch(job: Job, data: Buffer, now: Date, limit: number): Promi
   stats.total = good.length;
   stats.bad = bad.length;
   for (const k of ["created", "skipped", "failed"]) stats[k] ??= 0;
-  await prisma.importJob.update({ where: { id: job.id }, data: { progress: { ...progress, next: end } as never, stats } });
-  return end >= good.length;
+  await prisma.importJob.update({ where: { id: job.id }, data: { progress: { ...progress, next } as never, stats } });
+  return next >= good.length;
 }

@@ -3,7 +3,7 @@ import { maskIC } from "@/lib/privacy/ic-mask";
 import { readExport } from "./whatsapp/zip";
 import { parseChat, type DateOrder } from "./whatsapp/parse";
 import { groupIssues } from "./whatsapp/group";
-import { staffMatcher } from "./run";
+import { staffMatcher } from "./whatsapp/staff";
 import { readCsv, headersSignature } from "./csv/parse";
 import { checkRows, guessMapping, type CsvMapping, type GoodRow } from "./csv/rows";
 
@@ -28,7 +28,7 @@ function samePhone(a: string, b: string): boolean {
   return a === b || a.endsWith(b) || b.endsWith(a);
 }
 
-// saved choices win, otherwise anyone on the team or a user of the app counts as staff; names compare masked
+// saved picks first, then anyone on the team or with a login
 async function staffGuess(senders: string[]): Promise<(name: string, raw: string) => boolean> {
   const [saved, team, admins] = await Promise.all([
     prisma.chatSender.findMany({ where: { name: { in: senders } }, select: { name: true, isStaff: true } }),

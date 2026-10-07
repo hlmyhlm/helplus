@@ -6,7 +6,7 @@ export interface ChatMessage {
   text: string;
   attachment: string | null;
   system: boolean;
-  // count of earlier same-minute, same-sender, same-text messages, so album photos get their own key
+  // repeats in the same minute, so album photos get their own key
   seq?: number;
 }
 

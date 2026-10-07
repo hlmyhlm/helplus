@@ -14,7 +14,7 @@ export interface ImportedQa {
   category?: string;
   priority?: string;
   client: { name: string; contact?: string };
-  messages: { role: "customer" | "agent"; text: string; at: Date; importKey?: string; author?: string }[];
+  messages: { role: "customer" | "agent"; text: string; at: Date; importKey?: string }[];
   status: "closed" | "new";
   closeNote?: string;
   closedAt?: Date | null;
@@ -56,8 +56,7 @@ const isPlaceholderName = (name: string) => name === "Unknown" || name.includes(
 // a sender that looks like a number is matched by phone, anyone else by name
 async function customerFor(projectId: string, client: { name: string; contact?: string }): Promise<string> {
   const raw = client.contact || client.name;
-  // an IC can look like a phone number too (even a bare 12-digit run), so only trust it
-  // as one when it isn't IC-shaped - missing a real phone match beats storing an IC
+  // anything IC-shaped is never kept as a phone
   const phone = maskIC(raw).count === 0 ? phoneDigits(raw) : null;
   const name = mask(client.name).slice(0, 200) || "Unknown";
 
@@ -99,10 +98,7 @@ async function repairImportedTicket(qa: ImportedQa, ticketId: string): Promise<W
   if (!conversationId) return { created: false, ticketId: ticket.id, images: 0, skippedImages: 0 };
 
   const existingCount = await prisma.message.count({ where: { conversationId } });
-  // a ticket counts as complete once it has all its messages. staff may since have reviewed and
-  // deleted its note or draft on purpose, and a re-import must not bring those back - we have no
-  // marker to tell "deleted on purpose" from "never written", so message count is the signal.
-  // this does mean a crash between the messages and the draft loses that draft for good.
+  // all messages there means done, so a note or draft staff deleted doesn't come back
   if (existingCount >= qa.messages.length) {
     return { created: false, ticketId: ticket.id, images: 0, skippedImages: 0 };
   }
@@ -113,7 +109,7 @@ async function repairImportedTicket(qa: ImportedQa, ticketId: string): Promise<W
   const savedByInput: ({ id: string } | null)[] = new Array(qa.messages.length).fill(null);
   for (let k = 0; k < msgs.length; k++) {
     const m = msgs[k];
-    // an unkeyed (csv) message has no dedupe key, so only the tail past what's already there is safe to add
+    // csv messages have no key, so only add past what's already there
     if (!m.importKey && k < existingCount) continue;
     try {
       const row = await prisma.message.create({
@@ -122,9 +118,12 @@ async function repairImportedTicket(qa: ImportedQa, ticketId: string): Promise<W
       savedByInput[order[k]] = row;
     } catch (error) {
       if (!isP2002(error)) throw error;
-      // it was already there; look it up so an image pointing at it still gets a real messageId
+      // already saved, look it up so its image still points at it
       if (m.importKey) {
-        savedByInput[order[k]] = await prisma.message.findFirst({ where: { importKey: m.importKey }, select: { id: true } });
+        savedByInput[order[k]] = await prisma.message.findFirst({
+          where: { conversationId, importKey: m.importKey },
+          select: { id: true },
+        });
       }
     }
   }
@@ -212,7 +211,7 @@ export async function writeImportedTicket(qa: ImportedQa): Promise<WriteResult> 
         source: qa.source,
         projectId: qa.projectId,
         priority: qa.priority ?? "medium",
-        category: qa.category ?? "",
+        category: mask(qa.category ?? "").slice(0, 100),
         status: closed ? "closed" : "new",
         conversationId: conversation.id,
         importKey: qa.importKey,
@@ -224,8 +223,7 @@ export async function writeImportedTicket(qa: ImportedQa): Promise<WriteResult> 
     });
   } catch (error) {
     if (!isP2002(error)) throw error;
-    // the importKey race was real only if another ticket actually holds it; otherwise this
-    // was a plain ticket-number collision, which must not be swallowed
+    // only a lost importKey race is fine, a ticket number clash still throws
     const already = await prisma.ticket.findFirst({ where: { importKey: qa.importKey }, select: { id: true } });
     try {
       await prisma.conversation.delete({ where: { id: conversation.id } });

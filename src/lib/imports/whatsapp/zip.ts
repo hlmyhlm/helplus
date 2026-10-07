@@ -1,4 +1,5 @@
 import { unzipSync } from "fflate";
+import { ImportError } from "../errors";
 
 const MAX_ENTRIES = 5000;
 const MAX_TOTAL_BYTES = 500 * 1024 * 1024;
@@ -6,7 +7,7 @@ const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const IMAGE = /\.(jpe?g|png|webp)$/i;
 const NOT_EXPORT = "This isn't a WhatsApp export";
 
-class TooLarge extends Error {}
+class TooLarge extends ImportError {}
 
 const baseName = (name: string) => name.split(/[/\\]/).pop() ?? "";
 
@@ -45,9 +46,9 @@ export function readExport(
     });
   } catch (error) {
     if (error instanceof TooLarge) throw error;
-    throw new Error(NOT_EXPORT);
+    throw new ImportError(NOT_EXPORT);
   }
-  if (!chatName || !unzipped[chatName]) throw new Error(NOT_EXPORT);
+  if (!chatName || !unzipped[chatName]) throw new ImportError(NOT_EXPORT);
 
   const files = new Map<string, Buffer>();
   for (const [name, bytes] of Object.entries(unzipped)) {

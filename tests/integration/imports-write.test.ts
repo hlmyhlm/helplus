@@ -149,9 +149,7 @@ describe("writeImportedTicket", () => {
   it("leaves no orphan ticket or conversation when two imports race on the same key", async () => {
     const q = qa({
       importKey: "wa:race-1",
-      // keyed, like a real whatsapp message, so a racer that lands in the repair path (because
-      // it saw the ticket already created, before the winner's own message insert landed) can
-      // still only ever produce one "racey" message, via the unique constraint, not a duplicate
+      // keyed, so a racer in the repair path can't add the message twice
       messages: [{ role: "customer", text: "racey", at: new Date("2026-01-04T12:00:00Z"), importKey: "wa:race-1-msg" }],
       status: "new",
     });
@@ -460,8 +458,7 @@ describe("writeImportedTicket", () => {
   });
 
   it("treats a bare 12-digit run as IC-shaped and never stores it as a phone (safe side)", async () => {
-    // "+601123456789" reads as a valid intl number too, but 12 contiguous digits also match
-    // the IC shape, and refusing to store a possible IC beats catching every real phone number
+    // 12 digits in a row could be an IC, so it's not kept as a phone
     const q = qa({
       client: { name: "+601123456789" },
       messages: [{ role: "customer", text: "hi", at: new Date("2026-01-18T00:00:00Z") }],
@@ -519,5 +516,19 @@ describe("writeImportedTicket", () => {
     expect(msgs).toHaveLength(2);
     expect(msgs[1].role).toBe("agent");
     expect(msgs[1].content).toBe("use the forgot password link");
+  });
+});
+
+describe("category", () => {
+  it("masks an IC in the category", async () => {
+    const q = qa({
+      category: "Refund for 900101-14-5678",
+      messages: [{ role: "customer", text: "category check", at: new Date("2026-02-01T00:00:00Z") }],
+      status: "new",
+    });
+    const result = await asA(() => writeImportedTicket(q));
+    const ticket = await asA(() => prisma.ticket.findUniqueOrThrow({ where: { id: result.ticketId! } }));
+    expect(ticket.category).not.toMatch(IC_RE);
+    expect(ticket.category).toContain("[IC HIDDEN]");
   });
 });

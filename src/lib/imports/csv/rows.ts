@@ -48,8 +48,7 @@ const FIELD_DEFS: { field: CsvField; tier: number; hints: string[] }[] = [
   { field: "priority", tier: 2, hints: ["priority"] },
 ];
 
-// too generic to name a field on their own - "Closed Date" and "Created Date" both
-// end in one of these, so the qualifier word must decide instead
+// too generic to name a field, "Closed Date" is decided by "Closed"
 const GENERIC_LAST_WORDS = new Set(["date", "time", "tarikh", "masa"]);
 const DATE_FIELDS: ReadonlySet<CsvField> = new Set(["createdAt", "closedAt"]);
 
@@ -66,13 +65,7 @@ function lastWord(header: string): string {
   return words[words.length - 1] ?? "";
 }
 
-// an exact full match always wins; otherwise score by tier, then by word length,
-// with a whole-word match beating a plain substring of the same word. A hint that
-// is the header's last word gets a strong bonus too - "Contact Name" is a name,
-// "Contact Phone" is a phone, even though both contain "contact" - unless that
-// word is too generic to mean anything on its own (see GENERIC_LAST_WORDS), in
-// which case the header can only go to a date field at all, no matter what else
-// it contains - "Issue Date" is a date, not a question.
+// exact match wins, then tier, whole words and the header's last word ("Contact Phone" is a phone)
 function hintScore(
   header: string,
   hint: string,
@@ -173,7 +166,7 @@ export function parseLooseDate(s: string, order: "dmy" | "mdy", offsetMinutes = 
 
   const utcMs = Date.UTC(year, month - 1, day, hour, minute, second);
   const check = new Date(utcMs);
-  // Date.UTC rolls 31 Feb into March; compare back to catch impossible dates instead of accepting the rollover
+  // Date.UTC rolls 31 Feb into March, so check it came back the same
   if (
     check.getUTCFullYear() !== year ||
     check.getUTCMonth() !== month - 1 ||
