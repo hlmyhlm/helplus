@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { groupIssues, messageKey, issueKey } from "@/lib/imports/whatsapp/group";
-import type { ChatMessage } from "@/lib/imports/whatsapp/parse";
+import { parseChat, type ChatMessage } from "@/lib/imports/whatsapp/parse";
 
 const t0 = Date.UTC(2026, 9, 12, 1, 0);
 const msg = (min: number, sender: string, text = "x", system = false): ChatMessage => ({
@@ -94,10 +94,36 @@ describe("re-import keys", () => {
   });
 
   it("match iphone and android media placeholders", () => {
-    expect(messageKey("p1", msg(0, "Aminah", "‎image omitted"))).toBe(messageKey("p1", msg(0, "Aminah", "<Media omitted>")));
+    expect(messageKey("p1", msg(0, "Aminah", "\u200eimage omitted"))).toBe(messageKey("p1", msg(0, "Aminah", "<Media omitted>")));
   });
 
   it("ignore the invisible mark and outer spaces", () => {
-    expect(messageKey("p1", msg(0, "Aminah", "‎ hello "))).toBe(messageKey("p1", msg(0, "Aminah", "hello")));
+    expect(messageKey("p1", msg(0, "Aminah", "\u200e hello "))).toBe(messageKey("p1", msg(0, "Aminah", "hello")));
+  });
+});
+
+describe("album keys", () => {
+  const keys = (text: string) => parseChat(text).messages.map((m) => messageKey("p1", m));
+  const LRM = String.fromCharCode(0x200e);
+
+  it("differ for each photo in an android album", () => {
+    const k = keys([1, 2, 3].map((n) => `12/10/2026, 10:00 - Ali: IMG-${n}.jpg (file attached)`).join("\n"));
+    expect(new Set(k).size).toBe(3);
+  });
+
+  it("differ for each photo in an iphone album", () => {
+    const k = keys([1, 2].map((n) => `[12/10/2026, 10:00:0${n}] Ali: ${LRM}<attached: 0000000${n}-PHOTO.jpg>`).join("\n"));
+    expect(new Set(k).size).toBe(2);
+  });
+
+  it("match between with-media and without-media exports", () => {
+    const withMedia = keys([1, 2, 3].map((n) => `12/10/2026, 10:00 - Ali: IMG-${n}.jpg (file attached)`).join("\n"));
+    const noMedia = keys([1, 2, 3].map(() => "12/10/2026, 10:00 - Ali: <Media omitted>").join("\n"));
+    expect(noMedia).toEqual(withMedia);
+  });
+
+  it("keep the old key for a single message", () => {
+    const a = msg(0, "Aminah", "hello");
+    expect(messageKey("p1", { ...a, seq: 0 })).toBe(messageKey("p1", a));
   });
 });

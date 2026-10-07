@@ -105,8 +105,8 @@ describe("parseChat system lines", () => {
 
   it("marks iphone group lines as system", () => {
     const { messages } = parseChat(
-      "[12/10/2026, 10:00:00] Support Group: ‎Ali added Siti\n" +
-        "[12/10/2026, 10:01:00] Support Group: ‎Messages and calls are end-to-end encrypted."
+      "[12/10/2026, 10:00:00] Support Group: \u200eAli added Siti\n" +
+        "[12/10/2026, 10:01:00] Support Group: \u200eMessages and calls are end-to-end encrypted."
     );
     expect(messages.map((m) => m.system)).toEqual([true, true]);
   });
@@ -159,18 +159,18 @@ describe("parseChat edge cases", () => {
   });
 
   it("finds iphone attachments anywhere in the text", () => {
-    const [m] = parseChat("[12/10/2026, 09:00:00] Ali: ‎Report.pdf • 3 pages ‎<attached: 00000013-Report.pdf>").messages;
+    const [m] = parseChat("[12/10/2026, 09:00:00] Ali: \u200eReport.pdf \u2022 3 pages \u200e<attached: 00000013-Report.pdf>").messages;
     expect(m.attachment).toBe("00000013-Report.pdf");
-    expect(m.text).toBe("Report.pdf • 3 pages");
+    expect(m.text).toBe("Report.pdf \u2022 3 pages");
   });
 
   it("strips the invisible mark from text", () => {
-    const [m] = parseChat("[12/10/2026, 09:00:00] Ali: ‎image omitted").messages;
+    const [m] = parseChat("[12/10/2026, 09:00:00] Ali: \u200eimage omitted").messages;
     expect(m.text).toBe("image omitted");
   });
 
   it("reads a narrow no-break space before pm", () => {
-    const [m] = parseChat("[12/10/2026, 9:45:00 PM] Ali: hi").messages;
+    const [m] = parseChat("[12/10/2026, 9:45:00\u202fPM] Ali: hi").messages;
     expect(m.at).toEqual(utc("2026-10-12T13:45:00Z"));
     expect(m.sender).toBe("Ali");
   });
@@ -178,5 +178,66 @@ describe("parseChat edge cases", () => {
   it("reads windows line endings", () => {
     const { messages } = parseChat("12/10/2026, 9:00 - Ali: one\r\nmore\r\n12/10/2026, 9:01 - Ben: two\r\n");
     expect(messages.map((m) => m.text)).toEqual(["one\nmore", "two"]);
+  });
+});
+
+const LRM = String.fromCharCode(0x200e);
+
+describe("parseChat iphone group sender", () => {
+  const head = `[12/10/2026, 09:00:00] Support Group: ${LRM}Messages and calls are end-to-end encrypted.\n`;
+
+  it("marks any marked line from the group as system", () => {
+    const { messages } = parseChat(
+      head +
+        `[12/10/2026, 09:01:00] Support Group: ${LRM}Ali pinned a message\n` +
+        `[12/10/2026, 09:02:00] Support Group: ${LRM}You're now an admin`
+    );
+    expect(messages.map((m) => m.system)).toEqual([true, true, true]);
+  });
+
+  it("keeps a person's marked text as a message", () => {
+    const { messages } = parseChat(head + `[12/10/2026, 09:01:00] Ali: ${LRM}Saya removed cache tapi masih error`);
+    expect(messages[1].system).toBe(false);
+    expect(messages[1].text).toBe("Saya removed cache tapi masih error");
+  });
+
+  it("keeps the earlier probes as messages with a group known", () => {
+    const { messages } = parseChat(head + "[12/10/2026, 09:01:00] Ali: I added Siti to the system but it fails");
+    expect(messages[1].system).toBe(false);
+  });
+
+  it("does not treat a 1:1 contact as the group", () => {
+    const { messages } = parseChat(
+      `[12/10/2026, 09:00:00] Ali: ${LRM}Messages and calls are end-to-end encrypted.\n` +
+        "[12/10/2026, 09:01:00] Ali: hello\n" +
+        `[12/10/2026, 09:02:00] Ali: ${LRM}<attached: 00000001-PHOTO.jpg>`
+    );
+    expect(messages.map((m) => m.system)).toEqual([true, false, false]);
+  });
+});
+
+describe("parseChat minor rules", () => {
+  it("marks a group name change with a colon as system", () => {
+    expect(parseChat('12/10/2026, 10:00 - Ali changed the group name from "A" to "Help: b"').messages[0].system).toBe(true);
+  });
+
+  it("never takes a sender with a quote in it", () => {
+    const [m] = parseChat('12/10/2026, 10:00 - Ali renamed "A: b"').messages;
+    expect(m.sender).toBe("");
+    expect(m.system).toBe(true);
+  });
+
+  it("only takes (file attached) at the end of the line", () => {
+    const [m] = parseChat("12/10/2026, 10:00 - Ali: report.pdf (file attached) tolong semak").messages;
+    expect(m.attachment).toBeNull();
+  });
+});
+
+describe("parseChat seq", () => {
+  it("numbers repeats in the same minute from the same sender", () => {
+    const { messages } = parseChat(
+      "12/10/2026, 10:00 - Ali: a.jpg (file attached)\n12/10/2026, 10:00 - Ali: b.jpg (file attached)\n12/10/2026, 10:00 - Ben: c.jpg (file attached)\n12/10/2026, 10:00 - Ali: hi"
+    );
+    expect(messages.map((m) => m.seq ?? 0)).toEqual([0, 1, 0, 0]);
   });
 });

@@ -6,17 +6,19 @@ export interface ChatMessage {
   text: string;
   attachment: string | null;
   system: boolean;
+  // count of earlier same-minute, same-sender, same-text messages, so album photos get their own key
+  seq?: number;
 }
 
-const LRM = "‎";
+const LRM = "\u200e";
 // invisible direction marks and BOM that phones sprinkle into exports
-const INVISIBLE = /[‎‏‪-‮﻿]/g;
+export const INVISIBLE = /[\u200e\u200f\u202a-\u202e\ufeff]/g;
 
 // android: "12/10/2026, 9:05 am - Name: text"   iphone: "[12/10/2026, 09:06:12] Name: text"
 const LINE =
-  /^‎?(\[)?(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4}),?\s+(\d{1,2}):(\d{2})(?::(\d{2}))?(?:\s*([ap]\.?\s?m\.?|ptg|pg|pagi|petang)(?![a-z]))?(?:(?<=\[.*)\]\s*|(?<!\[.*)\s+[-–]\s)(.*)$/i;
-const ATTACHED_IOS = /‎?<attached:\s*([^>]+?)>/i;
-const ATTACHED_ANDROID = /^(.+\.\w{1,5}) \(file attached\)\s*/i;
+  /^\u200e?(\[)?(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4}),?\s+(\d{1,2}):(\d{2})(?::(\d{2}))?(?:\s*([ap]\.?\s?m\.?|ptg|pg|pagi|petang)(?![a-z]))?(?:(?<=\[.*)\]\s*|(?<!\[.*)\s+[-\u2013]\s)(.*)$/i;
+const ATTACHED_IOS = /\u200e?<attached:\s*([^>]+?)>/i;
+const ATTACHED_ANDROID = /^(.+\.\w{1,5}) \(file attached\)\s*$/i;
 
 const SYSTEM = [
   /^messages and calls are end-to-end encrypted\b/i,
@@ -29,7 +31,11 @@ const SYSTEM = [
   /^.+? created (?:group|this group)\b/i,
 ];
 // group events whose quoted text can contain ": " and fool the sender split
-const SYSTEM_BEFORE_COLON = /^[^:]+? (?:changed the subject|changed the group description|created group) /i;
+const SYSTEM_BEFORE_COLON = /^[^:]+? (?:changed the subject|changed the group name|changed the group description|created group) /i;
+const QUOTE = new RegExp(`["${String.fromCharCode(0x201c, 0x201d)}]`);
+const ENCRYPTED = /^messages and calls are end-to-end encrypted\b/i;
+const MEDIA_LINE = /^(?:<media omitted>|(?:image|video|audio|sticker|gif|document) omitted|.+ \(file attached\))$/i;
+const MEDIA_TAIL = /\s*(?:image|video|audio|sticker|gif|document) omitted$/i;
 
 const PM = new Set(["pm", "ptg", "petang"]);
 const AM = new Set(["am", "pg", "pagi"]);
@@ -71,16 +77,44 @@ function isSystemText(text: string): boolean {
   return SYSTEM.some((re) => re.test(clean));
 }
 
-function splitBody(body: string): { sender: string; text: string; system: boolean } {
+interface Body {
+  sender: string;
+  text: string;
+  system: boolean;
+  // starts with the invisible mark and isn't media, like iphone group events
+  marked: boolean;
+}
+
+function splitBody(body: string): Body {
   const colon = body.indexOf(": ");
-  if (colon <= 0 || SYSTEM_BEFORE_COLON.test(body.replace(INVISIBLE, ""))) {
-    return { sender: "", text: body, system: true };
+  const sender = colon > 0 ? body.slice(0, colon).replace(INVISIBLE, "").trim() : "";
+  if (!sender || QUOTE.test(sender) || SYSTEM_BEFORE_COLON.test(body.replace(INVISIBLE, ""))) {
+    return { sender: "", text: body, system: true, marked: false };
   }
-  const sender = body.slice(0, colon).replace(INVISIBLE, "").trim();
   const text = body.slice(colon + 2);
-  // iphone writes group events as "Group Name: ‎Ali added Siti"
-  const system = text.startsWith(LRM) && !/<attached:|omitted$/i.test(text) && isSystemText(text);
-  return { sender, text, system };
+  // iphone writes group events as "Group Name: \u200eAli added Siti"
+  const marked = text.startsWith(LRM) && !/<attached:|omitted$/i.test(text);
+  return { sender, text, system: false, marked };
+}
+
+// the encryption notice names the group; a 1:1 contact also sends unmarked lines, so it isn't one
+function groupSender(messages: ChatMessage[], marked: boolean[]): string | null {
+  const first = messages.findIndex((m, i) => marked[i] && ENCRYPTED.test(m.text));
+  if (first < 0) return null;
+  const name = messages[first].sender;
+  return messages.every((m, i) => m.sender !== name || marked[i]) ? name : null;
+}
+
+// text used for keys: media placeholders differ between android, iphone and no-media exports
+export function keyText(text: string): string {
+  return text
+    .replace(INVISIBLE, "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => !MEDIA_LINE.test(line))
+    .map((line) => line.replace(MEDIA_TAIL, ""))
+    .join("\n")
+    .trim();
 }
 
 function takeAttachment(text: string): { text: string; attachment: string | null } {
@@ -103,8 +137,9 @@ export function parseChat(
   const offset = opts.offsetMinutes ?? 480;
   const messages: ChatMessage[] = [];
   let skippedLines = 0;
+  const marked: boolean[] = [];
 
-  for (const raw of text.replace(/^﻿/, "").split(/\r?\n/)) {
+  for (const raw of text.replace(/^\ufeff/, "").split(/\r?\n/)) {
     const m = LINE.exec(raw);
     const at = m ? toDate(m, order, offset) : null;
     if (!m || !at) {
@@ -119,6 +154,17 @@ export function parseChat(
     const body = splitBody(m[9]);
     const { text: msgText, attachment } = takeAttachment(body.text);
     messages.push({ at, sender: body.sender, text: msgText.trim(), attachment, system: body.system });
+    marked.push(body.marked);
   }
+
+  const group = groupSender(messages, marked);
+  const seen = new Map<string, number>();
+  messages.forEach((msg, i) => {
+    if (marked[i]) msg.system = group ? msg.sender === group : isSystemText(msg.text);
+    const id = JSON.stringify([Math.floor(msg.at.getTime() / 60_000), msg.sender, keyText(msg.text)]);
+    const seq = seen.get(id) ?? 0;
+    seen.set(id, seq + 1);
+    if (seq > 0) msg.seq = seq;
+  });
   return { messages, order, skippedLines };
 }
