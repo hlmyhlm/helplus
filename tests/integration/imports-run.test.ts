@@ -309,6 +309,37 @@ describe("time budget", () => {
     }
   });
 
+  it("takes smaller batches with AI on so slow titles don't eat the budget", { timeout: 60_000 }, async () => {
+    vi.mocked(aiReady).mockResolvedValue(true);
+    const titled: string[] = [];
+    vi.mocked(tidyIssues).mockImplementation(async (list) => {
+      await new Promise((r) => setTimeout(r, 50));
+      titled.push(...list.map((i) => i.key));
+      return new Map();
+    });
+    try {
+      const lines: string[] = [];
+      for (let i = 0; i < 30; i++) {
+        const d = new Date(Date.UTC(2026, 9, 1) + i * 5 * 3600_000);
+        const date = `${d.getUTCDate()}/${d.getUTCMonth() + 1}/${d.getUTCFullYear()}, ${String(d.getUTCHours()).padStart(2, "0")}:00`;
+        lines.push(`${date} - Slow Client ${i}: slow title ${i}`);
+      }
+      const job = await queueJob("whatsapp", "slow.txt", Buffer.from(lines.join("\n")), { staff: [] });
+      expect(await asA(() => runImportBatch(job.id, new Date()))).toBe("running");
+      const mid = await readJob(job.id);
+      expect((mid.progress as { next: number }).next).toBe(25);
+      expect(stats(mid).created).toBe(25);
+      expect(await asA(() => runImportBatch(job.id, new Date()))).toBe("done");
+      expect(stats(await readJob(job.id)).created).toBe(30);
+      expect(titled).toHaveLength(30);
+      expect(new Set(titled).size).toBe(30);
+    } finally {
+      vi.mocked(aiReady).mockResolvedValue(false);
+      vi.mocked(tidyIssues).mockReset();
+      vi.mocked(tidyIssues).mockResolvedValue(new Map());
+    }
+  });
+
   it("stops a csv batch early and the next one carries on", async () => {
     const csv = "ID,Question\nB1,budget row one\nB2,budget row two\nB3,budget row three";
     const job = await queueJob("csv", "budget.csv", Buffer.from(csv), { mapping: { oldId: "ID", question: "Question" } });
@@ -329,6 +360,15 @@ describe("failures", () => {
     const failed = await readJob(job.id);
     expect(failed.error).toBe("The uploaded file is gone, upload it again");
     expect(failed.fileKey).toBeNull();
+  });
+
+  it("keeps the file key when the file can't be read for another reason", async () => {
+    const job = await queueJob("csv", "unreadable.csv", Buffer.from("ID,Question\nU1,unreadable"), { mapping: { oldId: "ID", question: "Question" } });
+    await asA(() => prisma.importJob.update({ where: { id: job.id }, data: { fileKey: "../not-a-key" } }));
+    expect(await asA(() => runImportBatch(job.id, new Date()))).toBe("failed");
+    const failed = await readJob(job.id);
+    expect(failed.error).toBe("Something went wrong with this import, try again");
+    expect(failed.fileKey).toBe("../not-a-key");
   });
 
   it("never stores a raw error in the job", async () => {

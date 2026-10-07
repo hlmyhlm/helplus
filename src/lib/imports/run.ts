@@ -18,6 +18,7 @@ import { logger } from "@/lib/logger";
 export const BATCH = 200;
 // keep one company's big file from holding up the others
 const BUDGET_MS = 20_000;
+const AI_BATCH = 25;
 const GONE = "The uploaded file is gone, upload it again";
 const FAILED = "Something went wrong with this import, try again";
 const DAY = 86_400_000;
@@ -91,6 +92,7 @@ export async function runImportBatch(
     const stored = await fileStore()
       .get(fileKey)
       .catch((error) => {
+        if ((error as { code?: string })?.code !== "ENOENT") throw error;
         logger.error("import file missing", error);
         throw new ImportError(GONE);
       });
@@ -127,11 +129,13 @@ async function whatsappBatch(job: Job, data: Buffer, limit: number, spent: () =>
   const keys = issues.map((i) => issueKey(job.projectId, i));
 
   const start = progress.next ?? 0;
-  let end = Math.min(start + limit, issues.length);
+  const ai = await aiReady();
+  // title calls are slow, so a smaller batch keeps them inside the time budget
+  let end = Math.min(start + (ai ? Math.min(limit, AI_BATCH) : limit), issues.length);
   const merge = { ...(progress.merge ?? {}) };
 
   // merge decisions are saved so a later batch sees the same issues as this one
-  if (await aiReady()) {
+  if (ai) {
     for (let i = start; i < end; i++) {
       if (i > start && spent()) {
         end = i;
