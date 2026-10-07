@@ -8,7 +8,7 @@ const DAY = 86_400_000;
 const STALE_PENDING_MS = 2 * 60_000;
 const BATCH = 5;
 
-// uploads normally finish inside the request, this picks up the ones that didn't
+// uploads are checked after the response, this picks up any that got stranded
 export async function runPendingAttachments(now: Date): Promise<number> {
   const rows = await prisma.attachment.findMany({
     where: { status: "pending", originalKey: { not: null }, createdAt: { lte: new Date(now.getTime() - STALE_PENDING_MS) } },
