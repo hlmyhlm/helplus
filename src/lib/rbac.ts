@@ -108,6 +108,9 @@ export const PERMISSIONS = {
   // Screenshot originals and IC checks
   "attachments:original": ["staff", "supervisor", "admin", "owner"],
 
+  // WhatsApp and CSV imports
+  "imports:run": ["supervisor", "admin", "owner"],
+
   // Company (owner only)
   "company:manage": ["owner"],
 } as const;

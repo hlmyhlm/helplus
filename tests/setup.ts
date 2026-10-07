@@ -99,6 +99,9 @@ function createMockPrismaClient() {
     "holiday",
     "emailOutbox",
     "attachment",
+    "importJob",
+    "chatSender",
+    "importMapping",
   ];
 
   const client: Record<string, unknown> = {

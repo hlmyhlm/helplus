@@ -47,21 +47,26 @@ model Company {
   holidays          Holiday[]
   emailOutbox       EmailOutbox[]
   attachments       Attachment[]
+  importJobs        ImportJob[]
+  chatSenders       ChatSender[]
+  importMappings    ImportMapping[]
 }
 
 model Project {
-  id        String          @id @default(uuid())
-  companyId String          @default("")
-  company   Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  name      String
-  isDefault Boolean         @default(false)
-  archived  Boolean         @default(false)
-  tickets   Ticket[]
-  customers Customer[]
-  access    ProjectAccess[]
-  slaRules  SLARule[]
-  createdAt DateTime        @default(now())
-  updatedAt DateTime        @updatedAt
+  id               String           @id @default(uuid())
+  companyId        String           @default("")
+  company          Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name             String
+  isDefault        Boolean          @default(false)
+  archived         Boolean          @default(false)
+  tickets          Ticket[]
+  customers        Customer[]
+  access           ProjectAccess[]
+  slaRules         SLARule[]
+  importJobs       ImportJob[]
+  knowledgeEntries KnowledgeEntry[]
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
 
   @@unique([companyId, name])
   @@index([companyId])
@@ -178,22 +183,28 @@ model Category {
 }
 
 model KnowledgeEntry {
-  id         String   @id @default(uuid())
-  companyId  String   @default("")
-  company    Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  categoryId String
-  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
-  title      String
-  content    String
-  priority   Int      @default(0)
-  isActive   Boolean  @default(true)
-  version    Int      @default(1)
-  metadata   Json     @default("{}")
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id             String   @id @default(uuid())
+  companyId      String   @default("")
+  company        Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  categoryId     String
+  category       Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  title          String
+  content        String
+  priority       Int      @default(0)
+  isActive       Boolean  @default(true)
+  version        Int      @default(1)
+  metadata       Json     @default("{}")
+  projectId      String?
+  project        Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  status         String   @default("approved") // draft, approved
+  sourceTicketId String?
+  sourceTicket   Ticket?  @relation(fields: [sourceTicketId], references: [id], onDelete: SetNull)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   @@index([categoryId])
   @@index([companyId])
+  @@index([projectId, status])
 }
 
 // ==================== TEAM ====================
@@ -277,7 +288,9 @@ model Message {
   toolCalls      Json?
   createdAt      DateTime     @default(now())
   attachments    Attachment[]
+  importKey      String?
 
+  @@unique([companyId, importKey])
   @@index([conversationId])
   @@index([conversationId, createdAt])
   @@index([companyId])
@@ -286,49 +299,52 @@ model Message {
 // ==================== TICKETS ====================
 
 model Ticket {
-  id               String        @id @default(uuid())
-  companyId        String        @default("")
-  company          Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  id               String           @id @default(uuid())
+  companyId        String           @default("")
+  company          Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
   conversationId   String?
-  conversation     Conversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  conversation     Conversation?    @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   departmentId     String?
-  department       Department?   @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  department       Department?      @relation(fields: [departmentId], references: [id], onDelete: SetNull)
   assignedToId     String?
-  assignedTo       TeamMember?   @relation(fields: [assignedToId], references: [id], onDelete: SetNull)
+  assignedTo       TeamMember?      @relation(fields: [assignedToId], references: [id], onDelete: SetNull)
   title            String
   description      String
-  status           String        @default("new")
-  priority         String        @default("medium")
-  resolution       String        @default("")
+  status           String           @default("new")
+  priority         String           @default("medium")
+  resolution       String           @default("")
   number           Int
   projectId        String
-  project          Project       @relation(fields: [projectId], references: [id])
+  project          Project          @relation(fields: [projectId], references: [id])
   assigneeId       String?
-  assignee         Admin?        @relation(fields: [assigneeId], references: [id], onDelete: SetNull)
-  source           String        @default("quick_add")
-  category         String        @default("")
+  assignee         Admin?           @relation(fields: [assigneeId], references: [id], onDelete: SetNull)
+  source           String           @default("quick_add")
+  category         String           @default("")
   firstReplyAt     DateTime?
   answeredAt       DateTime?
   closedAt         DateTime?
-  reopenCount      Int           @default(0)
+  reopenCount      Int              @default(0)
   aiMatch          Int?
   slaRuleId        String?
-  slaRule          SLARule?      @relation(fields: [slaRuleId], references: [id], onDelete: SetNull)
+  slaRule          SLARule?         @relation(fields: [slaRuleId], references: [id], onDelete: SetNull)
   firstReplyWarnAt DateTime?
   firstReplyDueAt  DateTime?
   resolveWarnAt    DateTime?
   resolveDueAt     DateTime?
   slaPausedAt      DateTime?
-  slaPausedMins    Int           @default(0)
+  slaPausedMins    Int              @default(0)
   slaWarnedAt      DateTime?
   slaBreachedAt    DateTime?
   closeWarnedAt    DateTime?
   emails           EmailOutbox[]
   attachments      Attachment[]
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
+  knowledgeDrafts  KnowledgeEntry[]
+  importKey        String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
 
   @@unique([companyId, number])
+  @@unique([companyId, importKey])
   @@index([status])
   @@index([departmentId])
   @@index([assignedToId])
@@ -741,4 +757,51 @@ model Attachment {
   @@index([companyId, status])
   @@index([ticketId])
   @@index([messageId])
+}
+
+// ==================== IMPORTS ====================
+
+model ImportJob {
+  id          String    @id @default(uuid())
+  companyId   String    @default("")
+  company     Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  projectId   String
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  kind        String // whatsapp, csv
+  status      String    @default("uploaded") // uploaded, queued, running, done, failed
+  fileKey     String?
+  fileName    String    @default("")
+  options     Json      @default("{}")
+  preview     Json      @default("{}")
+  progress    Json      @default("{}")
+  stats       Json      @default("{}")
+  badRows     Json      @default("[]")
+  error       String    @default("")
+  createdById String?
+  createdAt   DateTime  @default(now())
+  startedAt   DateTime?
+  finishedAt  DateTime?
+
+  @@index([companyId, status])
+}
+
+model ChatSender {
+  id        String  @id @default(uuid())
+  companyId String  @default("")
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name      String
+  isStaff   Boolean @default(false)
+
+  @@unique([companyId, name])
+}
+
+model ImportMapping {
+  id        String   @id @default(uuid())
+  companyId String   @default("")
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  headers   String
+  mapping   Json     @default("{}")
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyId, headers])
 }

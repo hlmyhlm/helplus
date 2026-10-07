@@ -112,4 +112,9 @@ describe("RBAC System", () => {
     expect(hasPermission("viewer", "attachments:original")).toBe(false);
     expect(hasPermission("staff", "attachments:original")).toBe(true);
   });
+
+  it("supervisors run imports, staff don't", () => {
+    expect(hasPermission("staff", "imports:run")).toBe(false);
+    expect(hasPermission("supervisor", "imports:run")).toBe(true);
+  });
 });
