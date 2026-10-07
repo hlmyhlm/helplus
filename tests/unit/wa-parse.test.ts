@@ -241,3 +241,33 @@ describe("parseChat seq", () => {
     expect(messages.map((m) => m.seq ?? 0)).toEqual([0, 1, 0, 0]);
   });
 });
+
+describe("parseChat quoted names", () => {
+  const curly = (s: string) => String.fromCharCode(0x201c) + s + String.fromCharCode(0x201d);
+
+  it.each([
+    ['Kedai "Maju"', "boleh tolong?"],
+    ['Ali "Boss" Rahman', "hi"],
+    [`Kedai ${curly("Maju")}`, "ada stok?"],
+  ])("keeps a sender with balanced quotes: %s", (sender, text) => {
+    const [m] = parseChat(`12/10/2026, 10:00 - ${sender}: ${text}`).messages;
+    expect(m.sender).toBe(sender);
+    expect(m.text).toBe(text);
+    expect(m.system).toBe(false);
+  });
+
+  it("still marks a group name change with a colon as system", () => {
+    const [m] = parseChat('12/10/2026, 10:00 - Ali changed the group name to "Help: x"').messages;
+    expect(m.system).toBe(true);
+  });
+});
+
+describe("parseChat business notice", () => {
+  it("marks the meta business notice as system in a 1:1 iphone chat", () => {
+    const { messages } = parseChat(
+      `[12/10/2026, 09:00:00] Kedai Maju: ${LRM}This business uses a secure service from Meta to manage this chat.\n` +
+        "[12/10/2026, 09:01:00] Kedai Maju: hello"
+    );
+    expect(messages.map((m) => m.system)).toEqual([true, false]);
+  });
+});

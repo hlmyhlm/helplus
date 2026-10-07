@@ -21,6 +21,7 @@ const ATTACHED_IOS = /\u200e?<attached:\s*([^>]+?)>/i;
 const ATTACHED_ANDROID = /^(.+\.\w{1,5}) \(file attached\)\s*$/i;
 
 const SYSTEM = [
+  /^this business (?:uses|is using)\b/i,
   /^messages and calls are end-to-end encrypted\b/i,
   /^(?:your )?security code with .+ changed\b/i,
   /^.+? (?:added|removed) .+$/i,
@@ -32,7 +33,9 @@ const SYSTEM = [
 ];
 // group events whose quoted text can contain ": " and fool the sender split
 const SYSTEM_BEFORE_COLON = /^[^:]+? (?:changed the subject|changed the group name|changed the group description|created group) /i;
-const QUOTE = new RegExp(`["${String.fromCharCode(0x201c, 0x201d)}]`);
+const QUOTES = new RegExp(`["${String.fromCharCode(0x201c, 0x201d)}]`, "g");
+// an odd quote count means the colon sat inside a quoted group name, not after a sender
+const unbalanced = (s: string) => (s.match(QUOTES)?.length ?? 0) % 2 === 1;
 const ENCRYPTED = /^messages and calls are end-to-end encrypted\b/i;
 const MEDIA_LINE = /^(?:<media omitted>|(?:image|video|audio|sticker|gif|document) omitted|.+ \(file attached\))$/i;
 const MEDIA_TAIL = /\s*(?:image|video|audio|sticker|gif|document) omitted$/i;
@@ -88,7 +91,7 @@ interface Body {
 function splitBody(body: string): Body {
   const colon = body.indexOf(": ");
   const sender = colon > 0 ? body.slice(0, colon).replace(INVISIBLE, "").trim() : "";
-  if (!sender || QUOTE.test(sender) || SYSTEM_BEFORE_COLON.test(body.replace(INVISIBLE, ""))) {
+  if (!sender || unbalanced(sender) || SYSTEM_BEFORE_COLON.test(body.replace(INVISIBLE, ""))) {
     return { sender: "", text: body, system: true, marked: false };
   }
   const text = body.slice(colon + 2);
