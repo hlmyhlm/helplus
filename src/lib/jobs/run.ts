@@ -6,10 +6,12 @@ import { runAutoClose } from "./auto-close";
 import { runSlaAlerts } from "./sla-alerts";
 import { runOriginalRetention, runPendingAttachments } from "./attachments";
 import { runImports } from "./imports";
+import { runBot } from "./bot";
 
 const JOBS: [string, (now: Date) => Promise<unknown>][] = [
   ["auto-close", runAutoClose],
   ["sla alerts", runSlaAlerts],
+  ["bot intake", runBot],
   ["email", (now) => drainOutbox(now)],
   ["attachments", runPendingAttachments],
   ["original retention", runOriginalRetention],
