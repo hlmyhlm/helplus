@@ -99,6 +99,28 @@ describe("guessMapping", () => {
     expect(mapping.question).toBe("Issue Description");
     expect(mapping.clientContact).toBe("Primary Contact Number");
   });
+
+  it("sends Client Phone to clientContact and Client Name to clientName", () => {
+    const mapping = guessMapping(["Client Phone", "Client Name"]);
+    expect(mapping.clientContact).toBe("Client Phone");
+    expect(mapping.clientName).toBe("Client Name");
+  });
+
+  it("sends Client Email to clientContact", () => {
+    expect(guessMapping(["Client Email"]).clientContact).toBe("Client Email");
+  });
+
+  it("maps both date columns correctly even though both mention Date", () => {
+    const mapping = guessMapping(["Created Date", "Closed Date"]);
+    expect(mapping.createdAt).toBe("Created Date");
+    expect(mapping.closedAt).toBe("Closed Date");
+  });
+
+  it("keeps plain Name and Phone headers distinct", () => {
+    const mapping = guessMapping(["Name", "Phone"]);
+    expect(mapping.clientName).toBe("Name");
+    expect(mapping.clientContact).toBe("Phone");
+  });
 });
 
 describe("checkRows", () => {
@@ -225,6 +247,18 @@ describe("parseLooseDate", () => {
     const utcDate = parseLooseDate("2026-10-12 00:00", "dmy", 0);
     expect(utcDate).toEqual(new Date(Date.UTC(2026, 9, 12, 0, 0, 0)));
   });
+
+  it("pivots two-digit years at 70", () => {
+    expect(parseLooseDate("12/10/26", "dmy")).toEqual(expected);
+    expect(parseLooseDate("12/10/75", "dmy")).toEqual(
+      new Date(Date.UTC(1975, 9, 12, 0, 0, 0) - 480 * 60_000)
+    );
+  });
+
+  it("rejects a 12-hour time whose hour is above 12 or is 0 with am/pm given", () => {
+    expect(parseLooseDate("12/10/2026 13:30 PM", "dmy")).toBeNull();
+    expect(parseLooseDate("12/10/2026 0:30 AM", "dmy")).toBeNull();
+  });
 });
 
 describe("badRowsCsv", () => {
@@ -237,5 +271,24 @@ describe("badRowsCsv", () => {
     expect(csv).toBe(
       'reason,ID,Question\r\nMissing ID,,"Hello, world"\r\nMissing question,2,'
     );
+  });
+
+  it("returns just the header when there are no bad rows", () => {
+    expect(badRowsCsv([])).toBe("reason");
+  });
+
+  it("prefixes cells that could be read as a spreadsheet formula", () => {
+    const bad = [
+      {
+        line: 2,
+        reason: '=HYPERLINK("http://evil")',
+        raw: { ID: "+1", Question: "-2", Note: "@x" },
+      },
+    ];
+    const csv = badRowsCsv(bad);
+    expect(csv).toContain("'=HYPERLINK");
+    expect(csv).toContain("'+1");
+    expect(csv).toContain("'-2");
+    expect(csv).toContain("'@x");
   });
 });

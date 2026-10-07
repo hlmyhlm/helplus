@@ -34,41 +34,57 @@ export interface BadRow {
   raw: Record<string, string>;
 }
 
-// fields in priority order, used both to resolve clashes and as the guess order
-const FIELD_HINTS: [CsvField, string[]][] = [
-  ["oldId", ["id", "ticket id", "no"]],
-  ["question", ["question", "issue", "description", "masalah"]],
-  ["answer", ["answer", "reply", "solution", "jawapan"]],
-  ["clientName", ["client", "customer", "name"]],
-  ["clientContact", ["phone", "email", "contact"]],
-  ["createdAt", ["created", "date", "tarikh"]],
-  ["closedAt", ["closed", "resolved"]],
-  ["category", ["category"]],
-  ["priority", ["priority"]],
+// tier marks how specific a field's hint words are; contact words beat the generic client/name ones
+const FIELD_DEFS: { field: CsvField; tier: number; hints: string[] }[] = [
+  { field: "oldId", tier: 2, hints: ["id", "ticket id", "no"] },
+  { field: "question", tier: 2, hints: ["question", "issue", "description", "masalah"] },
+  { field: "answer", tier: 2, hints: ["answer", "reply", "solution", "jawapan"] },
+  { field: "clientName", tier: 1, hints: ["client", "customer", "name"] },
+  { field: "clientContact", tier: 3, hints: ["phone", "email", "contact", "tel", "mobile"] },
+  { field: "createdAt", tier: 2, hints: ["created", "date", "tarikh"] },
+  { field: "closedAt", tier: 2, hints: ["closed", "resolved"] },
+  { field: "category", tier: 2, hints: ["category"] },
+  { field: "priority", tier: 2, hints: ["priority"] },
 ];
 
-function matchKind(header: string, hint: string): "exact" | "contains" | null {
-  const h = header.toLowerCase().trim();
-  if (h === hint) return "exact";
-  if (h.includes(hint)) return "contains";
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// an exact full match always wins; otherwise score by tier, then by word length,
+// with a whole-word match beating a plain substring of the same word
+function hintScore(header: string, hint: string, tier: number): number | null {
+  if (header === hint) return 10_000;
+  const whole = new RegExp(`\\b${escapeRegExp(hint)}\\b`).test(header);
+  if (whole) return tier * 100 + hint.length * 10 + 5;
+  if (header.includes(hint)) return tier * 100 + hint.length * 10;
   return null;
 }
 
 export function guessMapping(headers: string[]): CsvMapping {
-  const mapping: CsvMapping = {};
-  const used = new Set<string>();
-  // exact matches first, so a short header like "Name" isn't stolen by a looser contains match elsewhere
-  for (const pass of ["exact", "contains"] as const) {
-    for (const [field, hints] of FIELD_HINTS) {
-      if (mapping[field]) continue;
-      const header = headers.find(
-        (h) => !used.has(h) && hints.some((hint) => matchKind(h, hint) === pass)
-      );
-      if (header) {
-        mapping[field] = header;
-        used.add(header);
+  const candidates: { header: string; field: CsvField; score: number }[] = [];
+  for (const header of headers) {
+    const h = header.toLowerCase().trim();
+    for (const { field, tier, hints } of FIELD_DEFS) {
+      let best: number | null = null;
+      for (const hint of hints) {
+        const score = hintScore(h, hint, tier);
+        if (score !== null && (best === null || score > best)) best = score;
       }
+      if (best !== null) candidates.push({ header, field, score: best });
     }
+  }
+  // highest score first, so each header and each field get their best mutual match
+  candidates.sort((a, b) => b.score - a.score);
+
+  const mapping: CsvMapping = {};
+  const usedHeaders = new Set<string>();
+  const usedFields = new Set<CsvField>();
+  for (const c of candidates) {
+    if (usedHeaders.has(c.header) || usedFields.has(c.field)) continue;
+    mapping[c.field] = c.header;
+    usedHeaders.add(c.header);
+    usedFields.add(c.field);
   }
   return mapping;
 }
@@ -102,7 +118,8 @@ export function parseLooseDate(s: string, order: "dmy" | "mdy", offsetMinutes = 
     const a = Number(slash[1]);
     const b = Number(slash[2]);
     year = Number(slash[3]);
-    if (year < 100) year += 2000;
+    // two-digit years pivot at 70: 00-69 is 20xx, 70-99 is 19xx
+    if (year < 100) year += year >= 70 ? 1900 : 2000;
     // which number is the day depends on the file's detected order, same as the chat parser
     [day, month] = order === "dmy" ? [a, b] : [b, a];
     if (slash[4]) {
@@ -110,8 +127,12 @@ export function parseLooseDate(s: string, order: "dmy" | "mdy", offsetMinutes = 
       minute = Number(slash[5]);
       second = slash[6] ? Number(slash[6]) : 0;
       const ampm = slash[7]?.toLowerCase().replace(/[.\s]/g, "");
-      if (ampm === "pm" && hour < 12) hour += 12;
-      if (ampm === "am" && hour === 12) hour = 0;
+      if (ampm) {
+        // a 12-hour clock only runs 1-12
+        if (hour < 1 || hour > 12) return null;
+        if (ampm === "pm" && hour < 12) hour += 12;
+        if (ampm === "am" && hour === 12) hour = 0;
+      }
     }
   }
 
@@ -204,10 +225,20 @@ export function checkRows(
   return { good, bad };
 }
 
+// a leading =, +, -, @, tab or carriage return can be read as a formula by spreadsheet apps
+const FORMULA_START = /^[=+\-@\t\r]/;
+
+function sanitizeCell(value: string): string {
+  return FORMULA_START.test(value) ? `'${value}` : value;
+}
+
 export function badRowsCsv(bad: BadRow[]): string {
-  if (bad.length === 0) return Papa.unparse({ fields: ["reason"], data: [] });
+  if (bad.length === 0) return "reason";
   const columns = Object.keys(bad[0].raw);
   const fields = ["reason", ...columns];
-  const data = bad.map((b) => [b.reason, ...columns.map((c) => b.raw[c] ?? "")]);
+  const data = bad.map((b) => [
+    sanitizeCell(b.reason),
+    ...columns.map((c) => sanitizeCell(b.raw[c] ?? "")),
+  ]);
   return Papa.unparse({ fields, data });
 }
