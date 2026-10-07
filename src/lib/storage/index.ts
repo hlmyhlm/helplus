@@ -26,3 +26,7 @@ export function attachmentKey(companyId: string, id: string, kind: "original" | 
 export function importFileKey(companyId: string, jobId: string): string {
   return `c/${companyId}/imports/${jobId}.bin`;
 }
+
+export function botMediaKey(companyId: string, inboundId: string): string {
+  return `c/${companyId}/bot/${inboundId}.bin`;
+}
