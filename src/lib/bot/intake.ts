@@ -45,7 +45,8 @@ export async function runBotIntake(now: Date) {
         }
       } catch (error) {
         logger.error("bot intake step failed", error, { chatId: chat.id });
-        await countFailure(step.kind === "client" ? step.ids : [step.id], now).catch((e) =>
+        const failed = step.kind === "client" ? step.ids.map((id) => byId.get(id)!) : [byId.get(step.id)!];
+        await countFailure(chat.id, failed, step.kind === "client", now).catch((e) =>
           logger.error("couldn't count a bot failure", e)
         );
         // later replies could land on the wrong ticket without this one
@@ -56,13 +57,33 @@ export async function runBotIntake(now: Date) {
   return stats;
 }
 
-async function countFailure(ids: string[], now: Date): Promise<void> {
+async function countFailure(chatId: string, rows: WaInbound[], isClient: boolean, now: Date): Promise<void> {
+  const ids = rows.map((r) => r.id);
   await prisma.waInbound.updateMany({ where: { id: { in: ids }, state: "pending" }, data: { attempts: { increment: 1 } } });
-  const { count } = await prisma.waInbound.updateMany({
+  const given = await prisma.waInbound.findMany({
     where: { id: { in: ids }, state: "pending", attempts: { gte: MAX_ATTEMPTS } },
-    data: { state: "failed", doneAt: now },
+    select: { id: true, waMessageId: true, at: true },
   });
-  if (count) logger.error("bot rows kept failing, giving up", undefined, { ids });
+  if (!given.length) return;
+  const saved = isClient
+    ? await prisma.message.findFirst({
+        where: { importKey: { in: given.map((r) => key(r.waMessageId)) } },
+        select: { conversation: { select: { tickets: { orderBy: { createdAt: "desc" }, take: 1, select: { id: true } } } } },
+      })
+    : null;
+  const ticketId = saved?.conversation.tickets[0]?.id ?? null;
+  await prisma.waInbound.updateMany({
+    where: { id: { in: given.map((r) => r.id) }, state: "pending" },
+    data: { state: "failed", doneAt: now, ...(ticketId ? { ticketId } : {}) },
+  });
+  logger.error("bot rows kept failing, giving up", undefined, { ids, ticketId });
+  if (!isClient) return;
+  // replies held behind them can't be placed by rules any more
+  const from = new Date(Math.min(...given.map((r) => r.at.getTime())));
+  await prisma.waInbound.updateMany({
+    where: { chatId, state: "pending", isStaff: true, at: { gte: from } },
+    data: { state: "pick" },
+  });
 }
 
 // open tickets of this chat with the latest whatsapp time seen on each

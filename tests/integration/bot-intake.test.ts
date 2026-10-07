@@ -39,7 +39,7 @@ vi.mock("@/lib/tickets/service", async (importOriginal) => {
   };
 });
 
-const ids = Array.from({ length: 20 }, (_, i) => `it-3c-in-${i + 1}`);
+const ids = Array.from({ length: 30 }, (_, i) => `it-3c-in-${i + 1}`);
 let dir: string;
 
 const T = new Date("2026-10-11T02:00:00Z");
@@ -252,6 +252,36 @@ describe("runBotIntake", () => {
       expect((await runBotIntake(min(23))).tickets).toBe(1);
       expect((await prisma.ticket.findFirstOrThrow()).description).toBe("lagi");
       expect(await cleanBotInbound(new Date(min(23).getTime() + 8 * 86_400_000))).toBe(2);
+    });
+  });
+
+  it("after giving up, a held staff reply waits for a person to place it", async () => {
+    await runWithCompany(await setup("in-21"), async () => {
+      await recordInbound(ev({ text: "a", at: min(0) }), "");
+      await runBotIntake(min(3));
+      const aminah = await prisma.ticket.findFirstOrThrow();
+      fail.senders.add("Siti");
+      await recordInbound(ev({ ...siti, text: "b", at: min(10) }), "");
+      await recordInbound(ev({ ...staff, text: "done", at: min(10.5) }), "");
+      for (let i = 0; i < 6; i++) await runBotIntake(min(11 + i));
+      expect((await prisma.waInbound.findFirstOrThrow({ where: { text: "b" } })).state).toBe("failed");
+      expect((await prisma.waInbound.findFirstOrThrow({ where: { text: "done" } })).state).toBe("pick");
+      expect(await prisma.message.count({ where: { conversationId: aminah.conversationId!, role: "agent" } })).toBe(0);
+    });
+  });
+
+  it("a given-up batch keeps the ticket its messages already reached", async () => {
+    await runWithCompany(await setup("in-22"), async () => {
+      // as if an earlier run saved the message and ticket, then kept failing
+      await recordInbound(ev({ ...siti, waMessageId: "w22", text: "x", at: min(0) }), "");
+      const conv = await prisma.conversation.create({ data: { channel: "whatsapp" } });
+      await prisma.message.create({ data: { conversationId: conv.id, role: "customer", content: "x", importKey: "wam:w22" } });
+      const t = await prisma.ticket.create({
+        data: { number: 1, title: "x", description: "x", conversationId: conv.id, projectId: (await prisma.project.findFirstOrThrow()).id },
+      });
+      fail.senders.add("Siti");
+      for (let i = 0; i < 5; i++) await runBotIntake(min(3 + i));
+      expect(await prisma.waInbound.findFirstOrThrow()).toMatchObject({ state: "failed", ticketId: t.id });
     });
   });
 
