@@ -8,8 +8,8 @@ const PASS = process.env.SMOKE_PASS || "admin123";
 
 const PAGES = [
   "/", "/conversations", "/customers", "/tickets", "/projects", "/knowledge",
-  "/knowledge/test", "/canned-responses", "/automation", "/business-hours",
-  "/team", "/sla", "/closing", "/privacy", "/channels", "/webhooks", "/email-log", "/analytics", "/activity",
+  "/knowledge/test", "/knowledge/drafts", "/canned-responses", "/automation", "/business-hours",
+  "/team", "/sla", "/closing", "/privacy", "/channels", "/imports", "/webhooks", "/email-log", "/analytics", "/activity",
   "/admin", "/api-docs", "/settings", "/more",
   ...(process.env.SMOKE_EXTRA ? process.env.SMOKE_EXTRA.split(",") : []),
 ];

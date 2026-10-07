@@ -111,6 +111,7 @@ describe("company info", () => {
       canManageProjects: false,
       canCheckScreens: false,
       canUpdateTickets: false,
+      canImport: false,
       autoCloseDays: 3,
     });
   });
@@ -142,5 +143,15 @@ describe("company info", () => {
     expect((await parseJsonResponse(await GET(createRequest("/api/company"), {} as never))).canUpdateTickets).toBe(true);
     asRole("viewer");
     expect((await parseJsonResponse(await GET(createRequest("/api/company"), {} as never))).canUpdateTickets).toBe(false);
+  });
+
+  it("returns canImport true for a supervisor, false for staff", async () => {
+    db.settings.upsert.mockResolvedValue({ projectLabel: "Projects", businessName: "Acme", autoCloseDays: 3 });
+    db.company.findFirst.mockResolvedValue({ name: "Acme Sdn Bhd", slug: "acme" });
+    const { GET } = await import("@/app/api/company/route");
+    asRole("supervisor");
+    expect((await parseJsonResponse(await GET(createRequest("/api/company"), {} as never))).canImport).toBe(true);
+    asRole("staff");
+    expect((await parseJsonResponse(await GET(createRequest("/api/company"), {} as never))).canImport).toBe(false);
   });
 });

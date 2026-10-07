@@ -7,6 +7,7 @@ import {
   Ticket,
   type LucideIcon,
 } from "lucide-react";
+import type { Permission } from "@/lib/rbac";
 
 export interface NavItem {
   name: string;
@@ -18,6 +19,7 @@ export interface NavItem {
 export interface SectionLink {
   name: string;
   href: string;
+  permission?: Permission;
 }
 
 export interface SectionGroup {
@@ -37,6 +39,7 @@ export const sectionGroups: SectionGroup[] = [
     name: "Library",
     items: [
       { name: "Articles", href: "/knowledge" },
+      { name: "Waiting approval", href: "/knowledge/drafts", permission: "knowledge:read" },
       { name: "Saved replies", href: "/canned-responses" },
       { name: "Test AI", href: "/knowledge/test" },
     ],
@@ -46,6 +49,13 @@ export const sectionGroups: SectionGroup[] = [
     items: [
       { name: "Projects", href: "/projects" },
       { name: "People", href: "/customers" },
+    ],
+  },
+  {
+    name: "Sources",
+    items: [
+      { name: "Channels", href: "/channels" },
+      { name: "Imports", href: "/imports", permission: "imports:run" },
     ],
   },
   {
@@ -75,7 +85,7 @@ export const mainNav: NavItem[] = [
   { name: "Tickets", href: "/tickets", icon: Ticket },
   { name: "Clients", href: "/projects", icon: Building2, match: hrefsOf("Clients") },
   { name: "Library", href: "/knowledge", icon: BookOpen, match: hrefsOf("Library") },
-  { name: "Sources", href: "/channels", icon: RadioTower },
+  { name: "Sources", href: "/channels", icon: RadioTower, match: hrefsOf("Sources") },
   { name: "Settings", href: "/settings", icon: Settings, match: hrefsOf("Settings") },
 ];
 
@@ -93,6 +103,11 @@ export function isActive(pathname: string, item: NavItem): boolean {
 
 export function groupFor(pathname: string): SectionGroup | null {
   return sectionGroups.find((g) => g.items.some((i) => matches(pathname, i.href))) ?? null;
+}
+
+// links the user's role may open
+export function visibleItems(group: SectionGroup, can: (p: Permission) => boolean): SectionLink[] {
+  return group.items.filter((i) => !i.permission || can(i.permission));
 }
 
 export function activeHref(group: SectionGroup, pathname: string): string | null {
