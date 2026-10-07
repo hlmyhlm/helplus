@@ -205,8 +205,8 @@ describe("POST /api/imports/:id/start after a failure", () => {
     const res = await POST(start(), idCtx);
     expect(res.status).toBe(200);
     expect(db.importJob.updateMany.mock.calls[0][0]).toEqual({
-      where: { id: "j1", status: "failed" },
-      data: { status: "queued", error: "" },
+      where: { id: "j1", status: "failed", fileKey: { not: null } },
+      data: { status: "queued", error: "", finishedAt: null },
     });
   });
 

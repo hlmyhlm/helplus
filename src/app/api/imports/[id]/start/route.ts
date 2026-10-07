@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { withAuth } from "@/lib/tenant/with-auth";
 import { currentCompanyId } from "@/lib/tenant/context";
 import { loadJobFor } from "@/lib/imports/access";
+import { projectProblem } from "@/lib/projects/usable";
 import { maskIC } from "@/lib/privacy/ic-mask";
 import type { ImportOptions } from "@/lib/imports/run";
 import type { CsvField, CsvMapping } from "@/lib/imports/csv/rows";
@@ -25,12 +26,16 @@ export const POST = withAuth("imports:run", async (request: NextRequest, auth, {
 
   const job = await loadJobFor(auth, id);
   if (!job) return NextResponse.json({ error: "Import not found" }, { status: 404 });
+  if (job.status === "failed" || job.status === "uploaded") {
+    const problem = await projectProblem(job.projectId);
+    if (problem) return NextResponse.json({ error: problem }, { status: problem === "Project not found" ? 404 : 400 });
+  }
   // a retry keeps the choices and the progress, the worker carries on where it stopped
   if (job.status === "failed") {
     if (!job.fileKey) return NextResponse.json({ error: "The file is gone, upload it again" }, { status: 409 });
     const { count } = await prisma.importJob.updateMany({
-      where: { id: job.id, status: "failed" },
-      data: { status: "queued", error: "" },
+      where: { id: job.id, status: "failed", fileKey: { not: null } },
+      data: { status: "queued", error: "", finishedAt: null },
     });
     if (!count) return NextResponse.json({ error: "This import has already started" }, { status: 409 });
     return NextResponse.json({ data: { id: job.id, status: "queued" } });

@@ -65,3 +65,36 @@ describe("imports api across companies", () => {
     expect(body.data.map((j: { id: string }) => j.id)).not.toContain(otherJob);
   });
 });
+
+describe("starting and retrying", () => {
+  let projectId: string;
+  const ctxFor = (id: string) => ({ params: Promise.resolve({ id }) });
+  const asA = <T>(fn: () => Promise<T>) => runWithCompany(A, fn);
+
+  beforeAll(async () => {
+    projectId = (await asA(() => prisma.project.create({ data: { name: "Start", isDefault: true } }))).id;
+  });
+
+  it("asks for a new upload when a failed job lost its file", async () => {
+    const job = await asA(() => prisma.importJob.create({ data: { projectId, kind: "csv", status: "failed", fileKey: null } }));
+    const { POST } = await import("@/app/api/imports/[id]/start/route");
+    const res = await POST(req(`/api/imports/${job.id}/start`, "POST"), ctxFor(job.id));
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toContain("upload it again");
+  });
+
+  it("won't start or retry into an archived project", async () => {
+    const archived = (await asA(() => prisma.project.create({ data: { name: "Old", archived: true } }))).id;
+    const uploaded = await asA(() =>
+      prisma.importJob.create({ data: { projectId: archived, kind: "csv", status: "uploaded", fileKey: "c/x/imports/a", preview: { headers: ["ID", "Q"] } } })
+    );
+    const failed = await asA(() => prisma.importJob.create({ data: { projectId: archived, kind: "csv", status: "failed", fileKey: "c/x/imports/b" } }));
+    const { POST } = await import("@/app/api/imports/[id]/start/route");
+    for (const job of [uploaded, failed]) {
+      const res = await POST(req(`/api/imports/${job.id}/start`, "POST"), ctxFor(job.id));
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toBe("Project is archived");
+      expect((await asA(() => prisma.importJob.findUniqueOrThrow({ where: { id: job.id } }))).status).toBe(job.status);
+    }
+  });
+});
