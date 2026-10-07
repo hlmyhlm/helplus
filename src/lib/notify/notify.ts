@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
-import { buildEmail, type EmailKind } from "./templates";
+import { buildEmail, type TicketAlertKind } from "./templates";
 import { recipientsFor } from "./recipients";
 import { queueEmail } from "./outbox";
 
@@ -11,7 +11,7 @@ export async function companyName(): Promise<string> {
 
 // alerts must never break the request that caused them
 export async function notifyTicket(
-  kind: Exclude<EmailKind, "close_warning">,
+  kind: TicketAlertKind,
   t: { id: string; number: number; projectId: string; assigneeId: string | null },
   opts: { actorId?: string } = {}
 ): Promise<void> {

@@ -2,11 +2,6 @@ import { describe, it, expect, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { ChannelInUseError } from "@/lib/errors";
 
-vi.mock("@/lib/channels/whatsapp", async () => {
-  const { ChannelInUseError } = await import("@/lib/errors");
-  const inUse = () => Promise.reject(new ChannelInUseError("WhatsApp"));
-  return { getWhatsAppStatus: vi.fn(), initWhatsApp: vi.fn(inUse), disconnectWhatsApp: vi.fn(inUse) };
-});
 vi.mock("@/lib/channels/email", async () => {
   const { ChannelInUseError } = await import("@/lib/errors");
   const inUse = () => Promise.reject(new ChannelInUseError("email"));
@@ -22,8 +17,6 @@ const post = (path: string, action: string) =>
 
 describe("channel used by another company", () => {
   it.each([
-    ["whatsapp", "connect", "WhatsApp"],
-    ["whatsapp", "disconnect", "WhatsApp"],
     ["email", "connect", "email"],
     ["email", "disconnect", "email"],
   ] as const)("%s %s returns 409", async (path, action, label) => {

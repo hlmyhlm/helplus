@@ -1,40 +1,38 @@
 import { NextRequest, NextResponse } from "next/server";
-import {
-  getWhatsAppStatus,
-  initWhatsApp,
-  disconnectWhatsApp,
-} from "@/lib/channels/whatsapp";
 import { withAuth } from "@/lib/tenant/with-auth";
-import { ChannelInUseError } from "@/lib/errors";
+import { hasPermission } from "@/lib/rbac";
+import { readBot, requestStart, requestStop, STALE_MS, type BotState } from "@/lib/bot/state";
 
-export const GET = withAuth("channels:read", async (_request: NextRequest, _auth) => {
-  const status = getWhatsAppStatus();
-  return NextResponse.json(status);
+// the bot itself runs in the worker; this route only reads and requests changes on the channel row
+function view(s: BotState, showQr: boolean) {
+  return {
+    status: s.status,
+    stale: s.status === "connected" && (!s.seenAt || Date.now() - s.seenAt.getTime() > STALE_MS),
+    phone: s.phone,
+    error: s.error,
+    seenAt: s.seenAt ? s.seenAt.toISOString() : null,
+    qr: showQr ? s.qr : null,
+  };
+}
+
+export const GET = withAuth("channels:read", async (_request: NextRequest, auth) => {
+  return NextResponse.json(view(await readBot(), hasPermission(auth.role, "channels:update")));
 });
 
-export const POST = withAuth("channels:update", async (request: NextRequest, _auth) => {
-  try {
-    const body = await request.json();
-    const { action } = body;
+export const POST = withAuth("channels:update", async (request: NextRequest) => {
+  const body = await request.json().catch(() => ({}));
+  const action = (body as { action?: unknown }).action;
 
-    if (action === "connect") {
-      await initWhatsApp();
-      // Wait a moment for QR to generate
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-      const status = getWhatsAppStatus();
-      return NextResponse.json(status);
-    }
-
-    if (action === "disconnect") {
-      await disconnectWhatsApp();
-      return NextResponse.json({ status: "disconnected" });
-    }
-
+  if (action === "connect") {
+    if (!(await requestStart())) return NextResponse.json({ error: "Already running" }, { status: 409 });
+  } else if (action === "stop" || action === "unlink") {
+    if (!(await requestStop(action === "unlink"))) return NextResponse.json({ error: "Not running" }, { status: 409 });
+  } else {
     return NextResponse.json({ error: "Invalid action" }, { status: 400 });
-  } catch (error) {
-    if (error instanceof ChannelInUseError) {
-      return NextResponse.json({ error: error.message }, { status: 409 });
-    }
-    throw error;
   }
+  return NextResponse.json(view(await readBot(), true));
+});
+
+export const PUT = withAuth("channels:update", async () => {
+  return NextResponse.json({ error: "Use connect, stop or unlink" }, { status: 405 });
 });

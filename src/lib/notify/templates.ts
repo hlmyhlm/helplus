@@ -1,10 +1,12 @@
-export type EmailKind = "new_ticket" | "reopened" | "sla_warning" | "sla_breach" | "close_warning";
+export type EmailKind = "new_ticket" | "reopened" | "sla_warning" | "sla_breach" | "close_warning" | "bot_disconnected";
+// staff alerts about one ticket
+export type TicketAlertKind = Exclude<EmailKind, "close_warning" | "bot_disconnected">;
 
 export function ticketLink(id: string): string {
   return `${(process.env.NEXT_PUBLIC_APP_URL ?? "").replace(/\/$/, "")}/tickets/${id}`;
 }
 
-const STAFF: Record<Exclude<EmailKind, "close_warning">, (n: number) => [string, string]> = {
+const STAFF: Record<TicketAlertKind, (n: number) => [string, string]> = {
   new_ticket: (n) => [`New ticket #${n}`, `Ticket #${n} was opened.`],
   reopened: (n) => [`Ticket #${n} was reopened`, `Ticket #${n} was reopened and is back with you.`],
   sla_warning: (n) => [`Ticket #${n} is due soon`, `Ticket #${n} is close to its SLA time.`],
@@ -13,7 +15,7 @@ const STAFF: Record<Exclude<EmailKind, "close_warning">, (n: number) => [string,
 
 // link only: never ticket text, it may hold client details
 export function buildEmail(
-  kind: EmailKind,
+  kind: TicketAlertKind | "close_warning",
   t: { id: string; number: number },
   extra: { companyName: string; days?: number }
 ): { subject: string; body: string } {

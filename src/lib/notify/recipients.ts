@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { canSeeProject } from "@/lib/tickets/access";
-import type { EmailKind } from "./templates";
+import type { TicketAlertKind } from "./templates";
 
 const MANAGERS = ["supervisor", "admin", "owner"];
 
@@ -16,7 +16,7 @@ async function emailOf(id: string | null): Promise<string[]> {
 }
 
 export async function recipientsFor(
-  kind: Exclude<EmailKind, "close_warning">,
+  kind: TicketAlertKind,
   t: { projectId: string; assigneeId: string | null },
   actorId?: string
 ): Promise<string[]> {
