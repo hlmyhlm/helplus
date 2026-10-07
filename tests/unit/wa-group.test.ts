@@ -1,0 +1,66 @@
+import { describe, it, expect } from "vitest";
+import { groupIssues, messageKey, issueKey } from "@/lib/imports/whatsapp/group";
+import type { ChatMessage } from "@/lib/imports/whatsapp/parse";
+
+const t0 = Date.UTC(2026, 9, 12, 1, 0);
+const msg = (min: number, sender: string, text = "x", system = false): ChatMessage => ({
+  at: new Date(t0 + min * 60_000),
+  sender,
+  text,
+  attachment: null,
+  system,
+});
+const staff = (s: string) => s.startsWith("Support");
+
+describe("groupIssues", () => {
+  it("keeps a question and its replies together", () => {
+    const { issues } = groupIssues([msg(0, "Aminah"), msg(1, "Aminah"), msg(20, "Support Ali"), msg(25, "Aminah", "thanks")], staff);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].answered).toBe(true);
+    expect(issues[0].firstReplyAt).toEqual(new Date(t0 + 20 * 60_000));
+  });
+
+  it("starts a new issue after an answer and a 30 minute gap", () => {
+    const { issues } = groupIssues([msg(0, "Aminah"), msg(10, "Support Ali"), msg(50, "Aminah", "another thing")], staff);
+    expect(issues).toHaveLength(2);
+  });
+
+  it("starts a new issue after 4 quiet hours even without an answer", () => {
+    const { issues } = groupIssues([msg(0, "Ben"), msg(5 * 60, "Ben")], staff);
+    expect(issues).toHaveLength(2);
+    expect(issues.every((i) => !i.answered)).toBe(true);
+  });
+
+  it("lets different clients ask inside the same open issue window", () => {
+    const { issues } = groupIssues([msg(0, "Aminah"), msg(3, "Ben"), msg(10, "Support Ali")], staff);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].client).toBe("Aminah");
+  });
+
+  it("skips system lines and counts staff announcements", () => {
+    const { issues, announcements } = groupIssues([msg(0, "", "added", true), msg(1, "Support Ali", "Server down tonight")], staff);
+    expect(issues).toHaveLength(0);
+    expect(announcements).toBe(1);
+  });
+});
+
+describe("keys", () => {
+  it("are stable and change with the content", () => {
+    const a = msg(0, "Aminah", "hello");
+    expect(messageKey("p1", a)).toBe(messageKey("p1", { ...a }));
+    expect(messageKey("p1", a)).not.toBe(messageKey("p1", { ...a, text: "hello!" }));
+    expect(messageKey("p1", a)).not.toBe(messageKey("p2", a));
+    expect(messageKey("p1", a)).toMatch(/^wa:[0-9a-f]{64}$/);
+  });
+
+  it("ignore seconds so iphone and android exports of the same chat match", () => {
+    const a = msg(0, "Aminah", "hello");
+    const b = { ...a, at: new Date(a.at.getTime() + 37_000) };
+    expect(messageKey("p1", a)).toBe(messageKey("p1", b));
+  });
+
+  it("issue key is the first message key", () => {
+    const { issues } = groupIssues([msg(0, "Aminah", "q")], staff);
+    expect(issueKey("p1", issues[0])).toBe(messageKey("p1", issues[0].messages[0]).replace(/^wa:/, "wa-issue:"));
+  });
+});
