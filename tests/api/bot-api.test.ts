@@ -23,7 +23,17 @@ beforeEach(() => {
     for (const fn of Object.values(db[m])) fn.mockReset();
   }
   vi.mocked(placeReply).mockReset();
+  vi.mocked(prisma.$transaction).mockReset();
+  vi.mocked(prisma.$transaction).mockImplementation((async (ops: unknown[]) => Promise.all(ops)) as never);
   asRole("admin");
+});
+
+describe("chatWhere", () => {
+  it("is open for see-all roles and adds not-linked chats for limited ones", async () => {
+    const { chatWhere } = await import("@/lib/bot/scope");
+    expect(chatWhere(null)).toEqual({});
+    expect(chatWhere(["p1"])).toEqual({ OR: [{ projectId: { in: ["p1"] } }, { projectId: null }] });
+  });
 });
 
 describe("GET /api/bot/chats", () => {
@@ -89,6 +99,18 @@ describe("PATCH /api/bot/chats/:id", () => {
     expect(db.waChat.update).not.toHaveBeenCalled();
   });
 
+  it("refuses a missing project with projectProblem's message", async () => {
+    db.waChat.findFirst.mockResolvedValue({ id: "c1", projectId: null });
+    db.project.findFirst.mockResolvedValue(null);
+
+    const { PATCH } = await import("@/app/api/bot/chats/[id]/route");
+    const res = await PATCH(patch("nope"), ctx("c1"));
+
+    expect(res.status).toBe(400);
+    expect((await parseJsonResponse(res)).error).toBe("Project not found");
+    expect(db.waChat.update).not.toHaveBeenCalled();
+  });
+
   it("unlinking ignores the chat's pending rows", async () => {
     db.waChat.findFirst.mockResolvedValue({ id: "c1", projectId: "p1" });
     db.waChat.update.mockResolvedValue({ id: "c1", projectId: null });
@@ -98,7 +120,9 @@ describe("PATCH /api/bot/chats/:id", () => {
     const res = await PATCH(patch(null), ctx("c1"));
 
     expect(res.status).toBe(200);
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
     expect(db.waChat.update).toHaveBeenCalledWith({ where: { id: "c1" }, data: { projectId: null } });
+    expect((await parseJsonResponse(res)).projectId).toBeNull();
     const call = db.waInbound.updateMany.mock.calls[0][0];
     expect(call.where).toEqual({ chatId: "c1", state: "pending" });
     expect(call.data.state).toBe("ignored");
@@ -170,6 +194,16 @@ describe("PATCH /api/bot/senders", () => {
     expect(await parseJsonResponse(res)).toEqual({ name: "Ali [IC HIDDEN]", staff: true });
   });
 
+  it("stores the name untrimmed, the way the bot saves it", async () => {
+    db.chatSender.upsert.mockResolvedValue({});
+    const { PATCH } = await import("@/app/api/bot/senders/route");
+    await PATCH(
+      createRequest("/api/bot/senders", { method: "PATCH", body: { name: "Siti ", staff: false } }),
+      {} as never
+    );
+    expect(db.chatSender.upsert.mock.calls[0][0].create.name).toBe("Siti ");
+  });
+
   it("400s on a bad body", async () => {
     const { PATCH } = await import("@/app/api/bot/senders/route");
     const res = await PATCH(
@@ -214,6 +248,19 @@ describe("GET /api/bot/picks", () => {
 describe("POST /api/bot/picks/:id", () => {
   const post = (ticketId: unknown) =>
     createRequest("/api/bot/picks/w1", { method: "POST", body: { ticketId } });
+
+  beforeEach(() => {
+    db.waInbound.findFirst.mockResolvedValue({ id: "w1" });
+  });
+
+  it("404s when the pick isn't there", async () => {
+    db.waInbound.findFirst.mockResolvedValue(null);
+    const { POST } = await import("@/app/api/bot/picks/[id]/route");
+    const res = await POST(post("t1"), ctx("w1"));
+    expect(res.status).toBe(404);
+    expect(db.waInbound.findFirst.mock.calls[0][0].where).toEqual({ id: "w1", chat: {} });
+    expect(placeReply).not.toHaveBeenCalled();
+  });
 
   it("places the reply", async () => {
     vi.mocked(placeReply).mockResolvedValue("placed");

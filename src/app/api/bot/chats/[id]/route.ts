@@ -29,14 +29,17 @@ export const PATCH = withAuth("channels:read", async (request: NextRequest, auth
       if (problem) return NextResponse.json({ error: problem }, { status: 400 });
     }
 
-    const saved = await prisma.waChat.update({ where: { id }, data: { projectId } });
+    if (projectId !== null) {
+      return NextResponse.json(await prisma.waChat.update({ where: { id }, data: { projectId } }));
+    }
     // messages waiting in an unlinked chat would never be picked up
-    if (projectId === null) {
-      await prisma.waInbound.updateMany({
+    const [, saved] = await prisma.$transaction([
+      prisma.waInbound.updateMany({
         where: { chatId: id, state: "pending" },
         data: { state: "ignored", doneAt: new Date() },
-      });
-    }
+      }),
+      prisma.waChat.update({ where: { id }, data: { projectId: null } }),
+    ]);
     return NextResponse.json(saved);
   } catch (error) {
     logger.error("Failed to link bot chat:", error);

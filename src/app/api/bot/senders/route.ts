@@ -67,7 +67,7 @@ export const PATCH = withAuth("channels:read", async (request: NextRequest) => {
       return NextResponse.json({ error: "Send a name and staff true or false" }, { status: 400 });
     }
     // same masking and length the bot uses when it saves a sender
-    const masked = maskIC(name.trim()).text.slice(0, 120);
+    const masked = maskIC(name).text.slice(0, 120);
     await prisma.chatSender.upsert({
       where: { companyId_name: { companyId: currentCompanyId(), name: masked } },
       create: { name: masked, isStaff: staff },

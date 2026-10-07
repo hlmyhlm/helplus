@@ -23,10 +23,8 @@ export const POST = withAuth("channels:read", async (request: NextRequest, auth,
     }
 
     const ids = await allowedProjectIds(auth);
-    if (ids !== null) {
-      const row = await prisma.waInbound.findFirst({ where: { id, chat: chatWhere(ids) }, select: { id: true } });
-      if (!row) return NextResponse.json({ error: "Reply not found" }, { status: 404 });
-    }
+    const row = await prisma.waInbound.findFirst({ where: { id, chat: chatWhere(ids) }, select: { id: true } });
+    if (!row) return NextResponse.json({ error: "Reply not found" }, { status: 404 });
 
     const result = await placeReply(id, ticketId, auth.userId);
     if (result === "gone") {
