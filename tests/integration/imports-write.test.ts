@@ -10,6 +10,7 @@ import { closeOcr } from "@/lib/ocr/tesseract";
 
 const A = "it-3b-write";
 const asA = <T>(fn: () => Promise<T>) => runWithCompany(A, fn);
+const IC_RE = /\d{6}[\s-]?\d{2}[\s-]?\d{4}/;
 let dir: string;
 let projectId: string;
 
@@ -49,6 +50,7 @@ describe("writeImportedTicket", () => {
     const last = new Date("2026-01-01T09:35:00Z");
     const q = qa({
       status: "closed",
+      client: { name: "Ali Ahmad", contact: "my IC is 900101-14-5678" },
       messages: [
         { role: "customer", text: "my IC is 900101-14-5678 please help", at: first, importKey: "wa:m1" },
         { role: "agent", text: "sure, noted IC 900101-14-5678", at: reply, importKey: "wa:m2" },
@@ -66,18 +68,23 @@ describe("writeImportedTicket", () => {
     expect(ticket.closedAt).toEqual(last);
     expect(ticket.resolveDueAt).toBeNull();
     expect(ticket.status).toBe("closed");
-    expect(ticket.title).not.toMatch(/\d{6}[\s-]?\d{2}[\s-]?\d{4}/);
+    expect(ticket.title).not.toMatch(IC_RE);
     expect(ticket.description).toContain("[IC HIDDEN]");
-    expect(ticket.description).not.toMatch(/\d{6}[\s-]?\d{2}[\s-]?\d{4}/);
+    expect(ticket.description).not.toMatch(IC_RE);
     const msgs = await asA(() =>
       prisma.message.findMany({ where: { conversationId: ticket.conversationId! }, orderBy: { createdAt: "asc" } })
     );
     expect(msgs).toHaveLength(3);
     for (const m of msgs) {
-      expect(m.content).not.toMatch(/\d{6}[\s-]?\d{2}[\s-]?\d{4}/);
+      expect(m.content).not.toMatch(IC_RE);
       expect(m.importKey).not.toBeNull();
     }
     expect(msgs[1].content).toContain("[IC HIDDEN]");
+
+    const conv = await asA(() => prisma.conversation.findUniqueOrThrow({ where: { id: ticket.conversationId! } }));
+    expect(conv.customerName).not.toMatch(IC_RE);
+    expect(conv.customerContact).not.toMatch(IC_RE);
+    expect(conv.customerContact).toContain("[IC HIDDEN]");
   });
 
   it("queues no emails even for an admin with notifyNew", async () => {
@@ -113,7 +120,7 @@ describe("writeImportedTicket", () => {
     expect(draft.sourceTicketId).toBe(result.ticketId);
     expect(draft.content.startsWith("Q: ")).toBe(true);
     expect(draft.content).toContain("\n\nA: ");
-    expect(draft.content).not.toMatch(/\d{6}[\s-]?\d{2}[\s-]?\d{4}/);
+    expect(draft.content).not.toMatch(IC_RE);
     const cat = await asA(() => prisma.category.findUniqueOrThrow({ where: { id: draft.categoryId } }));
     expect(cat.name).toBe("Imported");
     expect(await asA(() => importedCategoryId())).toBe(cat.id);
@@ -149,6 +156,43 @@ describe("writeImportedTicket", () => {
     expect(racey).toHaveLength(1);
   });
 
+  it("keeps all the winning ticket's messages when two imports race with import-keyed messages", async () => {
+    const q = qa({
+      importKey: "wa:race-msgs-1",
+      status: "new",
+      messages: [
+        { role: "customer", text: "first", at: new Date("2026-01-15T00:00:00Z"), importKey: "wa:race-msgs-1-a" },
+        { role: "customer", text: "second", at: new Date("2026-01-15T00:01:00Z"), importKey: "wa:race-msgs-1-b" },
+      ],
+    });
+    const [a, b] = await Promise.all([asA(() => writeImportedTicket(q)), asA(() => writeImportedTicket(q))]);
+    const winner = [a, b].find((r) => r.created);
+    expect(winner).toBeTruthy();
+    const ticket = await asA(() => prisma.ticket.findUniqueOrThrow({ where: { id: winner!.ticketId! } }));
+    const msgs = await asA(() => prisma.message.findMany({ where: { conversationId: ticket.conversationId! } }));
+    expect(msgs).toHaveLength(2);
+  });
+
+  it("rethrows a ticket number collision that isn't a real import key race, after cleanup", async () => {
+    const counter = await asA(() => prisma.ticketCounter.findFirstOrThrow());
+    const collideNumber = counter.next;
+    await asA(() => prisma.ticket.create({ data: { number: collideNumber, title: "decoy", description: "", projectId } }));
+    // put the counter back so nextTicketNumber() hands out the same, already-taken number
+    await asA(() => prisma.ticketCounter.update({ where: { companyId: A }, data: { next: collideNumber } }));
+
+    const q = qa({
+      importKey: "wa:collide-1",
+      messages: [{ role: "customer", text: "collide me", at: new Date("2026-01-16T00:00:00Z") }],
+      status: "new",
+    });
+    await expect(asA(() => writeImportedTicket(q))).rejects.toMatchObject({ code: "P2002" });
+
+    const ticketWithKey = await asA(() => prisma.ticket.findFirst({ where: { importKey: "wa:collide-1" } }));
+    expect(ticketWithKey).toBeNull();
+    const orphanMsgs = await asA(() => prisma.message.findMany({ where: { content: "collide me" } }));
+    expect(orphanMsgs).toHaveLength(0);
+  });
+
   it("creates an open ticket with no draft for an unanswered, still-fresh chat", async () => {
     const q = qa({
       status: "new",
@@ -162,10 +206,10 @@ describe("writeImportedTicket", () => {
     expect(ticket.firstReplyAt).toBeNull();
   });
 
-  it("closes an unanswered chat with an internal note when marked closed", async () => {
+  it("closes an unanswered chat with a masked internal note when marked closed", async () => {
     const q = qa({
       status: "closed",
-      closeNote: "No reply in the imported chat",
+      closeNote: "No reply in the imported chat. IC on file: 900101-14-5678",
       messages: [{ role: "customer", text: "anyone there?", at: new Date("2026-01-06T00:00:00Z") }],
     });
     const result = await asA(() => writeImportedTicket(q));
@@ -173,7 +217,9 @@ describe("writeImportedTicket", () => {
     expect(ticket.status).toBe("closed");
     expect(ticket.firstReplyAt).toBeNull();
     const notes = await asA(() => prisma.internalNote.findMany({ where: { conversationId: ticket.conversationId! } }));
-    expect(notes.map((n) => n.content)).toEqual(["No reply in the imported chat"]);
+    expect(notes).toHaveLength(1);
+    expect(notes[0].content).toContain("[IC HIDDEN]");
+    expect(notes[0].content).not.toMatch(IC_RE);
   });
 
   it("finds or creates one customer by phone-like name and sets its project", async () => {
@@ -202,6 +248,118 @@ describe("writeImportedTicket", () => {
     expect(conv2.customerId).toBe(conv1.customerId);
   });
 
+  it("normalises a leading 0 to 60 so a local and an intl number match the same customer", async () => {
+    const q1 = qa({
+      client: { name: "012-999 1111" },
+      messages: [{ role: "customer", text: "hi", at: new Date("2026-01-10T00:00:00Z") }],
+      status: "new",
+    });
+    const r1 = await asA(() => writeImportedTicket(q1));
+    const t1 = await asA(() => prisma.ticket.findUniqueOrThrow({ where: { id: r1.ticketId! } }));
+    const conv1 = await asA(() => prisma.conversation.findUniqueOrThrow({ where: { id: t1.conversationId! } }));
+    const customer1 = await asA(() => prisma.customer.findUniqueOrThrow({ where: { id: conv1.customerId! } }));
+    expect(customer1.phone).toBe("60129991111");
+
+    const q2 = qa({
+      client: { name: "+60 12-999 1111" },
+      messages: [{ role: "customer", text: "hi again", at: new Date("2026-01-10T01:00:00Z") }],
+      status: "new",
+    });
+    const r2 = await asA(() => writeImportedTicket(q2));
+    const t2 = await asA(() => prisma.ticket.findUniqueOrThrow({ where: { id: r2.ticketId! } }));
+    const conv2 = await asA(() => prisma.conversation.findUniqueOrThrow({ where: { id: t2.conversationId! } }));
+    expect(conv2.customerId).toBe(conv1.customerId);
+  });
+
+  it("never stores an IC that looks like a phone number in Customer.phone", async () => {
+    const q = qa({
+      client: { name: "Caller", contact: "900101-14-5678" },
+      messages: [{ role: "customer", text: "hi", at: new Date("2026-01-09T00:00:00Z") }],
+      status: "new",
+    });
+    const result = await asA(() => writeImportedTicket(q));
+    const ticket = await asA(() => prisma.ticket.findUniqueOrThrow({ where: { id: result.ticketId! } }));
+    const conv = await asA(() => prisma.conversation.findUniqueOrThrow({ where: { id: ticket.conversationId! } }));
+    expect(conv.customerContact).not.toMatch(IC_RE);
+    expect(conv.customerContact).toContain("[IC HIDDEN]");
+    const customer = await asA(() => prisma.customer.findUniqueOrThrow({ where: { id: conv.customerId! } }));
+    expect(customer.phone).toBe("");
+    expect(customer.name).not.toMatch(IC_RE);
+  });
+
+  it("fills in a phone match's missing project instead of creating a new customer", async () => {
+    const existing = await asA(() => prisma.customer.create({ data: { name: "No Project Yet", phone: "60112223333" } }));
+    expect(existing.projectId).toBeNull();
+    const q = qa({
+      client: { name: "011-222 3333" }, // normalises to the same phone as `existing`
+      messages: [{ role: "customer", text: "hi", at: new Date("2026-01-11T00:00:00Z") }],
+      status: "new",
+    });
+    const result = await asA(() => writeImportedTicket(q));
+    const ticket = await asA(() => prisma.ticket.findUniqueOrThrow({ where: { id: result.ticketId! } }));
+    const conv = await asA(() => prisma.conversation.findUniqueOrThrow({ where: { id: ticket.conversationId! } }));
+    expect(conv.customerId).toBe(existing.id);
+    const after = await asA(() => prisma.customer.findUniqueOrThrow({ where: { id: existing.id } }));
+    expect(after.projectId).toBe(projectId);
+  });
+
+  it("reuses a name-only match within the same project but not a different one", async () => {
+    const name = "Siti Aminah";
+    const q1 = qa({
+      client: { name },
+      messages: [{ role: "customer", text: "hi", at: new Date("2026-01-12T00:00:00Z") }],
+      status: "new",
+    });
+    const r1 = await asA(() => writeImportedTicket(q1));
+    const t1 = await asA(() => prisma.ticket.findUniqueOrThrow({ where: { id: r1.ticketId! } }));
+    const conv1 = await asA(() => prisma.conversation.findUniqueOrThrow({ where: { id: t1.conversationId! } }));
+
+    const q2 = qa({
+      client: { name },
+      messages: [{ role: "customer", text: "hi again", at: new Date("2026-01-12T01:00:00Z") }],
+      status: "new",
+    });
+    const r2 = await asA(() => writeImportedTicket(q2));
+    const t2 = await asA(() => prisma.ticket.findUniqueOrThrow({ where: { id: r2.ticketId! } }));
+    const conv2 = await asA(() => prisma.conversation.findUniqueOrThrow({ where: { id: t2.conversationId! } }));
+    expect(conv2.customerId).toBe(conv1.customerId);
+
+    const otherProjectId = (await asA(() => prisma.project.create({ data: { name: "Other" } }))).id;
+    const q3 = qa({
+      projectId: otherProjectId,
+      client: { name },
+      messages: [{ role: "customer", text: "hi from another project", at: new Date("2026-01-12T02:00:00Z") }],
+      status: "new",
+    });
+    const r3 = await asA(() => writeImportedTicket(q3));
+    const t3 = await asA(() => prisma.ticket.findUniqueOrThrow({ where: { id: r3.ticketId! } }));
+    const conv3 = await asA(() => prisma.conversation.findUniqueOrThrow({ where: { id: t3.conversationId! } }));
+    expect(conv3.customerId).not.toBe(conv1.customerId);
+  });
+
+  it("never reuses a customer for a placeholder name", async () => {
+    const q1 = qa({
+      client: { name: "" },
+      messages: [{ role: "customer", text: "hi", at: new Date("2026-01-13T00:00:00Z") }],
+      status: "new",
+    });
+    const r1 = await asA(() => writeImportedTicket(q1));
+    const t1 = await asA(() => prisma.ticket.findUniqueOrThrow({ where: { id: r1.ticketId! } }));
+    const conv1 = await asA(() => prisma.conversation.findUniqueOrThrow({ where: { id: t1.conversationId! } }));
+    const customer1 = await asA(() => prisma.customer.findUniqueOrThrow({ where: { id: conv1.customerId! } }));
+    expect(customer1.name).toBe("Unknown");
+
+    const q2 = qa({
+      client: { name: "" },
+      messages: [{ role: "customer", text: "hi again", at: new Date("2026-01-13T01:00:00Z") }],
+      status: "new",
+    });
+    const r2 = await asA(() => writeImportedTicket(q2));
+    const t2 = await asA(() => prisma.ticket.findUniqueOrThrow({ where: { id: r2.ticketId! } }));
+    const conv2 = await asA(() => prisma.conversation.findUniqueOrThrow({ where: { id: t2.conversationId! } }));
+    expect(conv2.customerId).not.toBe(conv1.customerId);
+  });
+
   it("stores an allowed image as a pending attachment linked to its message and skips a non-image", async () => {
     const q = qa({
       status: "closed",
@@ -225,5 +383,28 @@ describe("writeImportedTicket", () => {
     expect(attachments).toHaveLength(1);
     expect(attachments[0].status).toBe("pending");
     expect(attachments[0].messageId).toBe(msgs[1].id);
+  });
+
+  it("attaches an image to the right message even when messages arrive out of order", async () => {
+    const earlier = new Date("2026-01-14T00:00:00Z");
+    const later = new Date("2026-01-14T00:05:00Z");
+    const q = qa({
+      status: "closed",
+      // input order is reversed: index 0 is actually the later message
+      messages: [
+        { role: "agent", text: "got it, here's a screenshot", at: later },
+        { role: "customer", text: "see this", at: earlier },
+      ],
+      images: [{ fileName: "shot.png", data: await png(), messageIndex: 0 }],
+    });
+    const result = await asA(() => writeImportedTicket(q));
+    expect(result.images).toBe(1);
+    const ticket = await asA(() => prisma.ticket.findUniqueOrThrow({ where: { id: result.ticketId! } }));
+    const laterMsg = await asA(() =>
+      prisma.message.findFirstOrThrow({ where: { conversationId: ticket.conversationId!, createdAt: later } })
+    );
+    const attachments = await asA(() => prisma.attachment.findMany({ where: { ticketId: ticket.id } }));
+    expect(attachments).toHaveLength(1);
+    expect(attachments[0].messageId).toBe(laterMsg.id);
   });
 });

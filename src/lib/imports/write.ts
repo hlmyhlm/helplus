@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { maskIC } from "@/lib/privacy/ic-mask";
+import { maskIC, IC_PLACEHOLDER } from "@/lib/privacy/ic-mask";
 import { nextTicketNumber } from "@/lib/tickets/number";
 import { titleFrom } from "@/lib/tickets/service";
 import { addAttachment } from "@/lib/attachments/service";
@@ -31,6 +31,7 @@ export interface WriteResult {
 const mask = (s: string) => maskIC(s).text;
 const IMPORTED = "Imported";
 const isP2002 = (error: unknown) => (error as { code?: string })?.code === "P2002";
+const PHONE_CHARS = /^[+\d\s()-]+$/;
 
 export async function importedCategoryId(): Promise<string> {
   const found = await prisma.category.findFirst({ where: { name: IMPORTED }, select: { id: true } });
@@ -39,21 +40,37 @@ export async function importedCategoryId(): Promise<string> {
   return created.id;
 }
 
+// malaysian local numbers drop the leading 0 for the 60 country code
+function phoneDigits(raw: string): string | null {
+  if (!PHONE_CHARS.test(raw)) return null;
+  let digits = raw.replace(/\D/g, "");
+  if (digits.startsWith("0")) digits = `60${digits.slice(1)}`;
+  return digits.length >= 8 ? digits : null;
+}
+
+const isPlaceholderName = (name: string) => name === "Unknown" || name.includes(IC_PLACEHOLDER);
+
 // a sender that looks like a number is matched by phone, anyone else by name
 async function customerFor(projectId: string, client: { name: string; contact?: string }): Promise<string> {
   const raw = client.contact || client.name;
-  const digits = raw.replace(/\D/g, "");
-  const isPhone = digits.length >= 8 && /^[+\d\s()-]+$/.test(raw);
+  // an IC can look like a phone number too, so only trust it as one when it isn't an IC
+  const phone = maskIC(raw).count === 0 ? phoneDigits(raw) : null;
   const name = mask(client.name).slice(0, 200) || "Unknown";
-  const existing = await prisma.customer.findFirst({
-    where: isPhone ? { phone: digits } : { name },
-    select: { id: true },
-  });
-  if (existing) return existing.id;
-  const created = await prisma.customer.create({
-    data: { name, phone: isPhone ? digits : "", projectId },
-  });
-  return created.id;
+
+  if (phone) {
+    const existing = await prisma.customer.findFirst({ where: { phone }, select: { id: true, projectId: true } });
+    if (existing) {
+      if (!existing.projectId) await prisma.customer.update({ where: { id: existing.id }, data: { projectId } });
+      return existing.id;
+    }
+    return (await prisma.customer.create({ data: { name, phone, projectId } })).id;
+  }
+
+  if (!isPlaceholderName(name)) {
+    const existing = await prisma.customer.findFirst({ where: { name, projectId }, select: { id: true } });
+    if (existing) return existing.id;
+  }
+  return (await prisma.customer.create({ data: { name, phone: "", projectId } })).id;
 }
 
 export async function writeImportedTicket(qa: ImportedQa): Promise<WriteResult> {
@@ -61,7 +78,9 @@ export async function writeImportedTicket(qa: ImportedQa): Promise<WriteResult> 
     return { created: false, images: 0, skippedImages: 0 };
   }
 
-  const msgs = [...qa.messages].sort((a, b) => a.at.getTime() - b.at.getTime());
+  // sort by time but keep each message's original position, so images can still point back by it
+  const order = qa.messages.map((_, i) => i).sort((a, b) => qa.messages[a].at.getTime() - qa.messages[b].at.getTime());
+  const msgs = order.map((i) => qa.messages[i]);
   const question = msgs.filter((m) => m.role === "customer").map((m) => mask(m.text)).join("\n").trim();
   const answers = msgs.filter((m) => m.role === "agent").map((m) => mask(m.text)).join("\n").trim();
   const firstReply = msgs.find((m) => m.role === "agent")?.at ?? null;
@@ -79,27 +98,6 @@ export async function writeImportedTicket(qa: ImportedQa): Promise<WriteResult> 
       createdAt: first,
     },
   });
-
-  // keep index alignment with msgs so images can point back by position, even past a skipped duplicate
-  const saved: ({ id: string } | null)[] = [];
-  for (const m of msgs) {
-    try {
-      const row = await prisma.message.create({
-        data: {
-          conversationId: conversation.id,
-          role: m.role,
-          content: mask(m.text),
-          createdAt: m.at,
-          importKey: m.importKey ?? null,
-        },
-      });
-      saved.push(row);
-    } catch (error) {
-      // a re-imported overlap can hit a message we already saved, skip it and keep going
-      if (!isP2002(error)) throw error;
-      saved.push(null);
-    }
-  }
 
   const closed = qa.status === "closed";
   let ticket;
@@ -123,14 +121,38 @@ export async function writeImportedTicket(qa: ImportedQa): Promise<WriteResult> 
       },
     });
   } catch (error) {
-    // two imports raced past the earlier check, the other one won
     if (!isP2002(error)) throw error;
+    // the importKey race was real only if another ticket actually holds it; otherwise this
+    // was a plain ticket-number collision, which must not be swallowed
+    const already = await prisma.ticket.findFirst({ where: { importKey: qa.importKey }, select: { id: true } });
     await prisma.conversation.delete({ where: { id: conversation.id } });
-    return { created: false, images: 0, skippedImages: 0 };
+    if (already) return { created: false, images: 0, skippedImages: 0 };
+    throw error;
+  }
+
+  // keep index alignment with qa.messages (not the sorted order) so images land on the right one
+  const savedByInput: ({ id: string } | null)[] = new Array(qa.messages.length).fill(null);
+  for (let k = 0; k < msgs.length; k++) {
+    const m = msgs[k];
+    try {
+      const row = await prisma.message.create({
+        data: {
+          conversationId: conversation.id,
+          role: m.role,
+          content: mask(m.text),
+          createdAt: m.at,
+          importKey: m.importKey ?? null,
+        },
+      });
+      savedByInput[order[k]] = row;
+    } catch (error) {
+      // a re-imported overlap can hit a message we already saved, skip it and keep going
+      if (!isP2002(error)) throw error;
+    }
   }
 
   if (qa.closeNote) {
-    await prisma.internalNote.create({ data: { conversationId: conversation.id, content: qa.closeNote, authorName: "Help+" } });
+    await prisma.internalNote.create({ data: { conversationId: conversation.id, content: mask(qa.closeNote), authorName: "Help+" } });
   }
 
   let draftId: string | undefined;
@@ -157,7 +179,7 @@ export async function writeImportedTicket(qa: ImportedQa): Promise<WriteResult> 
       continue;
     }
     await addAttachment(
-      { ticketId: ticket.id, messageId: saved[img.messageIndex]?.id ?? null, fileName: img.fileName, data: img.data },
+      { ticketId: ticket.id, messageId: savedByInput[img.messageIndex]?.id ?? null, fileName: img.fileName, data: img.data },
       { process: false }
     );
     images++;
