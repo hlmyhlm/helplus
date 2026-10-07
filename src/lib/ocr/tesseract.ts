@@ -5,6 +5,8 @@ import { logger } from "@/lib/logger";
 import type { OcrResult } from "@/lib/privacy/ic-image";
 
 let workerPromise: Promise<Worker> | null = null;
+// jobs run one after another, so each timeout only counts its own run
+let queue: Promise<unknown> = Promise.resolve();
 const TIMEOUT_MS = 30_000;
 
 class OcrTimeout extends Error {
@@ -41,7 +43,13 @@ async function recognize(current: Promise<Worker>, png: Buffer): Promise<OcrResu
   return { confidence: data.confidence, lines };
 }
 
-export async function ocrImage(png: Buffer): Promise<OcrResult> {
+export function ocrImage(png: Buffer): Promise<OcrResult> {
+  const job = queue.then(() => runJob(png));
+  queue = job.catch(() => {});
+  return job;
+}
+
+async function runJob(png: Buffer): Promise<OcrResult> {
   const current = getWorker();
   let timer: NodeJS.Timeout | undefined;
   const timeout = new Promise<never>((_, reject) => {

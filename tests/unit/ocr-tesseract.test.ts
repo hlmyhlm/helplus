@@ -60,11 +60,33 @@ describe("ocrImage", () => {
     const failed = expect(old).rejects.toThrow("ocr timed out");
     await vi.advanceTimersByTimeAsync(0);
     await closeOcr();
-    expect((await ocrImage(Buffer.from("x"))).confidence).toBe(91);
+    const next = ocrImage(Buffer.from("x"));
     await vi.advanceTimersByTimeAsync(30_000);
     await failed;
+    expect((await next).confidence).toBe(91);
     expect(fresh.terminate).not.toHaveBeenCalled();
     await ocrImage(Buffer.from("x"));
     expect(createWorker).toHaveBeenCalledTimes(2);
+  });
+
+  it("a job's timeout starts when it runs, not while it waits", async () => {
+    // a real worker runs one job at a time
+    let busy: Promise<unknown> = Promise.resolve();
+    const slowFirst = [25_000, 10_000];
+    const w = fakeWorker(() => {
+      const ms = slowFirst.shift()!;
+      const done = busy.then(() => new Promise((r) => setTimeout(() => r({ data: page }), ms)));
+      busy = done;
+      return done;
+    });
+    vi.mocked(createWorker).mockResolvedValue(w as never);
+    const first = ocrImage(Buffer.from("a"));
+    const second = ocrImage(Buffer.from("b"));
+    const both = Promise.allSettled([first, second]);
+    await vi.advanceTimersByTimeAsync(40_000);
+    const [a, b] = await both;
+    expect(a.status).toBe("fulfilled");
+    expect(b.status).toBe("fulfilled");
+    expect(w.terminate).not.toHaveBeenCalled();
   });
 });
