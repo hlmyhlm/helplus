@@ -41,11 +41,15 @@ const FIELD_DEFS: { field: CsvField; tier: number; hints: string[] }[] = [
   { field: "answer", tier: 2, hints: ["answer", "reply", "solution", "jawapan"] },
   { field: "clientName", tier: 1, hints: ["client", "customer", "name"] },
   { field: "clientContact", tier: 3, hints: ["phone", "email", "contact", "tel", "mobile"] },
-  { field: "createdAt", tier: 2, hints: ["created", "date", "tarikh"] },
-  { field: "closedAt", tier: 2, hints: ["closed", "resolved"] },
+  { field: "createdAt", tier: 2, hints: ["created", "date", "tarikh", "opened", "dibuka"] },
+  { field: "closedAt", tier: 2, hints: ["closed", "resolved", "tutup"] },
   { field: "category", tier: 2, hints: ["category"] },
   { field: "priority", tier: 2, hints: ["priority"] },
 ];
+
+// too generic to name a field on their own - "Closed Date" and "Created Date" both
+// end in one of these, so the qualifier word must decide instead
+const GENERIC_LAST_WORDS = new Set(["date", "time", "tarikh", "masa"]);
 
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -59,7 +63,8 @@ function lastWord(header: string): string {
 // an exact full match always wins; otherwise score by tier, then by word length,
 // with a whole-word match beating a plain substring of the same word. A hint that
 // is the header's last word gets a strong bonus too - "Contact Name" is a name,
-// "Contact Phone" is a phone, even though both contain "contact".
+// "Contact Phone" is a phone, even though both contain "contact" - unless that
+// word is too generic to mean anything on its own (see GENERIC_LAST_WORDS).
 function hintScore(header: string, hint: string, tier: number, last: string): number | null {
   if (header === hint) return 10_000;
   const whole = new RegExp(`\\b${escapeRegExp(hint)}\\b`).test(header);
@@ -67,7 +72,7 @@ function hintScore(header: string, hint: string, tier: number, last: string): nu
   if (whole) score = tier * 100 + hint.length * 10 + 5;
   else if (header.includes(hint)) score = tier * 100 + hint.length * 10;
   else return null;
-  if (hint === last) score += 1000;
+  if (hint === last && !GENERIC_LAST_WORDS.has(hint)) score += 1000;
   return score;
 }
 

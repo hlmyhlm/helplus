@@ -140,15 +140,27 @@ describe("guessMapping", () => {
     expect(mapping.clientContact).toBe("Contact Email");
   });
 
-  it("uses the last word to send Issue Date to createdAt, not question", () => {
-    expect(guessMapping(["Issue Date"]).createdAt).toBe("Issue Date");
-  });
-
   it("still maps Malay question/answer headers, leaving an unrecognised name header unmapped", () => {
     const mapping = guessMapping(["Nama Pelanggan", "Masalah", "Jawapan"]);
     expect(mapping.question).toBe("Masalah");
     expect(mapping.answer).toBe("Jawapan");
     expect(mapping.clientName).toBeUndefined();
+  });
+
+  it("maps both date columns correctly regardless of column order", () => {
+    const mapping = guessMapping(["Closed Date", "Created Date"]);
+    expect(mapping.closedAt).toBe("Closed Date");
+    expect(mapping.createdAt).toBe("Created Date");
+  });
+
+  it("uses the qualifier word, not the generic Date, to tell Resolved Date from a plain Date", () => {
+    const mapping = guessMapping(["Resolved Date", "Date"]);
+    expect(mapping.closedAt).toBe("Resolved Date");
+    expect(mapping.createdAt).toBe("Date");
+  });
+
+  it("maps a bare Date header to createdAt", () => {
+    expect(guessMapping(["Date"]).createdAt).toBe("Date");
   });
 });
 
