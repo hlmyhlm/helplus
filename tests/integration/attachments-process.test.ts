@@ -7,7 +7,7 @@ import { prisma, systemPrisma } from "@/lib/prisma";
 import { runWithCompany } from "@/lib/tenant/context";
 import { createTicket } from "@/lib/tickets/service";
 import { addAttachment } from "@/lib/attachments/service";
-import { remask, confirmAttachment } from "@/lib/attachments/process";
+import { remask, confirmAttachment, processAttachment } from "@/lib/attachments/process";
 import { imageForAi } from "@/lib/attachments/files";
 import { runOriginalRetention } from "@/lib/jobs/attachments";
 import { closeOcr, ocrImage } from "@/lib/ocr/tesseract";
@@ -58,6 +58,18 @@ describe("screenshot processing", { timeout: 120_000 }, () => {
     }
     const raw = await import("fs/promises").then((f) => f.readFile(path.join(dir, ...a.originalKey!.split("/"))));
     expect(raw.subarray(0, 4).toString()).toBe("HPE1");
+  });
+
+  it("an upload saved without checking stays pending until processAttachment runs", async () => {
+    const t = await asA(() => createTicket({ text: "x" }));
+    const a = await asA(async () =>
+      addAttachment({ ticketId: t.id, fileName: "p.png", data: await textImage("Report page is empty") }, { process: false })
+    );
+    expect(a.status).toBe("pending");
+    expect(a.maskedKey).toBeNull();
+    const done = await asA(() => processAttachment(a.id));
+    expect(done?.status).toBe("clean");
+    expect(done?.maskedKey).not.toBeNull();
   });
 
   it("marks a clean image clean", async () => {

@@ -1,4 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
+import { runWithCompany } from "@/lib/tenant/context";
+import { processAttachment } from "@/lib/attachments/process";
 import { withAuth } from "@/lib/tenant/with-auth";
 import { loadTicketFor } from "@/lib/tickets/load";
 import { addAttachment } from "@/lib/attachments/service";
@@ -40,10 +42,27 @@ export const POST = withAuth("tickets:update", async (request: NextRequest, auth
 
   const rows = [];
   try {
-    for (const b of buffers) rows.push(await addAttachment({ ticketId: id, fileName: b.name, data: b.data }));
+    for (const b of buffers) rows.push(await addAttachment({ ticketId: id, fileName: b.name, data: b.data }, { process: false }));
     return NextResponse.json({ data: rows.map(toRow) }, { status: 201 });
   } catch (error) {
     logger.error("upload failed", error);
     return NextResponse.json({ error: "Couldn't save the image", saved: rows.length }, { status: 500 });
+  } finally {
+    if (rows.length) checkLater(auth.companyId, rows.map((r) => r.id));
   }
 });
+
+// ocr can take a while, so it runs after the response; the worker picks up anything this misses
+function checkLater(companyId: string, ids: string[]) {
+  after(() =>
+    runWithCompany(companyId, async () => {
+      for (const id of ids) {
+        try {
+          await processAttachment(id);
+        } catch (error) {
+          logger.error("couldn't check a screenshot after upload", error);
+        }
+      }
+    })
+  );
+}

@@ -13,8 +13,11 @@ beforeEach(() => {
 
 describe("attachment jobs", () => {
   it("retries the oldest stuck screenshots that still have an original, five at a time", async () => {
-    await runPendingAttachments(new Date());
+    const now = new Date(1_000_000);
+    await runPendingAttachments(now);
     const args = attachment.findMany.mock.calls[0][0];
+    // uploads are checked after the response, so a dead one is picked up after two minutes
+    expect(args.where.createdAt).toEqual({ lte: new Date(1_000_000 - 120_000) });
     expect(args.where).toMatchObject({ status: "pending", originalKey: { not: null } });
     expect(args.orderBy).toEqual({ createdAt: "asc" });
     expect(args.take).toBe(5);

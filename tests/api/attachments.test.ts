@@ -1,17 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/route-auth";
 import { createRequest, parseJsonResponse } from "../helpers/request";
 import { addAttachment } from "@/lib/attachments/service";
 import { MAX_BYTES, MAX_FILES } from "@/lib/attachments/client";
-import { confirmAttachment, remask } from "@/lib/attachments/process";
+import { confirmAttachment, processAttachment, remask } from "@/lib/attachments/process";
+import { currentCompanyId } from "@/lib/tenant/context";
 import { fileStore } from "@/lib/storage";
 import { decryptBuffer } from "@/lib/secrets";
 import { isAllowedImage, normalizeImage } from "@/lib/privacy/ic-image";
 
 vi.mock("@/lib/attachments/service", () => ({ addAttachment: vi.fn() }));
-vi.mock("@/lib/attachments/process", () => ({ confirmAttachment: vi.fn(), remask: vi.fn() }));
+vi.mock("@/lib/attachments/process", () => ({ confirmAttachment: vi.fn(), remask: vi.fn(), processAttachment: vi.fn() }));
+vi.mock("next/server", async (importOriginal) => ({ ...(await importOriginal<typeof import("next/server")>()), after: vi.fn() }));
 vi.mock("@/lib/storage", () => ({ fileStore: vi.fn() }));
 vi.mock("@/lib/secrets", () => ({ decryptBuffer: vi.fn((b: Buffer) => b) }));
 vi.mock("@/lib/privacy/ic-image", () => ({ isAllowedImage: vi.fn(), normalizeImage: vi.fn() }));
@@ -58,6 +60,8 @@ beforeEach(() => {
   vi.mocked(addAttachment).mockReset();
   vi.mocked(confirmAttachment).mockReset();
   vi.mocked(remask).mockReset();
+  vi.mocked(processAttachment).mockReset();
+  vi.mocked(after).mockReset();
   vi.mocked(isAllowedImage).mockReset().mockResolvedValue(true);
   vi.mocked(normalizeImage).mockReset().mockResolvedValue({ png: Buffer.from("png"), width: 10, height: 10 });
   vi.mocked(decryptBuffer).mockReset().mockImplementation((b: Buffer) => b);
@@ -181,6 +185,41 @@ describe("POST /api/tickets/:id/attachments", () => {
     expect(body.data).toHaveLength(2);
   });
 
+  it("returns the rows pending and checks them after the response", async () => {
+    vi.mocked(addAttachment)
+      .mockResolvedValueOnce({ ...baseAttachment(), id: "a1", status: "pending", maskedKey: null })
+      .mockResolvedValueOnce({ ...baseAttachment(), id: "a2", status: "pending", maskedKey: null });
+    const companies: string[] = [];
+    vi.mocked(processAttachment).mockImplementation(async () => {
+      companies.push(currentCompanyId());
+      return null;
+    });
+    const { POST } = await import("@/app/api/tickets/[id]/attachments/route");
+    const res = await POST(
+      multipart("/api/tickets/t1/attachments", [
+        { name: "a.png", bytes: 10 },
+        { name: "b.png", bytes: 10 },
+      ]),
+      ticketCtx
+    );
+    expect(res.status).toBe(201);
+    expect(vi.mocked(addAttachment).mock.calls[0][1]).toEqual({ process: false });
+    expect((await parseJsonResponse(res)).data.map((r: { status: string }) => r.status)).toEqual(["pending", "pending"]);
+    expect(processAttachment).not.toHaveBeenCalled();
+    expect(after).toHaveBeenCalledTimes(1);
+    await vi.mocked(after).mock.calls[0][0]();
+    expect(vi.mocked(processAttachment).mock.calls.map((c) => c[0])).toEqual(["a1", "a2"]);
+    expect(companies).toEqual(["test-company", "test-company"]);
+  });
+
+  it("a failed check after the response is logged, not thrown", async () => {
+    vi.mocked(addAttachment).mockResolvedValue({ ...baseAttachment(), status: "pending" });
+    vi.mocked(processAttachment).mockRejectedValue(new Error("ocr"));
+    const { POST } = await import("@/app/api/tickets/[id]/attachments/route");
+    await POST(multipart("/api/tickets/t1/attachments", [{ name: "a.png", bytes: 10 }]), ticketCtx);
+    await expect(vi.mocked(after).mock.calls[0][0]()).resolves.toBeUndefined();
+  });
+
   it("returns 500 with what was already saved when a later file fails", async () => {
     vi.mocked(addAttachment)
       .mockResolvedValueOnce(baseAttachment())
@@ -196,6 +235,8 @@ describe("POST /api/tickets/:id/attachments", () => {
     expect(res.status).toBe(500);
     const body = await parseJsonResponse(res);
     expect(body.saved).toBe(1);
+    // the one that was saved still gets checked
+    expect(after).toHaveBeenCalledTimes(1);
   });
 });
 

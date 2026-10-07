@@ -10,13 +10,17 @@ import { processAttachment } from "./process";
 import { MAX_BYTES } from "./client";
 
 // the original is written before the row so a row never points at nothing
-export async function addAttachment(input: { ticketId: string; messageId?: string | null; fileName: string; data: Buffer }) {
+export async function addAttachment(
+  input: { ticketId: string; messageId?: string | null; fileName: string; data: Buffer },
+  options: { process?: boolean } = {}
+) {
   const id = randomUUID();
   const originalKey = attachmentKey(currentCompanyId(), id, "original");
   const store = fileStore();
   await store.put(originalKey, encryptBuffer(input.data));
+  let row;
   try {
-    await prisma.attachment.create({
+    row = await prisma.attachment.create({
       data: {
         id,
         ticketId: input.ticketId,
@@ -29,6 +33,7 @@ export async function addAttachment(input: { ticketId: string; messageId?: strin
     await store.remove(originalKey);
     throw error;
   }
+  if (options.process === false) return row;
   try {
     return (await processAttachment(id))!;
   } catch (error) {

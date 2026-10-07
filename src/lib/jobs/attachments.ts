@@ -5,7 +5,7 @@ import { fileStore } from "@/lib/storage";
 import { processAttachment } from "@/lib/attachments/process";
 
 const DAY = 86_400_000;
-const STALE_PENDING_MS = 5 * 60_000;
+const STALE_PENDING_MS = 2 * 60_000;
 const BATCH = 5;
 
 // uploads normally finish inside the request, this picks up the ones that didn't
