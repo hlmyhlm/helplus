@@ -2,7 +2,7 @@
 
 import { use, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, Paperclip } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { formatRelativeTime } from "@/lib/utils";
@@ -59,7 +59,8 @@ const WHO: Record<string, string> = { customer: "Client", agent: "Support", admi
 
 export default function TicketDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const { autoCloseDays, canCheckScreens } = useCompany();
+  const { autoCloseDays, canCheckScreens, canUpdateTickets } = useCompany();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [uploadError, setUploadError] = useState("");
@@ -105,9 +106,10 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
 
   // shown once, from the quick add dialog's upload failing
   useEffect(() => {
-    const e = searchParams.get("uploadError");
-    if (e) setUploadError(e);
-  }, [searchParams]);
+    if (!searchParams.get("uploadError")) return;
+    setUploadError("Some screenshots couldn't be uploaded. Try adding them again.");
+    router.replace(`/tickets/${id}`);
+  }, [searchParams, router, id]);
 
   useEffect(() => {
     load();
@@ -277,7 +279,13 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
               );
             })}
             {uploadError && <p className="text-sm text-helplus-danger">{uploadError}</p>}
-            <Screenshots ticketId={ticket.id} attachments={ticket.attachments} canCheck={canCheckScreens} onChanged={load} />
+            <Screenshots
+              ticketId={ticket.id}
+              attachments={ticket.attachments}
+              canCheck={canCheckScreens}
+              canUpload={canUpdateTickets}
+              onChanged={load}
+            />
             {ticket.status !== "closed" && (
               <div className="space-y-2">
                 <textarea

@@ -3,10 +3,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ImagePlus, X } from "lucide-react";
 import type { AttachmentRow } from "@/lib/attachments/row";
-import { uploadScreenshots } from "@/lib/attachments/client";
+import { ALLOWED_TYPES, FILE_LIMITS_HINT, checkFiles, uploadScreenshots } from "@/lib/attachments/client";
 import { MaskEditor } from "./mask-editor";
 
-const ACCEPT = "image/png,image/jpeg,image/webp";
+const ACCEPT = ALLOWED_TYPES.join(",");
+const ORIGINAL_GONE_MESSAGE = "The original was deleted, this image can't be checked any more";
+const POLL_FAST_MS = 3000;
+const POLL_SLOW_MS = 30000;
+const POLL_FAST_LIMIT = 20;
 
 function statusColor(status: string): string {
   if (status === "clean") return "#12B76A";
@@ -39,11 +43,13 @@ export function Screenshots({
   ticketId,
   attachments,
   canCheck,
+  canUpload,
   onChanged,
 }: {
   ticketId: string;
   attachments: AttachmentRow[];
   canCheck: boolean;
+  canUpload: boolean;
   onChanged: () => void;
 }) {
   const [viewing, setViewing] = useState<AttachmentRow | null>(null);
@@ -55,12 +61,18 @@ export function Screenshots({
   const doUpload = useCallback(
     async (files: File[]) => {
       if (!files.length) return;
+      const check = checkFiles(files);
+      if (!check.ok) {
+        setUploadError(check.error!);
+        return;
+      }
       setUploadError("");
       setUploading(true);
       const res = await uploadScreenshots(ticketId, files);
       setUploading(false);
       if (!res.ok) {
-        setUploadError(res.error);
+        setUploadError(res.saved > 0 ? `${res.saved} of ${files.length} saved. ${res.error}` : res.error);
+        onChanged();
         return;
       }
       onChanged();
@@ -69,7 +81,9 @@ export function Screenshots({
   );
 
   useEffect(() => {
+    if (!canUpload) return;
     const handler = (e: ClipboardEvent) => {
+      if (uploading) return;
       const files = Array.from(e.clipboardData?.files ?? []).filter((f) => f.type.startsWith("image/"));
       if (!files.length) return;
       e.preventDefault();
@@ -77,19 +91,22 @@ export function Screenshots({
     };
     window.addEventListener("paste", handler);
     return () => window.removeEventListener("paste", handler);
-  }, [doUpload]);
+  }, [canUpload, uploading, doUpload]);
 
   const hasPending = attachments.some((a) => a.status === "pending");
   useEffect(() => {
     if (!hasPending) return;
-    const id = setInterval(() => {
-      if (pollCountRef.current >= 20) {
-        clearInterval(id);
-        return;
-      }
+    pollCountRef.current = 0;
+    let id: ReturnType<typeof setInterval>;
+    const tick = () => {
       pollCountRef.current += 1;
       onChanged();
-    }, 3000);
+      if (pollCountRef.current === POLL_FAST_LIMIT) {
+        clearInterval(id);
+        id = setInterval(tick, POLL_SLOW_MS);
+      }
+    };
+    id = setInterval(tick, POLL_FAST_MS);
     return () => clearInterval(id);
   }, [hasPending, onChanged]);
 
@@ -106,7 +123,7 @@ export function Screenshots({
             {hasMaskedImage(a) ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={`/api/attachments/${a.id}`}
+                src={`/api/attachments/${a.id}?v=${a.status}-${a.icCount}`}
                 alt={a.fileName}
                 className="h-24 w-24 object-cover rounded-md border border-helplus-border"
               />
@@ -127,14 +144,16 @@ export function Screenshots({
             </span>
           </button>
         ))}
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={uploading}
-          className="inline-flex items-center gap-1.5 h-8 px-3 self-start rounded-md border border-helplus-border text-xs text-helplus-text disabled:opacity-60"
-        >
-          <ImagePlus className="h-3.5 w-3.5" /> Add screenshot
-        </button>
+        {canUpload && (
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className="inline-flex items-center gap-1.5 h-8 px-3 self-start rounded-md border border-helplus-border text-xs text-helplus-text disabled:opacity-60"
+          >
+            <ImagePlus className="h-3.5 w-3.5" /> Add screenshot
+          </button>
+        )}
         <input
           ref={fileInputRef}
           type="file"
@@ -148,6 +167,7 @@ export function Screenshots({
           }}
         />
       </div>
+      {canUpload && <p className="text-xs text-helplus-text-light">{FILE_LIMITS_HINT}</p>}
       {uploadError && <p className="text-sm text-helplus-danger">{uploadError}</p>}
       {viewing && (
         <Viewer attachment={viewing} canCheck={canCheck} onClose={() => setViewing(null)} onChanged={onChanged} />
@@ -167,10 +187,21 @@ function Viewer({
   onClose: () => void;
   onChanged: () => void;
 }) {
-  const [showingOriginal, setShowingOriginal] = useState(attachment.status === "needs_check");
+  const originalGone = !!attachment.originalDeletedAt;
+  const [showingOriginal, setShowingOriginal] = useState(attachment.status === "needs_check" && !originalGone);
   const [editingMask, setEditingMask] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(
+    attachment.status === "needs_check" && originalGone ? ORIGINAL_GONE_MESSAGE : ""
+  );
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
 
   const confirm = async () => {
     if (busy) return;
@@ -183,7 +214,7 @@ function Viewer({
         body: JSON.stringify({ action: "confirm" }),
       });
       if (!res.ok) {
-        if (res.status === 410) setError("The original was deleted, this image can't be checked any more");
+        if (res.status === 410) setError(ORIGINAL_GONE_MESSAGE);
         else setError((await res.json().catch(() => ({}))).error ?? "Couldn't check");
         return;
       }
@@ -197,6 +228,7 @@ function Viewer({
   };
 
   const src = showingOriginal ? `/api/attachments/${attachment.id}/original` : `/api/attachments/${attachment.id}`;
+  const noImageToShow = attachment.status === "needs_check" && originalGone;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/40" onClick={onClose}>
@@ -222,14 +254,25 @@ function Viewer({
           />
         ) : (
           <>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={src} alt={attachment.fileName} className="w-full h-auto rounded-md border border-helplus-border" />
-            {showingOriginal && <p className="text-xs text-helplus-text-light">Viewing the original is logged</p>}
+            {!noImageToShow && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={src}
+                alt={attachment.fileName}
+                className="w-full h-auto rounded-md border border-helplus-border"
+                onError={() => {
+                  if (showingOriginal) setError(ORIGINAL_GONE_MESSAGE);
+                }}
+              />
+            )}
+            {showingOriginal && !noImageToShow && (
+              <p className="text-xs text-helplus-text-light">Viewing the original is logged</p>
+            )}
             {error && <p className="text-sm text-helplus-danger">{error}</p>}
             {canCheck && (
               <div className="space-y-2">
                 <div className="flex flex-wrap gap-2">
-                  {!showingOriginal && (
+                  {!showingOriginal && !originalGone && (
                     <button
                       onClick={() => setShowingOriginal(true)}
                       disabled={busy}
@@ -238,14 +281,16 @@ function Viewer({
                       Show original
                     </button>
                   )}
-                  <button
-                    onClick={() => setEditingMask(true)}
-                    disabled={busy}
-                    className="h-9 px-3 rounded-md border border-helplus-border text-sm text-helplus-text disabled:opacity-60"
-                  >
-                    Cover an area
-                  </button>
-                  {attachment.status === "needs_check" && (
+                  {!originalGone && (
+                    <button
+                      onClick={() => setEditingMask(true)}
+                      disabled={busy}
+                      className="h-9 px-3 rounded-md border border-helplus-border text-sm text-helplus-text disabled:opacity-60"
+                    >
+                      Cover an area
+                    </button>
+                  )}
+                  {attachment.status === "needs_check" && !originalGone && (
                     <button
                       onClick={confirm}
                       disabled={busy}
@@ -255,7 +300,7 @@ function Viewer({
                     </button>
                   )}
                 </div>
-                {attachment.status === "needs_check" && (
+                {attachment.status === "needs_check" && !originalGone && (
                   <p className="text-xs text-helplus-warning">This makes the image visible as shown. Cover any IC first.</p>
                 )}
               </div>

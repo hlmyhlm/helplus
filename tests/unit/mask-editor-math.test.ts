@@ -22,6 +22,10 @@ describe("toImageBox", () => {
 
   it("clamps to the image", () => {
     const b = toImageBox({ x: 380, y: 190, w: 100, h: 100 }, { width: 400, height: 200 }, { width: 400, height: 200 });
+    expect(b.x).toBeGreaterThanOrEqual(0);
+    expect(b.y).toBeGreaterThanOrEqual(0);
+    expect(b.w).toBeGreaterThanOrEqual(0);
+    expect(b.h).toBeGreaterThanOrEqual(0);
     expect(b.x + b.w).toBeLessThanOrEqual(400);
     expect(b.y + b.h).toBeLessThanOrEqual(200);
   });

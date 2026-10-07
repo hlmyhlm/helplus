@@ -184,7 +184,7 @@ describe("POST /api/tickets/:id/attachments", () => {
     );
     expect(res.status).toBe(500);
     const body = await parseJsonResponse(res);
-    expect(body.saved).toHaveLength(1);
+    expect(body.saved).toBe(1);
   });
 });
 

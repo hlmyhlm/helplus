@@ -44,6 +44,6 @@ export const POST = withAuth("tickets:update", async (request: NextRequest, auth
     return NextResponse.json({ data: rows.map(toRow) }, { status: 201 });
   } catch (error) {
     logger.error("upload failed", error);
-    return NextResponse.json({ error: "Couldn't save the image", saved: rows.map(toRow) }, { status: 500 });
+    return NextResponse.json({ error: "Couldn't save the image", saved: rows.length }, { status: 500 });
   }
 });

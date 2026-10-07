@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ImagePlus, Sparkles, X } from "lucide-react";
 import { unwrapList } from "@/lib/api-client";
-import { uploadScreenshots } from "@/lib/attachments/client";
+import { ALLOWED_TYPES, FILE_LIMITS_HINT, checkFiles, uploadScreenshots } from "@/lib/attachments/client";
 
 interface Project {
   id: string;
@@ -27,10 +27,23 @@ export function QuickAddDialog({
   const [projectId, setProjectId] = useState("");
   const [projects, setProjects] = useState<Project[]>([]);
   const [files, setFiles] = useState<File[]>([]);
+  const [fileError, setFileError] = useState("");
   const [dragOver, setDragOver] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const addFiles = (incoming: File[]) => {
+    if (!incoming.length) return;
+    const merged = [...files, ...incoming];
+    const check = checkFiles(merged);
+    if (!check.ok) {
+      setFileError(check.error!);
+      return;
+    }
+    setFileError("");
+    setFiles(merged);
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -90,17 +103,17 @@ export function QuickAddDialog({
         return;
       }
       const ticket = await res.json();
-      let uploadError: string | undefined;
+      let hadUploadError = false;
       if (files.length) {
         const up = await uploadScreenshots(ticket.id, files);
-        if (!up.ok) uploadError = up.error;
+        if (!up.ok) hadUploadError = true;
       }
       setText("");
       setTitle("");
       setCategory("");
       setCustomerName("");
       setFiles([]);
-      onCreated(ticket.id, uploadError);
+      onCreated(ticket.id, hadUploadError ? "1" : undefined);
     } catch {
       setError("Couldn't create the ticket.");
     } finally {
@@ -116,6 +129,10 @@ export function QuickAddDialog({
       <div
         className="w-full md:max-w-xl rounded-t-xl md:rounded-lg bg-helplus-surface border border-helplus-border p-5 space-y-3 max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
+        onPaste={(e) => {
+          const pasted = Array.from(e.clipboardData.files).filter((f) => f.type.startsWith("image/"));
+          addFiles(pasted);
+        }}
       >
         <div className="flex items-center justify-between">
           <h3 className="text-base font-semibold text-helplus-text">Quick add</h3>
@@ -149,11 +166,7 @@ export function QuickAddDialog({
           onDrop={(e) => {
             e.preventDefault();
             setDragOver(false);
-            setFiles((f) => [...f, ...Array.from(e.dataTransfer.files)]);
-          }}
-          onPaste={(e) => {
-            const pasted = Array.from(e.clipboardData.files).filter((f) => f.type.startsWith("image/"));
-            if (pasted.length) setFiles((f) => [...f, ...pasted]);
+            addFiles(Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith("image/")));
           }}
           onClick={() => fileInputRef.current?.click()}
           className={`rounded-md border border-dashed px-3 py-3 text-xs text-helplus-text-light text-center cursor-pointer ${
@@ -165,15 +178,17 @@ export function QuickAddDialog({
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/png,image/jpeg,image/webp"
+            accept={ALLOWED_TYPES.join(",")}
             multiple
             className="hidden"
             onChange={(e) => {
-              setFiles((f) => [...f, ...Array.from(e.target.files ?? [])]);
+              addFiles(Array.from(e.target.files ?? []));
               e.target.value = "";
             }}
           />
         </div>
+        <p className="text-xs text-helplus-text-light">{FILE_LIMITS_HINT}</p>
+        {fileError && <p className="text-sm text-helplus-danger">{fileError}</p>}
         {files.length > 0 && (
           <ul className="flex flex-wrap gap-2">
             {files.map((f, i) => (

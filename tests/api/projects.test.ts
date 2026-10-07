@@ -110,6 +110,7 @@ describe("company info", () => {
       projectLabel: "Projects",
       canManageProjects: false,
       canCheckScreens: false,
+      canUpdateTickets: false,
       autoCloseDays: 3,
     });
   });
@@ -131,5 +132,15 @@ describe("company info", () => {
     expect((await parseJsonResponse(await GET(createRequest("/api/company"), {} as never))).canCheckScreens).toBe(true);
     asRole("viewer");
     expect((await parseJsonResponse(await GET(createRequest("/api/company"), {} as never))).canCheckScreens).toBe(false);
+  });
+
+  it("returns canUpdateTickets true for staff, false for viewer", async () => {
+    db.settings.upsert.mockResolvedValue({ projectLabel: "Projects", businessName: "Acme", autoCloseDays: 3 });
+    db.company.findFirst.mockResolvedValue({ name: "Acme Sdn Bhd", slug: "acme" });
+    const { GET } = await import("@/app/api/company/route");
+    asRole("staff");
+    expect((await parseJsonResponse(await GET(createRequest("/api/company"), {} as never))).canUpdateTickets).toBe(true);
+    asRole("viewer");
+    expect((await parseJsonResponse(await GET(createRequest("/api/company"), {} as never))).canUpdateTickets).toBe(false);
   });
 });

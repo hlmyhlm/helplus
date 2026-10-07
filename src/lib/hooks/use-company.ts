@@ -8,6 +8,7 @@ interface CompanyInfo {
   projectLabel: string;
   canManageProjects: boolean;
   canCheckScreens: boolean;
+  canUpdateTickets: boolean;
   autoCloseDays: number;
 }
 
@@ -17,6 +18,7 @@ const EMPTY: CompanyInfo = {
   projectLabel: "Clients",
   canManageProjects: false,
   canCheckScreens: false,
+  canUpdateTickets: false,
   autoCloseDays: 0,
 };
 
