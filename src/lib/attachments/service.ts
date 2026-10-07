@@ -9,6 +9,11 @@ import { logger } from "@/lib/logger";
 import { processAttachment } from "./process";
 import { MAX_BYTES } from "./client";
 
+// the stored name an upload gets: IC-masked, length-capped, never blank
+export function maskedFileName(name: string): string {
+  return maskIC(name).text.slice(0, 200) || "screenshot.png";
+}
+
 // the original is written before the row so a row never points at nothing
 export async function addAttachment(
   input: { ticketId: string; messageId?: string | null; fileName: string; data: Buffer },
@@ -25,7 +30,7 @@ export async function addAttachment(
         id,
         ticketId: input.ticketId,
         messageId: input.messageId ?? null,
-        fileName: maskIC(input.fileName).text.slice(0, 200) || "screenshot.png",
+        fileName: maskedFileName(input.fileName),
         originalKey,
       },
     });

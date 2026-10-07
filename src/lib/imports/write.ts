@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { maskIC, IC_PLACEHOLDER } from "@/lib/privacy/ic-mask";
 import { nextTicketNumber } from "@/lib/tickets/number";
 import { titleFrom } from "@/lib/tickets/service";
-import { addAttachment } from "@/lib/attachments/service";
+import { addAttachment, maskedFileName } from "@/lib/attachments/service";
 import { isAllowedImage } from "@/lib/privacy/ic-image";
 
 export interface ImportedQa {
@@ -76,10 +76,6 @@ async function customerFor(projectId: string, client: { name: string; contact?: 
   return (await prisma.customer.create({ data: { name, phone: "", projectId } })).id;
 }
 
-function maskedFileName(name: string): string {
-  return mask(name).slice(0, 200) || "screenshot.png";
-}
-
 // sort by time but remember each message's original position, so images can point back by it
 function sortByTime(messages: QaMessage[]): { order: number[]; msgs: QaMessage[] } {
   const order = messages.map((_, i) => i).sort((a, b) => messages[a].at.getTime() - messages[b].at.getTime());
@@ -101,15 +97,23 @@ async function repairImportedTicket(qa: ImportedQa, ticketId: string): Promise<W
   const conversationId = ticket.conversationId;
   if (!conversationId) return { created: false, ticketId: ticket.id, images: 0, skippedImages: 0 };
 
+  const existingCount = await prisma.message.count({ where: { conversationId } });
+  // a ticket counts as complete once it has all its messages. staff may since have reviewed and
+  // deleted its note or draft on purpose, and a re-import must not bring those back - we have no
+  // marker to tell "deleted on purpose" from "never written", so message count is the signal.
+  // this does mean a crash between the messages and the draft loses that draft for good.
+  if (existingCount >= qa.messages.length) {
+    return { created: false, ticketId: ticket.id, images: 0, skippedImages: 0 };
+  }
+
   const { order, msgs } = sortByTime(qa.messages);
   const { question, answers } = questionAndAnswers(msgs);
-  const hadNoMessages = (await prisma.message.count({ where: { conversationId } })) === 0;
 
   const savedByInput: ({ id: string } | null)[] = new Array(qa.messages.length).fill(null);
   for (let k = 0; k < msgs.length; k++) {
     const m = msgs[k];
-    // an unkeyed (csv) message has no dedupe key, so it's only safe to add when nothing landed yet
-    if (!m.importKey && !hadNoMessages) continue;
+    // an unkeyed (csv) message has no dedupe key, so only the tail past what's already there is safe to add
+    if (!m.importKey && k < existingCount) continue;
     try {
       const row = await prisma.message.create({
         data: { conversationId, role: m.role, content: mask(m.text), createdAt: m.at, importKey: m.importKey ?? null },
@@ -117,6 +121,10 @@ async function repairImportedTicket(qa: ImportedQa, ticketId: string): Promise<W
       savedByInput[order[k]] = row;
     } catch (error) {
       if (!isP2002(error)) throw error;
+      // it was already there; look it up so an image pointing at it still gets a real messageId
+      if (m.importKey) {
+        savedByInput[order[k]] = await prisma.message.findFirst({ where: { importKey: m.importKey }, select: { id: true } });
+      }
     }
   }
 
@@ -159,10 +167,7 @@ async function repairImportedTicket(qa: ImportedQa, ticketId: string): Promise<W
       where: { ticketId: ticket.id, fileName: maskedFileName(img.fileName) },
       select: { id: true },
     });
-    if (already) {
-      skippedImages++;
-      continue;
-    }
+    if (already) continue; // already attached from an earlier pass, not new and not skipped
     await addAttachment(
       { ticketId: ticket.id, messageId: savedByInput[img.messageIndex]?.id ?? null, fileName: img.fileName, data: img.data },
       { process: false }

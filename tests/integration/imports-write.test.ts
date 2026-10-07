@@ -148,7 +148,10 @@ describe("writeImportedTicket", () => {
   it("leaves no orphan ticket or conversation when two imports race on the same key", async () => {
     const q = qa({
       importKey: "wa:race-1",
-      messages: [{ role: "customer", text: "racey", at: new Date("2026-01-04T12:00:00Z") }],
+      // keyed, like a real whatsapp message, so a racer that lands in the repair path (because
+      // it saw the ticket already created, before the winner's own message insert landed) can
+      // still only ever produce one "racey" message, via the unique constraint, not a duplicate
+      messages: [{ role: "customer", text: "racey", at: new Date("2026-01-04T12:00:00Z"), importKey: "wa:race-1-msg" }],
       status: "new",
     });
     const [a, b] = await Promise.all([asA(() => writeImportedTicket(q)), asA(() => writeImportedTicket(q))]);
@@ -468,5 +471,51 @@ describe("writeImportedTicket", () => {
     const conv = await asA(() => prisma.conversation.findUniqueOrThrow({ where: { id: ticket.conversationId! } }));
     const customer = await asA(() => prisma.customer.findUniqueOrThrow({ where: { id: conv.customerId! } }));
     expect(customer.phone).toBe("");
+  });
+
+  it("does not recreate a draft that staff deleted from an already-complete ticket", async () => {
+    const q = qa({
+      importKey: "wa:draft-gone-1",
+      messages: [
+        { role: "customer", text: "how do I export my data", at: new Date("2026-01-19T00:00:00Z"), importKey: "wa:draft-gone-1-a" },
+        { role: "agent", text: "settings, then export", at: new Date("2026-01-19T00:05:00Z"), importKey: "wa:draft-gone-1-b" },
+      ],
+    });
+    const first = await asA(() => writeImportedTicket(q));
+    expect(first.draftId).toBeTruthy();
+    await asA(() => prisma.knowledgeEntry.deleteMany({ where: { sourceTicketId: first.ticketId! } }));
+
+    const second = await asA(() => writeImportedTicket(q));
+    expect(second.created).toBe(false);
+    expect(second.ticketId).toBe(first.ticketId);
+    const drafts = await asA(() => prisma.knowledgeEntry.findMany({ where: { sourceTicketId: first.ticketId! } }));
+    expect(drafts).toHaveLength(0);
+  });
+
+  it("fills in a csv ticket's missing answer when only the question landed", async () => {
+    const q = qa({
+      importKey: "csv:42",
+      source: "old_system",
+      status: "closed",
+      messages: [
+        { role: "customer", text: "how do I reset my password", at: new Date("2026-01-20T00:00:00Z") },
+        { role: "agent", text: "use the forgot password link", at: new Date("2026-01-20T00:05:00Z") },
+      ],
+    });
+    const first = await asA(() => writeImportedTicket(q));
+    expect(first.created).toBe(true);
+    const ticket = await asA(() => prisma.ticket.findUniqueOrThrow({ where: { id: first.ticketId! } }));
+    // simulate a crash after the question landed but before the answer did
+    await asA(() => prisma.message.deleteMany({ where: { conversationId: ticket.conversationId!, role: "agent" } }));
+
+    const repaired = await asA(() => writeImportedTicket(q));
+    expect(repaired.created).toBe(false);
+    expect(repaired.ticketId).toBe(ticket.id);
+    const msgs = await asA(() =>
+      prisma.message.findMany({ where: { conversationId: ticket.conversationId! }, orderBy: { createdAt: "asc" } })
+    );
+    expect(msgs).toHaveLength(2);
+    expect(msgs[1].role).toBe("agent");
+    expect(msgs[1].content).toBe("use the forgot password link");
   });
 });
