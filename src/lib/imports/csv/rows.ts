@@ -50,6 +50,7 @@ const FIELD_DEFS: { field: CsvField; tier: number; hints: string[] }[] = [
 // too generic to name a field on their own - "Closed Date" and "Created Date" both
 // end in one of these, so the qualifier word must decide instead
 const GENERIC_LAST_WORDS = new Set(["date", "time", "tarikh", "masa"]);
+const DATE_FIELDS: ReadonlySet<CsvField> = new Set(["createdAt", "closedAt"]);
 
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -64,8 +65,17 @@ function lastWord(header: string): string {
 // with a whole-word match beating a plain substring of the same word. A hint that
 // is the header's last word gets a strong bonus too - "Contact Name" is a name,
 // "Contact Phone" is a phone, even though both contain "contact" - unless that
-// word is too generic to mean anything on its own (see GENERIC_LAST_WORDS).
-function hintScore(header: string, hint: string, tier: number, last: string): number | null {
+// word is too generic to mean anything on its own (see GENERIC_LAST_WORDS), in
+// which case the header can only go to a date field at all, no matter what else
+// it contains - "Issue Date" is a date, not a question.
+function hintScore(
+  header: string,
+  hint: string,
+  tier: number,
+  last: string,
+  field: CsvField
+): number | null {
+  if (GENERIC_LAST_WORDS.has(last) && !DATE_FIELDS.has(field)) return null;
   if (header === hint) return 10_000;
   const whole = new RegExp(`\\b${escapeRegExp(hint)}\\b`).test(header);
   let score: number;
@@ -84,7 +94,7 @@ export function guessMapping(headers: string[]): CsvMapping {
     for (const { field, tier, hints } of FIELD_DEFS) {
       let best: number | null = null;
       for (const hint of hints) {
-        const score = hintScore(h, hint, tier, last);
+        const score = hintScore(h, hint, tier, last, field);
         if (score !== null && (best === null || score > best)) best = score;
       }
       if (best !== null) candidates.push({ header, field, score: best });

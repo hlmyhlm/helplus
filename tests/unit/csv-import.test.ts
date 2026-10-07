@@ -162,6 +162,18 @@ describe("guessMapping", () => {
   it("maps a bare Date header to createdAt", () => {
     expect(guessMapping(["Date"]).createdAt).toBe("Date");
   });
+
+  it("never sends a header ending in a date word to a text field", () => {
+    const mapping = guessMapping(["Issue Date", "Question"]);
+    expect(mapping.createdAt).toBe("Issue Date");
+    expect(mapping.question).toBe("Question");
+  });
+
+  it("maps Malay date headers by their qualifier word", () => {
+    const mapping = guessMapping(["Tarikh Tutup", "Tarikh"]);
+    expect(mapping.closedAt).toBe("Tarikh Tutup");
+    expect(mapping.createdAt).toBe("Tarikh");
+  });
 });
 
 describe("checkRows", () => {
