@@ -11,6 +11,7 @@ import {
   MessageSquare,
   Ticket,
   Phone,
+  FileUp,
   Mail,
   MessageCircle,
   CheckCircle,
@@ -72,6 +73,7 @@ const channelIcons: Record<string, React.ElementType> = {
   whatsapp: MessageCircle,
   email: Mail,
   phone: Phone,
+  import: FileUp,
 };
 
 export default async function DashboardPage() {

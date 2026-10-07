@@ -1,4 +1,5 @@
 import Papa from "papaparse";
+import { maskIC } from "@/lib/privacy/ic-mask";
 
 export type CsvField =
   | "oldId"
@@ -222,7 +223,7 @@ export function checkRows(
     if (createdRaw) {
       createdAt = parseLooseDate(createdRaw, order);
       if (!createdAt) {
-        bad.push({ line, reason: `Can't read date: ${createdRaw}`, raw });
+        bad.push({ line, reason: `Can't read date: ${maskIC(createdRaw).text}`, raw });
         return;
       }
     }
@@ -232,7 +233,7 @@ export function checkRows(
     if (closedRaw) {
       closedAt = parseLooseDate(closedRaw, order);
       if (!closedAt) {
-        bad.push({ line, reason: `Can't read date: ${closedRaw}`, raw });
+        bad.push({ line, reason: `Can't read date: ${maskIC(closedRaw).text}`, raw });
         return;
       }
     }

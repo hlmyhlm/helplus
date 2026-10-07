@@ -58,6 +58,19 @@ describe("readExport", () => {
     expect(() => readExport(data, "export.zip")).toThrow(/too large/);
   });
 
+  it("refuses a zip with more than 5000 entries", () => {
+    const files: Record<string, Uint8Array> = { "WhatsApp Chat.txt": strToU8(CHAT) };
+    for (let i = 0; i < 5001; i++) files[`f${i}.bin`] = new Uint8Array(0);
+    expect(() => readExport(zip(files), "export.zip")).toThrow(/too large/);
+  });
+
+  it("knows a zip by its bytes, not its name", () => {
+    const data = zip({ "WhatsApp Chat.txt": strToU8(CHAT), "IMG-1.jpg": new Uint8Array([1]) });
+    const res = readExport(data, "upload.txt");
+    expect(res.chat).toBe(CHAT);
+    expect(res.files.has("IMG-1.jpg")).toBe(true);
+  });
+
   it("keys nested files by base name", () => {
     const data = zip({ "WhatsApp Chat.txt": strToU8(CHAT), "media/IMG-1.jpg": new Uint8Array([9]) });
     const res = readExport(data, "export.zip");

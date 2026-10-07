@@ -14,7 +14,9 @@ export function readExport(
   data: Buffer,
   fileName: string
 ): { chat: string; files: Map<string, Buffer>; skippedFiles: number } {
-  if (!/\.zip$/i.test(fileName)) {
+  // trust the PK bytes over the name, a .zip name without them is a broken zip
+  const isZip = data.length >= 4 && data[0] === 0x50 && data[1] === 0x4b;
+  if (!isZip && !/\.zip$/i.test(fileName)) {
     return { chat: data.toString("utf8"), files: new Map(), skippedFiles: 0 };
   }
 

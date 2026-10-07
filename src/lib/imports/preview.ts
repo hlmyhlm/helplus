@@ -3,6 +3,7 @@ import { maskIC } from "@/lib/privacy/ic-mask";
 import { readExport } from "./whatsapp/zip";
 import { parseChat, type DateOrder } from "./whatsapp/parse";
 import { groupIssues } from "./whatsapp/group";
+import { staffMatcher } from "./run";
 import { readCsv, headersSignature } from "./csv/parse";
 import { checkRows, guessMapping, type CsvMapping, type GoodRow } from "./csv/rows";
 
@@ -27,22 +28,23 @@ function samePhone(a: string, b: string): boolean {
   return a === b || a.endsWith(b) || b.endsWith(a);
 }
 
-// saved choices win, otherwise anyone on the team or a user of the app counts as staff
-async function staffGuess(senders: string[]): Promise<(name: string) => boolean> {
+// saved choices win, otherwise anyone on the team or a user of the app counts as staff; names compare masked
+async function staffGuess(senders: string[]): Promise<(name: string, raw: string) => boolean> {
   const [saved, team, admins] = await Promise.all([
     prisma.chatSender.findMany({ where: { name: { in: senders } }, select: { name: true, isStaff: true } }),
     prisma.teamMember.findMany({ select: { name: true, phone: true } }),
     prisma.admin.findMany({ select: { name: true } }),
   ]);
   const choice = new Map(saved.map((s) => [s.name, s.isStaff]));
-  const names = new Set([...team.map((t) => t.name), ...admins.map((a) => a.name)].map((n) => n.trim().toLowerCase()).filter(Boolean));
+  const names = new Set([...team.map((t) => t.name), ...admins.map((a) => a.name)].map((n) => mask(n).trim().toLowerCase()).filter(Boolean));
   const phones = team.map((t) => digits(t.phone)).filter((p) => p.length >= 8);
-  return (name) => {
+  return (name, raw) => {
     const saved = choice.get(name);
     if (saved !== undefined) return saved;
     if (names.has(name.trim().toLowerCase())) return true;
-    const d = digits(name);
-    return /^\+?[\d\s()-]+$/.test(name) && phones.some((p) => samePhone(p, d));
+    // an IC-shaped sender is never treated as a phone
+    if (name !== raw || !/^\+?[\d\s()-]+$/.test(raw)) return false;
+    return phones.some((p) => samePhone(p, digits(raw)));
   };
 }
 
@@ -61,15 +63,20 @@ export async function whatsappPreview(data: Buffer, fileName: string) {
   const real = messages.filter((m) => !m.system && m.sender);
   if (!real.length) throw new PreviewError("This isn't a WhatsApp export", 400);
 
-  const counts = new Map<string, number>();
-  for (const m of real) counts.set(m.sender, (counts.get(m.sender) ?? 0) + 1);
+  // senders are listed and stored masked, the raw name is only kept for the phone check
+  const counts = new Map<string, { count: number; raw: string }>();
+  for (const m of real) {
+    const name = mask(m.sender);
+    const c = counts.get(name);
+    if (c) c.count++;
+    else counts.set(name, { count: 1, raw: m.sender });
+  }
   const isStaff = await staffGuess([...counts.keys()]);
   const senders = [...counts.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .map(([name, count]) => ({ name, count, isStaff: isStaff(name) }));
-  const staff = new Set(senders.filter((s) => s.isStaff).map((s) => s.name));
+    .sort((a, b) => b[1].count - a[1].count)
+    .map(([name, c]) => ({ name, count: c.count, isStaff: isStaff(name, c.raw) }));
 
-  const { issues } = groupIssues(messages, (s) => staff.has(s));
+  const { issues } = groupIssues(messages, staffMatcher(senders.filter((s) => s.isStaff).map((s) => s.name)));
   if (issues.length > MAX_ISSUES) throw new PreviewError("Split this file into smaller parts", 413);
 
   return {

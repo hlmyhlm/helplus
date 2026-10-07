@@ -261,6 +261,11 @@ describe("checkRows", () => {
     ]);
   });
 
+  it("masks an IC sitting in a bad date cell", () => {
+    const { bad } = checkRows([{ ID: "1", Question: "Why?", Closed: "900101-14-5678" }], mapping, "dmy");
+    expect(bad[0].reason).toBe("Can't read date: [IC HIDDEN]");
+  });
+
   it("returns good rows with trimmed values and correct line numbers", () => {
     const rows = [
       { ID: " 1 ", Question: " Why? ", Answer: " Because ", Created: "", Closed: "" },

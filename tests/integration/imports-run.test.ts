@@ -191,6 +191,7 @@ describe("csv import", () => {
     "T3,Slow page,,03/02/2026",
     "T4,,No question here,04/02/2026",
     "T5,Bad date,Answer,99/99/2026",
+    "T6,IC in the date,Answer,900101-14-5678",
   ].join("\n");
   const options = {
     order: "dmy",
@@ -205,8 +206,15 @@ describe("csv import", () => {
     expect(tickets.every((t) => t.status === "closed" && t.closedAt)).toBe(true);
     const done = await readJob(job.id);
     const bad = done.badRows as { reason: string }[];
-    expect(bad.map((b) => b.reason)).toEqual(["Missing question", "Can't read date: 99/99/2026"]);
-    expect(stats(done)).toMatchObject({ created: 3, bad: 2 });
+    expect(bad.map((b) => b.reason)).toEqual([
+      "Missing question",
+      "Can't read date: 99/99/2026",
+      "Can't read date: [IC HIDDEN]",
+    ]);
+    expect(JSON.stringify(done.badRows)).not.toContain("900101");
+    expect(stats(done)).toMatchObject({ created: 3, bad: 3 });
+    const convo = await asA(() => prisma.conversation.findUniqueOrThrow({ where: { id: tickets[0].conversationId! } }));
+    expect(convo.channel).toBe("import");
     const saved = await asA(() => prisma.importMapping.findFirst({ where: { headers: "ticket id|question|answer|created" } }));
     expect(saved?.mapping).toEqual(options.mapping);
   });
@@ -218,7 +226,57 @@ describe("csv import", () => {
   });
 });
 
+describe("ic in a sender name", () => {
+  it("stores the name masked and still matches staff", async () => {
+    const chat = [
+      "1/6/2026, 10:00 - Ic Client: my report is blank",
+      "1/6/2026, 10:05 - Ali 900101-14-5678: try logging in again",
+    ].join("\n");
+    const job = await queueJob("whatsapp", "ic.txt", Buffer.from(chat), { staff: ["Ali [IC HIDDEN]"] });
+    expect(await asA(() => runImportBatch(job.id, new Date()))).toBe("done");
+    const t = await asA(() => prisma.ticket.findFirstOrThrow({ where: { description: { contains: "my report is blank" } } }));
+    expect(t.status).toBe("closed");
+    const roles = await asA(() =>
+      prisma.message.findMany({ where: { conversationId: t.conversationId! }, orderBy: { createdAt: "asc" }, select: { role: true } })
+    );
+    expect(roles.map((r) => r.role)).toEqual(["customer", "agent"]);
+  });
+});
+
+describe("failures", () => {
+  it("never flips a job another run already finished", async () => {
+    const job = await queueJob("whatsapp", "race.txt", Buffer.from("2/6/2026, 10:00 - Race Client: hello"), {});
+    vi.mocked(tidyIssues).mockImplementationOnce(async () => {
+      await asA(() => prisma.importJob.update({ where: { id: job.id }, data: { status: "done" } }));
+      throw new Error("boom");
+    });
+    await asA(() => runImportBatch(job.id, new Date()));
+    const after = await readJob(job.id);
+    expect(after.status).toBe("done");
+    expect(after.error).toBe("");
+  });
+});
+
 describe("runImports", () => {
+  it("clears out uploads nobody started within 7 days", async () => {
+    const make = (daysAgo: number) =>
+      asA(async () => {
+        const job = await prisma.importJob.create({
+          data: { projectId, kind: "csv", status: "uploaded", createdAt: new Date(Date.now() - daysAgo * 86_400_000) },
+        });
+        const key = importFileKey(A, job.id);
+        await fileStore().put(key, encryptBuffer(Buffer.from("x")));
+        return prisma.importJob.update({ where: { id: job.id }, data: { fileKey: key } });
+      });
+    const old = await make(8);
+    const fresh = await make(1);
+    await asA(() => runImports(new Date()));
+    expect(await asA(() => prisma.importJob.findFirst({ where: { id: old.id } }))).toBeNull();
+    await expect(fileStore().get(old.fileKey!)).rejects.toThrow();
+    expect((await readJob(fresh.id)).status).toBe("uploaded");
+    await expect(fileStore().get(fresh.fileKey!)).resolves.toBeTruthy();
+  });
+
   it("takes one job per company per run, oldest first", async () => {
     const first = await queueJob("csv", "a.csv", Buffer.from("ID,Question\nR1,one"), { mapping: { oldId: "ID", question: "Question" } });
     const second = await queueJob("csv", "b.csv", Buffer.from("ID,Question\nR2,two"), { mapping: { oldId: "ID", question: "Question" } });

@@ -178,6 +178,68 @@ describe("POST /api/imports/:id/start", () => {
       data: { status: "queued", options: { order: "mdy", staff: ["Support Ali"] } },
     });
   });
+
+  it("only ever saves masked sender names", async () => {
+    db.importJob.findFirst.mockResolvedValue({
+      id: "j1",
+      kind: "whatsapp",
+      status: "uploaded",
+      options: {},
+      preview: { senders: [{ name: "Ali 900101-14-5678" }] },
+    });
+    db.importJob.updateMany.mockResolvedValue({ count: 1 });
+    const { POST } = await import("@/app/api/imports/[id]/start/route");
+    await POST(start({ staff: ["Ali 900101-14-5678"] }), idCtx);
+    expect(db.chatSender.upsert.mock.calls[0][0].create).toEqual({ name: "Ali [IC HIDDEN]", isStaff: true });
+    expect(db.importJob.updateMany.mock.calls[0][0].data.options.staff).toEqual(["Ali [IC HIDDEN]"]);
+  });
+});
+
+describe("POST /api/imports/:id/start after a failure", () => {
+  const start = () => createRequest("/api/imports/j1/start", { method: "POST", body: {} });
+
+  it("queues a failed job again, clearing the error and keeping progress", async () => {
+    db.importJob.findFirst.mockResolvedValue({ id: "j1", kind: "csv", status: "failed", fileKey: "k", options: {}, preview: {} });
+    db.importJob.updateMany.mockResolvedValue({ count: 1 });
+    const { POST } = await import("@/app/api/imports/[id]/start/route");
+    const res = await POST(start(), idCtx);
+    expect(res.status).toBe(200);
+    expect(db.importJob.updateMany.mock.calls[0][0]).toEqual({
+      where: { id: "j1", status: "failed" },
+      data: { status: "queued", error: "" },
+    });
+  });
+
+  it("returns 409 when the file is already gone", async () => {
+    db.importJob.findFirst.mockResolvedValue({ id: "j1", kind: "csv", status: "failed", fileKey: null, options: {}, preview: {} });
+    const { POST } = await import("@/app/api/imports/[id]/start/route");
+    const res = await POST(start(), idCtx);
+    expect(res.status).toBe(409);
+    expect(db.importJob.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("returns 409 when another click got there first", async () => {
+    db.importJob.findFirst.mockResolvedValue({ id: "j1", kind: "csv", status: "failed", fileKey: "k", options: {}, preview: {} });
+    db.importJob.updateMany.mockResolvedValue({ count: 0 });
+    const { POST } = await import("@/app/api/imports/[id]/start/route");
+    expect((await POST(start(), idCtx)).status).toBe(409);
+  });
+});
+
+describe("whatsapp preview with an IC in a sender name", () => {
+  it("masks the name and ticks it from the saved choice", async () => {
+    db.chatSender.findMany.mockResolvedValue([{ name: "Ali [IC HIDDEN]", isStaff: true }]);
+    const chat = [
+      "12/10/2026, 9:06 am - Aminah: report kosong",
+      "12/10/2026, 9:30 am - Ali 900101-14-5678: Cuba clear cache",
+    ].join("\n");
+    const { POST } = await import("@/app/api/imports/route");
+    const res = await POST(upload({ projectId: "p1", kind: "whatsapp" }, { name: "chat.txt", text: chat }), {} as never);
+    const { preview } = await parseJsonResponse(res);
+    expect(JSON.stringify(preview)).not.toContain("900101");
+    expect(preview.senders).toContainEqual({ name: "Ali [IC HIDDEN]", count: 1, isStaff: true });
+    expect(preview.answered).toBe(1);
+  });
 });
 
 describe("GET /api/imports/:id/bad-rows", () => {

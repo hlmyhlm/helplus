@@ -16,7 +16,7 @@ export async function aiReady(): Promise<boolean> {
   return (await aiConfig()) !== null;
 }
 
-const clean =(s: string) => maskIC(s).text.slice(0, MAX_TEXT);
+const clean = (s: string) => maskIC(s).text.slice(0, MAX_TEXT);
 
 // models often wrap json in a code fence, take the array out of whatever came back
 function parseList(content: string): unknown[] | null {

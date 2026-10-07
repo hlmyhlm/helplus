@@ -9,6 +9,7 @@ export interface ImportedQa {
   importKey: string;
   projectId: string;
   source: "whatsapp_export" | "old_system";
+  channel: "whatsapp" | "import";
   title?: string;
   category?: string;
   priority?: string;
@@ -191,7 +192,7 @@ export async function writeImportedTicket(qa: ImportedQa): Promise<WriteResult> 
   const customerId = await customerFor(qa.projectId, qa.client);
   const conversation = await prisma.conversation.create({
     data: {
-      channel: "whatsapp",
+      channel: qa.channel,
       customerName: mask(qa.client.name).slice(0, 200) || "Unknown",
       customerContact: mask(qa.client.contact ?? "").slice(0, 200),
       customerId,

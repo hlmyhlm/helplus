@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { withAuth } from "@/lib/tenant/with-auth";
 import { currentCompanyId } from "@/lib/tenant/context";
 import { loadJobFor } from "@/lib/imports/access";
+import { maskIC } from "@/lib/privacy/ic-mask";
 import type { ImportOptions } from "@/lib/imports/run";
 import type { CsvField, CsvMapping } from "@/lib/imports/csv/rows";
 
@@ -10,6 +11,7 @@ type Ctx = { params: Promise<{ id: string }> };
 
 const FIELDS: CsvField[] = ["oldId", "question", "answer", "title", "clientName", "clientContact", "createdAt", "closedAt", "category", "priority"];
 
+const mask = (s: string) => maskIC(s).text;
 const bad = (error: string) => NextResponse.json({ error }, { status: 400 });
 
 export const POST = withAuth("imports:run", async (request: NextRequest, auth, { params }: Ctx) => {
@@ -23,6 +25,16 @@ export const POST = withAuth("imports:run", async (request: NextRequest, auth, {
 
   const job = await loadJobFor(auth, id);
   if (!job) return NextResponse.json({ error: "Import not found" }, { status: 404 });
+  // a retry keeps the choices and the progress, the worker carries on where it stopped
+  if (job.status === "failed") {
+    if (!job.fileKey) return NextResponse.json({ error: "The file is gone, upload it again" }, { status: 409 });
+    const { count } = await prisma.importJob.updateMany({
+      where: { id: job.id, status: "failed" },
+      data: { status: "queued", error: "" },
+    });
+    if (!count) return NextResponse.json({ error: "This import has already started" }, { status: 409 });
+    return NextResponse.json({ data: { id: job.id, status: "queued" } });
+  }
   if (job.status !== "uploaded") return NextResponse.json({ error: "This import has already started" }, { status: 409 });
 
   const options = { ...(job.options as ImportOptions) };
@@ -37,13 +49,15 @@ export const POST = withAuth("imports:run", async (request: NextRequest, auth, {
     if (body.staff === undefined) staff = senders.filter((s) => s.isStaff).map((s) => s.name);
     else if (Array.isArray(body.staff) && body.staff.every((s) => typeof s === "string")) staff = body.staff as string[];
     else return bad("Staff must be a list of sender names");
+    // names are only ever kept masked
+    staff = [...new Set(staff.map(mask))];
     options.staff = staff;
     // remember the picks so the next export from this company comes pre-ticked
-    for (const s of senders) {
-      const isStaff = staff.includes(s.name);
+    for (const name of new Set(senders.map((s) => mask(s.name)))) {
+      const isStaff = staff.includes(name);
       await prisma.chatSender.upsert({
-        where: { companyId_name: { companyId: currentCompanyId(), name: s.name } },
-        create: { name: s.name, isStaff },
+        where: { companyId_name: { companyId: currentCompanyId(), name } },
+        create: { name, isStaff },
         update: { isStaff },
       });
     }

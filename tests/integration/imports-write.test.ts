@@ -21,6 +21,7 @@ function qa(overrides: Partial<ImportedQa>): ImportedQa {
     importKey: `wa:${Math.random()}`,
     projectId,
     source: "whatsapp_export",
+    channel: "whatsapp",
     client: { name: "Ali Ahmad" },
     messages: [],
     status: "closed",
@@ -496,6 +497,7 @@ describe("writeImportedTicket", () => {
     const q = qa({
       importKey: "csv:42",
       source: "old_system",
+      channel: "import",
       status: "closed",
       messages: [
         { role: "customer", text: "how do I reset my password", at: new Date("2026-01-20T00:00:00Z") },

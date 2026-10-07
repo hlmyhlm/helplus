@@ -56,8 +56,19 @@ function countWrite(stats: Stats, r: WriteResult) {
   add(stats, "skippedImages", r.skippedImages);
 }
 
-const customerText = (messages: ChatMessage[], staff: Set<string>) =>
-  messages.filter((m) => !staff.has(m.sender)).map((m) => m.text).join("\n");
+// staff names are stored masked, so senders are compared masked too
+export function staffMatcher(names: string[]): (sender: string) => boolean {
+  const staff = new Set(names.map((n) => maskIC(n).text));
+  const seen = new Map<string, boolean>();
+  return (sender) => {
+    let hit = seen.get(sender);
+    if (hit === undefined) seen.set(sender, (hit = staff.has(maskIC(sender).text)));
+    return hit;
+  };
+}
+
+const customerText = (messages: ChatMessage[], isStaff: (sender: string) => boolean) =>
+  messages.filter((m) => !isStaff(m.sender)).map((m) => m.text).join("\n");
 
 export async function runImportBatch(jobId: string, now: Date, limit = BATCH): Promise<"running" | "done" | "failed"> {
   const job = await prisma.importJob.findFirst({ where: { id: jobId } });
@@ -79,7 +90,9 @@ export async function runImportBatch(jobId: string, now: Date, limit = BATCH): P
     return "done";
   } catch (error) {
     const message = maskIC(error instanceof Error ? error.message : String(error)).text;
-    await prisma.importJob.update({ where: { id: job.id }, data: { status: "failed", error: message.slice(0, 500) } });
+    logger.error("import failed", message);
+    // only a running job can fail, so a run that already finished it stays done
+    await prisma.importJob.updateMany({ where: { id: job.id, status: "running" }, data: { status: "failed", error: message.slice(0, 500) } });
     return "failed";
   }
 }
@@ -88,11 +101,11 @@ async function whatsappBatch(job: Job, data: Buffer, limit: number): Promise<boo
   const options = job.options as ImportOptions;
   const progress = { ...(job.progress as Progress) };
   const stats = { ...(job.stats as Stats) };
-  const staff = new Set(options.staff ?? []);
+  const isStaff = staffMatcher(options.staff ?? []);
 
   const { chat, files, skippedFiles } = readExport(data, job.fileName);
   const { messages } = parseChat(chat, { order: options.order });
-  const { issues, announcements } = groupIssues(messages, (s) => staff.has(s));
+  const { issues, announcements } = groupIssues(messages, isStaff);
   const newestAt = messages.reduce((max, m) => Math.max(max, m.at.getTime()), 0);
   const keys = issues.map((i) => issueKey(job.projectId, i));
 
@@ -107,7 +120,7 @@ async function whatsappBatch(job: Job, data: Buffer, limit: number): Promise<boo
       const b = issues[i + 1];
       if (!b || a.answered || a.client !== b.client || keys[i] in merge) continue;
       if (b.firstAt.getTime() - a.lastAt.getTime() > MERGE_WINDOW_MS) continue;
-      merge[keys[i]] = await sameProblem(customerText(a.messages, staff), customerText(b.messages, staff));
+      merge[keys[i]] = await sameProblem(customerText(a.messages, isStaff), customerText(b.messages, isStaff));
     }
   }
 
@@ -149,7 +162,7 @@ async function whatsappBatch(job: Job, data: Buffer, limit: number): Promise<boo
     todo.push({ key, issue, sorted, messageKeys, known: !!ticket });
   }
 
-  const labels = await tidyIssues(todo.filter((r) => !r.known).map((r) => ({ key: r.key, text: customerText(r.issue.messages, staff) })));
+  const labels = await tidyIssues(todo.filter((r) => !r.known).map((r) => ({ key: r.key, text: customerText(r.issue.messages, isStaff) })));
 
   for (const { key, issue, sorted, messageKeys } of todo) {
     const images: NonNullable<ImportedQa["images"]> = [];
@@ -167,11 +180,12 @@ async function whatsappBatch(job: Job, data: Buffer, limit: number): Promise<boo
         importKey: key,
         projectId: job.projectId,
         source: "whatsapp_export",
+        channel: "whatsapp",
         title: label?.title,
         category: label?.category,
         client: { name: issue.client, contact: /^\+?[\d\s()-]{8,}$/.test(issue.client) ? issue.client : undefined },
         messages: sorted.map((m, i) => ({
-          role: staff.has(m.sender) ? "agent" : "customer",
+          role: isStaff(m.sender) ? "agent" : "customer",
           text: m.text || m.attachment || "",
           at: m.at,
           importKey: messageKeys[i],
@@ -238,6 +252,7 @@ async function csvBatch(job: Job, data: Buffer, now: Date, limit: number): Promi
         importKey: `csv:${row.oldId}`,
         projectId: job.projectId,
         source: "old_system",
+        channel: "import",
         title: row.title || undefined,
         category: row.category || undefined,
         priority: PRIORITIES.has(priority) ? priority : undefined,
