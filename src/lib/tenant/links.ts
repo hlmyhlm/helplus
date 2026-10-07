@@ -23,6 +23,8 @@ export const LINKS: Record<string, Record<string, string>> = {
   EmailOutbox: { ticketId: "Ticket" },
   Attachment: { ticketId: "Ticket", messageId: "Message", checkedById: "Admin" },
   ImportJob: { projectId: "Project" },
+  WaChat: { projectId: "Project" },
+  WaInbound: { chatId: "WaChat", ticketId: "Ticket" },
 };
 
 // relation fields between company tables (not `company`), model -> field -> target model.
@@ -50,6 +52,7 @@ export const RELATIONS: Record<string, Record<string, string>> = {
     emails: "EmailOutbox",
     attachments: "Attachment",
     knowledgeDrafts: "KnowledgeEntry",
+    waInbound: "WaInbound",
   },
   Tag: { conversations: "ConversationTag" },
   ConversationTag: { conversation: "Conversation", tag: "Tag" },
@@ -66,12 +69,15 @@ export const RELATIONS: Record<string, Record<string, string>> = {
     slaRules: "SLARule",
     importJobs: "ImportJob",
     knowledgeEntries: "KnowledgeEntry",
+    waChats: "WaChat",
   },
   ProjectAccess: { project: "Project", admin: "Admin" },
   SLARule: { project: "Project", tickets: "Ticket" },
   EmailOutbox: { ticket: "Ticket" },
   Attachment: { ticket: "Ticket", message: "Message", checkedBy: "Admin" },
   ImportJob: { project: "Project" },
+  WaChat: { project: "Project", inbound: "WaInbound" },
+  WaInbound: { chat: "WaChat", ticket: "Ticket" },
 };
 
 // the only nested creates allowed. each nested row gets the current company stamped on it.

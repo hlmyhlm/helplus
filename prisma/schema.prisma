@@ -50,6 +50,8 @@ model Company {
   importJobs        ImportJob[]
   chatSenders       ChatSender[]
   importMappings    ImportMapping[]
+  waChats           WaChat[]
+  waInbound         WaInbound[]
 }
 
 model Project {
@@ -65,6 +67,7 @@ model Project {
   slaRules         SLARule[]
   importJobs       ImportJob[]
   knowledgeEntries KnowledgeEntry[]
+  waChats          WaChat[]
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
 
@@ -339,6 +342,7 @@ model Ticket {
   emails           EmailOutbox[]
   attachments      Attachment[]
   knowledgeDrafts  KnowledgeEntry[]
+  waInbound        WaInbound[]
   importKey        String?
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
@@ -783,6 +787,52 @@ model ImportJob {
   finishedAt  DateTime?
 
   @@index([companyId, status])
+}
+
+// a whatsapp group or private chat the bot can see
+model WaChat {
+  id            String      @id @default(uuid())
+  companyId     String      @default("")
+  company       Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  waId          String
+  name          String      @default("")
+  isGroup       Boolean     @default(true)
+  projectId     String?
+  project       Project?    @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  lastMessageAt DateTime?
+  inbound       WaInbound[]
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@unique([companyId, waId])
+  @@index([companyId])
+}
+
+// one message the bot saw, IC hidden, waiting to become part of a ticket
+model WaInbound {
+  id          String    @id @default(uuid())
+  companyId   String    @default("")
+  company     Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  chatId      String
+  chat        WaChat    @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  waMessageId String
+  senderId    String
+  senderName  String    @default("")
+  isStaff     Boolean   @default(false)
+  text        String    @default("")
+  at          DateTime
+  quotedWaId  String?
+  mediaKey    String?
+  mediaName   String?
+  state       String    @default("pending") // pending | done | pick | ignored
+  ticketId    String?
+  ticket      Ticket?   @relation(fields: [ticketId], references: [id], onDelete: SetNull)
+  doneAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@unique([companyId, waMessageId])
+  @@index([companyId, state])
+  @@index([chatId, at])
 }
 
 model ChatSender {
