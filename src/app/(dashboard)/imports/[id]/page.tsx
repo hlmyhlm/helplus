@@ -57,7 +57,7 @@ const plainButton =
 
 export default function ImportPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const { canImport, loaded } = useCompany();
+  const { canImport, loaded, failed } = useCompany();
   const [job, setJob] = useState<Job | null>(null);
   const [loadError, setLoadError] = useState("");
 
@@ -97,7 +97,9 @@ export default function ImportPage({ params }: { params: Promise<{ id: string }>
         <Link href="/imports" className="inline-flex items-center gap-1 text-sm text-helplus-link">
           <ArrowLeft className="h-4 w-4" /> All imports
         </Link>
-        {!canImport ? (
+        {failed ? (
+          <p className="text-sm text-helplus-danger">Couldn&apos;t load your account. Refresh to try again.</p>
+        ) : !canImport ? (
           loaded && <p className="text-sm text-helplus-text-light">Ask an admin or supervisor to run imports</p>
         ) : loadError ? (
           <p className="text-sm text-helplus-danger">{loadError}</p>

@@ -10,6 +10,8 @@ import { unwrapList } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { KIND_LABELS, StatusDot, errorText, formatWhen, type ImportJob } from "./shared";
 
+const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
+
 interface Project {
   id: string;
   name: string;
@@ -18,7 +20,7 @@ interface Project {
 }
 
 export default function ImportsPage() {
-  const { canImport, loaded } = useCompany();
+  const { canImport, loaded, failed } = useCompany();
   const [projects, setProjects] = useState<Project[]>([]);
   const [jobs, setJobs] = useState<ImportJob[]>([]);
   const [loading, setLoading] = useState(true);
@@ -45,12 +47,13 @@ export default function ImportsPage() {
     };
   }, [canImport]);
 
-
   return (
     <>
       <Header title="Imports" description="Bring in old WhatsApp chats and support history" />
       <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
-        {!canImport ? (
+        {failed ? (
+          <p className="text-sm text-helplus-danger">Couldn&apos;t load your account. Refresh to try again.</p>
+        ) : !canImport ? (
           loaded && <p className="text-sm text-helplus-text-light">Ask an admin or supervisor to run imports</p>
         ) : (
           <>
@@ -60,6 +63,7 @@ export default function ImportsPage() {
                 title="WhatsApp chat"
                 accept=".txt,.zip"
                 note="Export the chat from WhatsApp (with or without media). Up to 50 MB. Bigger chats: export without media or in parts."
+                tooBig="This file is over 50 MB. Bigger chats: export without media or in parts."
                 projects={projects}
               />
               <UploadCard
@@ -67,6 +71,7 @@ export default function ImportsPage() {
                 title="Old system (CSV)"
                 accept=".csv"
                 note="Save the export as CSV first. Up to 50 MB."
+                tooBig="This file is over 50 MB. Split the CSV into smaller files."
                 projects={projects}
               />
             </div>
@@ -93,12 +98,14 @@ function UploadCard({
   title,
   accept,
   note,
+  tooBig,
   projects,
 }: {
   kind: "whatsapp" | "csv";
   title: string;
   accept: string;
   note: string;
+  tooBig: string;
   projects: Project[];
 }) {
   const router = useRouter();
@@ -113,6 +120,11 @@ function UploadCard({
 
   const upload = async () => {
     if (!file || !chosen) return;
+    // the server would refuse it anyway, so don't send 50 MB for nothing
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setError(tooBig);
+      return;
+    }
     setBusy(true);
     setError("");
     const fd = new FormData();
@@ -161,8 +173,9 @@ function UploadCard({
           type="file"
           accept={accept}
           onChange={(e) => {
-            setFile(e.target.files?.[0] ?? null);
-            setError("");
+            const picked = e.target.files?.[0] ?? null;
+            setFile(picked);
+            setError(picked && picked.size > MAX_UPLOAD_BYTES ? tooBig : "");
           }}
           className="block w-full text-sm text-helplus-text file:mr-3 file:h-8 file:px-3 file:rounded-md file:border file:border-helplus-border file:bg-helplus-bg file:text-helplus-text"
         />

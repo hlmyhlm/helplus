@@ -49,7 +49,11 @@ function TicketsPageInner() {
   const projectId = searchParams.get("projectId") ?? "";
   const { projectLabel, canCheckScreens } = useCompany();
   const chipLabel = projectLabel === "Projects" ? "Project" : "Client";
-  const [chip, setChip] = useState("open");
+  // links like ?status=all open on that chip
+  const [chip, setChip] = useState(() => {
+    const s = searchParams.get("status");
+    return CHIPS.some((c) => c.key === s) ? s! : "open";
+  });
   const [q, setQ] = useState("");
   const [rows, setRows] = useState<TicketRow[]>([]);
   const [counts, setCounts] = useState<Partial<Record<TicketStatus, number>>>({});
