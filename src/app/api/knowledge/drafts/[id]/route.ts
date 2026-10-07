@@ -69,7 +69,9 @@ export const PATCH = withAuth(
       });
       if (count === 0) return missing(ids, id);
 
-      return NextResponse.json(await prisma.knowledgeEntry.findFirst({ where: { id } }));
+      const saved = await prisma.knowledgeEntry.findFirst({ where: { id } });
+      if (!saved) return NextResponse.json({ error: "Draft not found" }, { status: 404 });
+      return NextResponse.json(saved);
     } catch (error) {
       logger.error("Failed to update draft:", error);
       return NextResponse.json({ error: "Failed to update draft" }, { status: 500 });

@@ -234,6 +234,16 @@ describe("PATCH /api/knowledge/drafts/:id", () => {
     expect((await parseJsonResponse(res)).title).toBe("For [IC HIDDEN]");
   });
 
+  it("404s when the draft is gone by the time it's read back", async () => {
+    db.knowledgeEntry.updateMany.mockResolvedValue({ count: 1 });
+    db.knowledgeEntry.findFirst.mockResolvedValue(null);
+
+    const { PATCH } = await import("@/app/api/knowledge/drafts/[id]/route");
+    const res = await PATCH(createRequest("/api/knowledge/drafts/d1", { method: "PATCH", body: { title: "New" } }), ctx);
+
+    expect(res.status).toBe(404);
+  });
+
   it("409s when the draft was approved before the edit landed", async () => {
     db.knowledgeEntry.updateMany.mockResolvedValue({ count: 0 });
     db.knowledgeEntry.findFirst.mockResolvedValue({ id: "d1", status: "approved" });
