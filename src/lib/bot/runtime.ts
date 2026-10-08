@@ -24,17 +24,41 @@ interface Running {
 }
 
 const bots = new Map<string, Running>();
+// a stopped client whose start hasn't settled yet still holds the session folder
+const draining = new Map<string, Promise<void>>();
 
 async function removeSession(companyId: string) {
   if (!/^[-_\w]+$/.test(companyId)) return;
   const dir = join(".wwebjs_auth", companyId === "default" ? "session" : `session-${companyId}`);
-  await rm(dir, { recursive: true, force: true }).catch((error) => logger.error(`[bot] couldn't remove ${dir}`, error));
+  await rm(dir, { recursive: true, force: true, maxRetries: 4 }).catch((error) => logger.error(`[bot] couldn't remove ${dir}`, error));
 }
 
-async function close(companyId: string, entry: Running, unlink: boolean) {
+function close(companyId: string, entry: Running, unlink: boolean): Promise<void> {
   entry.closing = true;
   if (bots.get(companyId) === entry) bots.delete(companyId);
-  await entry.handle?.stop(unlink);
+  const handle = entry.handle;
+  if (!handle || !entry.pending) {
+    return (async () => {
+      await handle?.stop(unlink);
+      if (unlink) await removeSession(companyId);
+    })();
+  }
+  // still starting: close what we can now, and only let a new start in once the old one has settled
+  const drain = (async () => {
+    if (!unlink) await handle.stop(false);
+    await handle.started.catch(() => {});
+    // logout needs the page, so an unlink waits for the start to finish
+    if (unlink) {
+      await handle.stop(true);
+      await removeSession(companyId);
+    }
+  })()
+    .catch((error) => logger.error(`[bot] couldn't close whatsapp for ${companyId}`, error))
+    .finally(() => {
+      if (draining.get(companyId) === drain) draining.delete(companyId);
+    });
+  draining.set(companyId, drain);
+  return drain;
 }
 
 async function lost(companyId: string, entry: Running, reason: string) {
@@ -107,11 +131,13 @@ async function syncOne(companyId: string, now: Date) {
   const entry = bots.get(companyId);
 
   if (state.status === "stopping") {
-    if (entry) await close(companyId, entry, state.unlink);
-    if (state.unlink) await removeSession(companyId);
+    if (entry?.pending) void close(companyId, entry, state.unlink);
+    else if (entry) await close(companyId, entry, state.unlink);
+    else if (state.unlink) await removeSession(companyId);
     await setBot(["stopping"], "off", { qr: null, unlink: false, error: "" });
     return;
   }
+  if (draining.has(companyId)) return;
   if (entry?.pending) return;
   if (state.status === "off" || state.status === "disconnected") {
     if (entry) await close(companyId, entry, false);

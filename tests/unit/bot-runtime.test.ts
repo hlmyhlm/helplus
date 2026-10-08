@@ -14,11 +14,13 @@ vi.mock("@/lib/bot/state", () => ({
 
 let hooks: BotHooks;
 let settle: { resolve: () => void; reject: (e: unknown) => void };
+const settles: (typeof settle)[] = [];
 const stop = vi.fn();
 const startClient = vi.fn(async (_id: string, h: BotHooks) => {
   hooks = h;
   const started = new Promise<void>((resolve, reject) => {
     settle = { resolve, reject };
+    settles.push(settle);
   });
   return { stop, started };
 });
@@ -46,6 +48,8 @@ const now = new Date("2026-10-07T10:00:00Z");
 const company = (id: string) => vi.mocked(prisma.company.findMany).mockResolvedValue([{ id }] as never);
 
 beforeEach(async () => {
+  // let any start from the last test finish so nothing is left draining
+  for (const s of settles.splice(0)) s.reject(new Error("test over"));
   stop.mockReset().mockResolvedValue(undefined);
   await stopAllBots();
   Object.assign(row, { status: "off", unlink: false, qr: null, phone: "", error: "" });
@@ -101,6 +105,40 @@ describe("syncBots", () => {
     await Promise.resolve();
     expect(row.status).toBe("off");
     expect(emailBotDown).not.toHaveBeenCalled();
+  });
+
+  it("a connect right after a mid-start stop waits for the old chromium", async () => {
+    row.status = "starting";
+    await syncBots(now);
+    row.status = "stopping";
+    await syncBots(now);
+    expect(row.status).toBe("off");
+    row.status = "starting";
+    await syncBots(now);
+    expect(startClient).toHaveBeenCalledTimes(1);
+    settles[0].reject(new Error("stopped while starting"));
+    await vi.waitFor(async () => {
+      await syncBots(now);
+      expect(startClient).toHaveBeenCalledTimes(2);
+    });
+    await syncBots(now);
+    expect(startClient).toHaveBeenCalledTimes(2);
+    expect(row.status).toBe("starting");
+    expect(emailBotDown).not.toHaveBeenCalled();
+  });
+
+  it("an unlink during a start logs out and removes the session once it settles", async () => {
+    row.status = "starting";
+    await syncBots(now);
+    Object.assign(row, { status: "stopping", unlink: true });
+    await syncBots(now);
+    expect(row.status).toBe("off");
+    expect(stop).not.toHaveBeenCalledWith(true);
+    expect(rm).not.toHaveBeenCalled();
+    settles[0].resolve();
+    await vi.waitFor(() => expect(rm).toHaveBeenCalledTimes(1));
+    expect(stop).toHaveBeenCalledWith(true);
+    expect(vi.mocked(rm).mock.calls[0][1]).toMatchObject({ recursive: true, force: true, maxRetries: 4 });
   });
 
   it("restarts a connected row after a worker restart", async () => {

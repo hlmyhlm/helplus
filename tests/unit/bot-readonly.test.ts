@@ -14,6 +14,8 @@ const ALLOWED = new Set([
   "getContact",
   "getQuotedMessage",
   "downloadMedia",
+  // our StartTimeoutError, never called on a whatsapp object
+  "constructor",
   // our own hooks
   "onQr",
   "onReady",
@@ -27,6 +29,7 @@ const ALLOWED = new Set([
   "has",
   "test",
   "endsWith",
+  "startsWith",
   "split",
   "trim",
   "catch",
@@ -38,6 +41,27 @@ function files(dir: string): string[] {
     const p = join(dir, f);
     return statSync(p).isDirectory() ? files(p) : /\.(ts|tsx)$/.test(p) ? [p] : [];
   });
+}
+
+// every method whatsapp-web.js declares on the objects the bot can reach
+function libraryMethods(): string[] {
+  const lines = readFileSync("node_modules/whatsapp-web.js/index.d.ts", "utf8").split(/\r?\n/);
+  const names = new Set<string>();
+  let inside = false;
+  for (const line of lines) {
+    if (/^ {4}export (class|interface) (Client|Message|Chat|GroupChat|Contact|Call)\b/.test(line)) inside = true;
+    else if (inside && /^ {4}}/.test(line)) inside = false;
+    else if (inside) {
+      const m = line.match(/^\s+(\w+)\s*(?:<[^>]*>)?\s*\(/) ?? line.match(/^\s+(\w+)\??\s*:\s*\(/);
+      if (m) names.add(m[1]);
+    }
+  }
+  return [...names].sort();
+}
+
+// a forbidden name anywhere, called, destructured or quoted, fails the check
+function forbiddenIn(text: string, names: string[]): string[] {
+  return names.filter((name) => !ALLOWED.has(name) && new RegExp(`\\b${name}\\b`).test(text));
 }
 
 function calls(text: string): string[] {
@@ -61,6 +85,19 @@ describe("whatsapp bot is read-only", () => {
 
   it("finds calls written either way", () => {
     expect(calls(`a.sendMessage(x); b["reply"](y); c ?. sendSeen ()`)).toEqual(["reply", "sendMessage", "sendSeen"]);
+  });
+
+  it("names no whatsapp-web.js method outside the allowlist", () => {
+    const methods = libraryMethods();
+    expect(methods).toEqual(expect.arrayContaining(["sendMessage", "reply", "sendSeen", "react", "addParticipants", "getChat"]));
+    expect(forbiddenIn(client, methods)).toEqual([]);
+  });
+
+  it("catches optional calls and destructuring", () => {
+    const methods = libraryMethods();
+    expect(forbiddenIn("client.sendMessage?.(x)", methods)).toEqual(["sendMessage"]);
+    expect(forbiddenIn("const { sendSeen: s } = chat; s()", methods)).toEqual(["sendSeen"]);
+    expect(forbiddenIn("const { getChat } = message", methods)).toEqual([]);
   });
 
   it("never reaches into the page", () => {

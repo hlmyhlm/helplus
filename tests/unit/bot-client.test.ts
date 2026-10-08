@@ -253,6 +253,27 @@ describe("media and quotes", () => {
     ]);
   });
 
+  it("downloads an image sent as a document", async () => {
+    const h = hooks();
+    await startClient("co-a", h);
+    const downloadMedia = vi.fn(async () => ({ data: Buffer.from("png").toString("base64"), filename: "shot.png", mimetype: "image/png" }));
+    await handlers.message(message({ type: "document", hasMedia: true, downloadMedia, _data: { mimetype: "image/png", filename: "shot.png" } }));
+    expect(downloadMedia).toHaveBeenCalled();
+    expect(h.onMessage.mock.calls[0][0].media).toEqual({ data: Buffer.from("png"), fileName: "shot.png", mime: "image/png" });
+  });
+
+  it("never passes an image with no data", async () => {
+    const h = hooks();
+    await startClient("co-a", h);
+    const empty = async () => ({ data: "", filename: "shot.png", mimetype: "image/png" });
+    await handlers.message(message({ type: "document", hasMedia: true, body: "", downloadMedia: empty, _data: { mimetype: "image/png" } }));
+    await handlers.message(message({ type: "image", hasMedia: true, body: "", downloadMedia: empty }));
+    expect(h.onMessage.mock.calls.map(([e]) => [e.text, e.media])).toEqual([
+      ["[media unavailable]", null],
+      ["[media unavailable]", null],
+    ]);
+  });
+
   it("doesn't download other media, only names it", async () => {
     const h = hooks();
     await startClient("co-a", h);

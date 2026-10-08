@@ -94,14 +94,15 @@ async function quotedId(message: Message): Promise<string | null> {
 async function image(message: Message): Promise<IncomingEvent["media"]> {
   try {
     const media = await message.downloadMedia();
-    return media ? { data: Buffer.from(media.data, "base64"), fileName: media.filename ?? "", mime: media.mimetype } : null;
+    const data = media?.data ? Buffer.from(media.data, "base64") : null;
+    return data?.length ? { data, fileName: media.filename ?? "", mime: media.mimetype } : null;
   } catch {
     return null;
   }
 }
 
 // only images are downloaded; other media just needs a name and type for the note
-function described(message: Message, type: string): IncomingEvent["media"] {
+function described(message: Message, type: string): NonNullable<IncomingEvent["media"]> {
   const raw = (message as unknown as { _data?: { mimetype?: string; filename?: string } })._data ?? {};
   return { data: Buffer.alloc(0), fileName: raw.filename ?? "", mime: raw.mimetype || MIME_BY_TYPE[type] || "application/octet-stream" };
 }
@@ -117,7 +118,9 @@ export async function toEvent(message: Message): Promise<IncomingEvent | null> {
   let text = placeholder ?? message.body ?? "";
   let media: IncomingEvent["media"] = null;
   if (message.hasMedia && !placeholder) {
-    media = type === "image" ? await image(message) : described(message, type);
+    const info = described(message, type);
+    // images sent as documents still need their bytes
+    media = type === "image" || info.mime.startsWith("image/") ? await image(message) : info;
     if (!media) text = `[media unavailable] ${text}`.trim();
   }
   return {
@@ -187,17 +190,17 @@ export async function startClient(companyId: string, hooks: BotHooks, timeoutMs 
   }
 
   // a stop before chromium is up can't close it yet, so the timer and the end of the start close it again
-  const started = new Promise<void>((resolve, reject) => {
+  const started = new Promise<void>((resolve, fail) => {
     const timer = setTimeout(() => {
       void stop(false);
-      reject(new StartTimeoutError());
+      fail(new StartTimeoutError());
     }, timeoutMs);
     client.initialize().then(
       async () => {
         clearTimeout(timer);
         if (stopped) {
           await stop(false);
-          reject(new Error("stopped while starting"));
+          fail(new Error("stopped while starting"));
           return;
         }
         // a crashed chromium sends no whatsapp event
@@ -207,11 +210,11 @@ export async function startClient(companyId: string, hooks: BotHooks, timeoutMs 
       async (error: unknown) => {
         clearTimeout(timer);
         await stop(false);
-        reject(error);
+        fail(error);
       }
     );
   });
-  // the runtime handles failures; this stops an unhandled rejection if it never looks
+  // the runtime handles failures; this keeps node quiet if it never looks
   started.catch(() => {});
 
   return { stop, started };

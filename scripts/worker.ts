@@ -52,6 +52,8 @@ async function main() {
   await closeOcr();
   await systemPrisma.$disconnect();
   if (once && threw) process.exitCode = 1;
+  // a stray chromium handle shouldn't keep a stopped worker alive
+  if (!once) process.exit(process.exitCode ?? 0);
 }
 
 main().catch((error) => {
