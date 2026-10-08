@@ -37,6 +37,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Library:** once approved, an imported answer is used by the AI for the whole company until Library entries can be limited to one project.
 - **Worker:** imports only move forward while the worker runs.
 
+### WhatsApp bot
+
+- **Added:** the WhatsApp bot runs in the worker and reads linked groups and private chats. Client messages become tickets after 2 quiet minutes. A staff reply that quotes a client answers that ticket. Other replies go to the only recent open ticket, or wait in Sources > WhatsApp groups > Replies to place.
+- **Changed:** the old WhatsApp connection is removed. It ran inside the web server and auto-replied with AI. Help+ no longer sends anything on WhatsApp.
+- **Staff toggle:** the "Staff" tick on a sender applies to everyone with that WhatsApp name.
+- **Senders after linking:** a group's senders only show after the group is linked. Tick staff right after linking; until then, staff messages count as client messages.
+- **Unlinking:** unlinking a group ignores its waiting messages but keeps replies that are waiting to be placed.
+- **Moving a group:** after a group is moved to another client, its existing open tickets keep receiving that client's follow-ups. New tickets go to the new client.
+- **Failed messages:** a client message that fails 5 times is set aside and deleted after 7 days. It is only visible in the worker log, so the chat is held for up to 5 runs (about 5 minutes) while it retries.
+- **Worker:** run exactly one worker. Two workers would fight over the same WhatsApp session.
+- **Bot actions:** the bot never sends, reads receipts aside. It doesn't hide its online status, because that would be a write.
+- **Media:** only images are downloaded. A media download that fails is kept as "[media unavailable]".
+- **QR codes:** a QR expires after 5 refreshes. Press Connect again.
+- **Disconnect alerts:** admins and owners get an email when the bot disconnects, the browser crashes, or a start takes more than 90 s.
+- **Login limit:** the login rate limit now applies only to login, setup and logout (POST). Pages reading who is logged in are no longer limited. This fixes buttons going missing after a few page loads.
+- **Known limits:**
+  - The bot uses an unofficial WhatsApp client, so the number can be banned. Use a separate number, never make it the only group admin, and tell the group it's there.
+  - New bot tickets show up when the ticket list reloads: opening Tickets, or changing the status chip, search, project or page. It doesn't poll or reload on window focus or on a timer, so a screen left open on one filter won't show a new bot ticket by itself.
+  - Times follow the server clock.
+  - `whatsapp-web.js` doesn't fetch messages sent while the bot was disconnected (its `syncHistory` is a separate, manual call we don't make). Use a chat export to fill the gap.
+  - Voice notes, videos and documents become a note in the text. Only images are kept, and they're IC-checked.
+  - Not yet tested with a real phone: unlinking while connected, and logging out from the phone.
+
 ### Upgrade notes
 
 - Set `HELPLUS_SECRET_KEY` (see `.env.example`), then run `npx tsx --env-file=.env scripts/encrypt-secrets.ts` once.
@@ -58,6 +81,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - The first screenshot downloads OCR language data (about 10 MB) into `.cache/tesseract`. The server needs internet access once, or copy that folder in.
 - Imports run in the worker. Keep `npm run worker` running.
 - Import uploads are limited to 50 MB. Export big chats without media or in parts.
+- Run the worker (`npm run worker`) all the time. It runs the WhatsApp bot too.
+- Mount `.wwebjs_auth` on the worker.
+- A number that was linked before keeps its session.
+- Link each group to a client in Sources > WhatsApp groups. Messages in groups that aren't linked are ignored.
+- Staff are recognised by phone numbers in Settings > Team, or by ticking Staff on a sender.
+- `package.json` overrides `puppeteer` to 25, but `whatsapp-web.js` 1.34.7 expects 24. The bot closes its browser itself to work around this.
 
 ## [0.2.2] - 2026-04-08
 

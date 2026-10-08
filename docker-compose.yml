@@ -42,6 +42,27 @@ services:
       retries: 3
     volumes:
       - whatsapp_auth:/app/.wwebjs_auth
+      - storage_data:/app/storage
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  worker:
+    build: .
+    restart: unless-stopped
+    command: ["npm", "run", "worker"]
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/helplus?schema=public
+      NODE_ENV: production
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - whatsapp_auth:/app/.wwebjs_auth
+      - storage_data:/app/storage
     deploy:
       resources:
         limits:
@@ -50,3 +71,4 @@ services:
 volumes:
   postgres_data:
   whatsapp_auth:
+  storage_data:
