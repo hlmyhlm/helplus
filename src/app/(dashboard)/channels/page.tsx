@@ -19,9 +19,10 @@ import {
   Eye,
   EyeOff,
 } from "lucide-react";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { hasPermission } from "@/lib/rbac";
+import { useRole } from "@/lib/hooks/use-role";
 import { botLabel, type Tone } from "./bot-label";
 
 // ---------------------------------------------------------------------------
@@ -175,46 +176,70 @@ function WhatsAppCard() {
   const [bot, setBot] = useState<BotView | null>(null);
   const [loadError, setLoadError] = useState("");
   const [picks, setPicks] = useState(0);
-  const [canUpdate, setCanUpdate] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [confirmUnlink, setConfirmUnlink] = useState(false);
-
+  const [stuck, setStuck] = useState(false);
+  const inFlight = useRef(false);
+  const since = useRef({ status: "", at: 0 });
   // buttons follow the same permission the api checks
-  useEffect(() => {
-    fetch("/api/auth")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => setCanUpdate(hasPermission(d?.user?.role ?? "", "channels:update")))
-      .catch(() => setCanUpdate(false));
+  const canUpdate = hasPermission(useRole(), "channels:update");
+
+  const show = useCallback((view: BotView) => {
+    const now = Date.now();
+    if (view.status !== since.current.status) since.current = { status: view.status, at: now };
+    setStuck((view.status === "starting" || view.status === "stopping") && now - since.current.at > 60_000);
+    setBot(view);
   }, []);
 
-  const load = useCallback(async () => {
-    try {
-      const res = await fetch("/api/channels/whatsapp");
-      if (!res.ok) {
-        setLoadError(await errorText(res));
+  const load = useCallback(
+    async (withPicks: boolean) => {
+      if (inFlight.current) return;
+      inFlight.current = true;
+      try {
+        const res = await fetch("/api/channels/whatsapp");
+        if (!res.ok) {
+          setLoadError(await errorText(res));
+          return;
+        }
+        show(await res.json());
+        setLoadError("");
+      } catch {
+        setLoadError("Couldn't reach the server.");
         return;
+      } finally {
+        inFlight.current = false;
       }
-      setBot(await res.json());
-      setLoadError("");
-    } catch {
-      setLoadError("Couldn't reach the server.");
-      return;
-    }
-    fetch("/api/bot/picks")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => setPicks(Array.isArray(d?.data) ? d.data.length : 0))
-      .catch(() => {});
-  }, []);
+      if (!withPicks) return;
+      fetch("/api/bot/picks")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => setPicks(Array.isArray(d?.data) ? d.data.length : 0))
+        .catch(() => {});
+    },
+    [show]
+  );
 
   const status = bot?.status ?? "off";
   const changing = status === "starting" || status === "qr" || status === "stopping";
 
-  // fast while something is changing, slow otherwise
   useEffect(() => {
-    load();
-    const timer = setInterval(load, changing ? 3000 : 30000);
-    return () => clearInterval(timer);
+    load(true);
+  }, [load]);
+
+  // fast while something is changing, slow otherwise, and nothing while the tab is hidden
+  useEffect(() => {
+    const tick = () => {
+      if (document.visibilityState !== "hidden") load(!changing);
+    };
+    const onVisible = () => {
+      if (document.visibilityState === "visible") load(false);
+    };
+    const timer = setInterval(tick, changing ? 3000 : 30000);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [load, changing]);
 
   async function act(action: "connect" | "stop" | "unlink") {
@@ -228,10 +253,10 @@ function WhatsAppCard() {
       });
       setConfirmUnlink(false);
       if (res.ok) {
-        setBot(await res.json());
+        show(await res.json());
       } else {
         setError(await errorText(res));
-        load();
+        load(false);
       }
     } catch {
       setError("Couldn't reach the server. Try again.");
@@ -274,6 +299,9 @@ function WhatsAppCard() {
             </span>
           </div>
         )}
+
+        {loadError && bot && <p className="text-xs text-helplus-danger">{loadError}</p>}
+        {stuck && <p className="text-xs text-helplus-warning">Still waiting. Is the worker running?</p>}
 
         {status === "qr" && bot?.qr && (
           <div className="flex flex-col items-center gap-2">
@@ -323,6 +351,11 @@ function WhatsAppCard() {
               >
                 {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Power className="h-3.5 w-3.5" />}
                 Connect
+              </button>
+            ) : status === "stopping" ? (
+              <button disabled className={`${btn} text-helplus-text border border-helplus-border`}>
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Stopping…
               </button>
             ) : running ? (
               <>

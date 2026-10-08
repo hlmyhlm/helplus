@@ -91,8 +91,8 @@ export function middleware(request: NextRequest) {
     return addHeaders(NextResponse.next(), requestId);
   }
 
-  // Rate limiting for auth endpoint
-  if (pathname.startsWith("/api/auth")) {
+  // only logins are limited, pages read the role with GET
+  if (pathname.startsWith("/api/auth") && request.method === "POST") {
     const ip = getClientIp(request);
     const rateResult = checkRateLimit(`auth:${ip}`, RATE_LIMITS.auth);
 

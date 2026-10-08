@@ -7,6 +7,7 @@ import { Header } from "@/components/layout/header";
 import { unwrapList } from "@/lib/api-client";
 import { useCompany } from "@/lib/hooks/use-company";
 import { hasPermission } from "@/lib/rbac";
+import { useRole } from "@/lib/hooks/use-role";
 
 interface Chat {
   id: string;
@@ -286,7 +287,7 @@ function ChatRow({ chat, projects, projectWord }: { chat: Chat; projects: Projec
       </div>
 
       {!projectId && (
-        <p className="mt-2 text-xs text-helplus-warning">Messages are ignored until you link this group</p>
+        <p className="mt-2 text-xs text-helplus-warning">Messages are ignored until you link this chat</p>
       )}
 
       <button
@@ -310,15 +311,8 @@ export default function WhatsAppGroupsPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [pickError, setPickError] = useState("");
-  const [canPlace, setCanPlace] = useState(false);
-
   // placing a reply also needs tickets:update
-  useEffect(() => {
-    fetch("/api/auth")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => setCanPlace(hasPermission(d?.user?.role ?? "", "tickets:update")))
-      .catch(() => setCanPlace(false));
-  }, []);
+  const canPlace = hasPermission(useRole(), "tickets:update");
 
   const load = useCallback(async () => {
     setLoadError("");

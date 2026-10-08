@@ -8,6 +8,7 @@ import { Header } from "@/components/layout/header";
 import { unwrapList, listMeta } from "@/lib/api-client";
 import { useCompany } from "@/lib/hooks/use-company";
 import { hasPermission } from "@/lib/rbac";
+import { useRole } from "@/lib/hooks/use-role";
 
 interface Draft {
   id: string;
@@ -313,22 +314,12 @@ function DraftsPageInner() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
-  const [can, setCan] = useState<Can>({ update: false, remove: false });
-
   // buttons follow the same permissions the api checks
-  useEffect(() => {
-    fetch("/api/auth")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => {
-        const role = d?.user?.role ?? "";
-        setCan({
-          update: hasPermission(role, "knowledge:update"),
-          remove:
-            hasPermission(role, "knowledge:update") && hasPermission(role, "knowledge:delete"),
-        });
-      })
-      .catch(() => setCan({ update: false, remove: false }));
-  }, []);
+  const role = useRole();
+  const can: Can = {
+    update: hasPermission(role, "knowledge:update"),
+    remove: hasPermission(role, "knowledge:update") && hasPermission(role, "knowledge:delete"),
+  };
 
   useEffect(() => {
     fetch("/api/projects")

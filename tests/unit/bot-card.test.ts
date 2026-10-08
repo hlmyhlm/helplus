@@ -11,6 +11,9 @@ describe("botLabel", () => {
   it("adds the error to a disconnect", () => {
     expect(botLabel({ status: "disconnected", stale: false, phone: "", error: "WhatsApp disconnected." }).text).toBe("Disconnected. WhatsApp disconnected.");
   });
+  it("adds the error when it is off", () => {
+    expect(botLabel({ status: "off", stale: false, phone: "", error: "Couldn't start WhatsApp" })).toEqual({ text: "Not connected. Couldn't start WhatsApp", tone: "muted" });
+  });
   it("covers the other states", () => {
     const at = (status: string) => botLabel({ status, stale: false, phone: "", error: "" });
     expect(at("qr")).toEqual({ text: "Scan the QR code", tone: "warning" });
