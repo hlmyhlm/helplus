@@ -3,7 +3,7 @@ import { withAuth } from "@/lib/tenant/with-auth";
 import { hasPermission } from "@/lib/rbac";
 import { readBot, requestStart, requestStop, STALE_MS, type BotState } from "@/lib/bot/state";
 
-// the bot itself runs in the worker; this route only reads and requests changes on the channel row
+// the bot runs in the worker; this only reads and requests changes
 function view(s: BotState, showQr: boolean) {
   return {
     status: s.status,

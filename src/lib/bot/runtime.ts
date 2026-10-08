@@ -43,7 +43,7 @@ function close(companyId: string, entry: Running, unlink: boolean): Promise<void
       if (unlink) await removeSession(companyId);
     })();
   }
-  // still starting: close what we can now, and only let a new start in once the old one has settled
+  // still starting: a new start waits for this one to settle
   const drain = (async () => {
     if (!unlink) await handle.stop(false);
     await handle.started.catch(() => {});
