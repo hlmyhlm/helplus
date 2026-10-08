@@ -225,6 +225,11 @@ async function attachImage(row: WaInbound, ticketId: string, messageId: string |
 async function staffStep(chat: WaChat, row: WaInbound, now: Date): Promise<"answered" | "pick" | "ignored"> {
   const quoted = await quotedTicket(chat.id, row.quotedWaId ? [row.quotedWaId] : []);
   let ticketId = quoted?.id ?? null;
+  // a quote we can't follow is a person's call, not a rules guess
+  if (row.quotedWaId && !quoted) {
+    await prisma.waInbound.updateMany({ where: { id: row.id, state: "pending" }, data: { state: "pick" } });
+    return "pick";
+  }
   if (!ticketId) {
     const placed = placeUnquoted(await openInChat(chat.id), row.at);
     if (placed === "pick") {
@@ -292,8 +297,15 @@ export async function placeReply(
 }
 
 export async function cleanBotInbound(now: Date): Promise<number> {
+  const before = new Date(now.getTime() - KEEP_MS);
   const old = await prisma.waInbound.findMany({
-    where: { state: { in: ["done", "ignored", "failed"] }, doneAt: { lt: new Date(now.getTime() - KEEP_MS) } },
+    where: {
+      OR: [
+        { state: { in: ["done", "ignored", "failed"] }, doneAt: { lt: before } },
+        // an unlinked chat never processes these
+        { state: "pending", chat: { projectId: null }, createdAt: { lt: before } },
+      ],
+    },
     select: { id: true, mediaKey: true },
     take: 500,
   });

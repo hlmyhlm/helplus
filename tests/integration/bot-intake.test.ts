@@ -391,4 +391,35 @@ describe("runBotIntake", () => {
       expect(await prisma.waInbound.findUniqueOrThrow({ where: { id: row.id } })).toMatchObject({ state: "pick", doneAt: null });
     });
   });
+  it("a reply quoting a closed ticket waits to be placed instead of landing on another", async () => {
+    await runWithCompany(await setup("in-23"), async () => {
+      await recordInbound(ev({ waMessageId: "q-old", text: "a", at: min(0) }), "");
+      await runBotIntake(min(3));
+      const old = await prisma.ticket.findFirstOrThrow();
+      await prisma.ticket.update({ where: { id: old.id }, data: { status: "closed", closedAt: new Date() } });
+      await recordInbound(ev({ ...siti, text: "b", at: min(5) }), "");
+      await runBotIntake(min(8));
+      const other = await prisma.ticket.findFirstOrThrow({ where: { description: "b" } });
+      await recordInbound(ev({ ...staff, text: "dah settle", at: min(9), quotedWaId: "q-old" }), "");
+      expect(await runBotIntake(min(9))).toMatchObject({ answers: 0, picks: 1 });
+      expect((await prisma.ticket.findUniqueOrThrow({ where: { id: other.id } })).status).toBe(other.status);
+      expect(await prisma.message.count({ where: { role: "agent" } })).toBe(0);
+    });
+  });
+
+  it("cleans week-old pending rows of unlinked chats with their media", async () => {
+    await runWithCompany(await setup("in-24"), async () => {
+      await recordInbound(ev({ text: "", at: min(0), media: { data: await png(), fileName: "a.png", mime: "image/png" } }), "");
+      await recordInbound(ev({ text: "baru", at: min(0) }), "");
+      const old = await prisma.waInbound.findFirstOrThrow({ where: { mediaKey: { not: null } } });
+      const fresh = await prisma.waInbound.findFirstOrThrow({ where: { text: "baru" } });
+      expect(existsSync(path.join(dir, old.mediaKey!))).toBe(true);
+      await prisma.waChat.updateMany({ data: { projectId: null } });
+      const now = new Date();
+      await prisma.waInbound.update({ where: { id: old.id }, data: { createdAt: new Date(now.getTime() - 8 * 86_400_000) } });
+      expect(await cleanBotInbound(now)).toBe(1);
+      expect((await prisma.waInbound.findMany()).map((r) => r.id)).toEqual([fresh.id]);
+      expect(existsSync(path.join(dir, old.mediaKey!))).toBe(false);
+    });
+  });
 });
