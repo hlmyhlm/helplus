@@ -6,7 +6,7 @@ import { defaultProjectId } from "@/lib/projects/default";
 import { fileStore, botMediaKey } from "@/lib/storage";
 import { encryptBuffer } from "@/lib/secrets";
 import { maskedFileName } from "@/lib/attachments/service";
-import { isStaffSender, phoneDigits, senderDigits } from "./rules";
+import { isStaffSender, isStoredImage, phoneDigits, senderDigits } from "./rules";
 
 export interface IncomingEvent {
   waMessageId: string;
@@ -76,7 +76,7 @@ export async function recordInbound(
 ): Promise<"saved" | "duplicate" | "not_linked" | "skipped"> {
   const chat = await chatFor(e);
   if (!chat.projectId) return "not_linked";
-  const image = e.media?.mime.startsWith("image/") ? e.media : null;
+  const image = e.media && e.media.data.length && isStoredImage(e.media.mime) ? e.media : null;
   let text = e.text.trim();
   if (e.media && !image) text = `${mediaNote(e.media)} ${text}`.trim();
   if (!text && !image) return "skipped";

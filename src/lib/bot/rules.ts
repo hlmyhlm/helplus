@@ -69,3 +69,10 @@ export function placeUnquoted(open: OpenTicketLite[], at: Date): { ticketId: str
   if (recent.length === 1) return { ticketId: recent[0].id };
   return recent.length ? "pick" : "ignore";
 }
+
+// whatsapp images we keep; heic, tiff and svg only get a note
+const STORED_IMAGES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+
+export function isStoredImage(mime: string): boolean {
+  return STORED_IMAGES.has(mime.split(";")[0].trim().toLowerCase());
+}

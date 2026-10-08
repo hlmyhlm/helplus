@@ -1,7 +1,9 @@
 import { Client, LocalAuth, type Message } from "whatsapp-web.js";
 import * as qrcode from "qrcode";
 import { logger } from "@/lib/logger";
+import { MAX_BYTES } from "@/lib/attachments/client";
 import type { IncomingEvent } from "./record";
+import { isStoredImage } from "./rules";
 
 // the only file that touches whatsapp-web.js, and it only listens
 export interface BotHandle {
@@ -29,7 +31,7 @@ export class StartTimeoutError extends Error {
   }
 }
 
-// stickers, reactions, deleted messages, system events and shop or poll items never become tickets
+// these never become tickets
 const SKIP = new Set([
   "sticker",
   "reaction",
@@ -63,6 +65,7 @@ const PLACEHOLDER: Record<string, string> = {
 
 // used when the message doesn't say its mime type
 const MIME_BY_TYPE: Record<string, string> = {
+  image: "image/jpeg",
   ptt: "audio/ogg; codecs=opus",
   audio: "audio/mpeg",
   video: "video/mp4",
@@ -102,9 +105,19 @@ async function image(message: Message): Promise<IncomingEvent["media"]> {
 }
 
 // only images are downloaded; other media just needs a name and type for the note
+function rawData(message: Message): { mimetype?: string; filename?: string; size?: number } {
+  return (message as unknown as { _data?: { mimetype?: string; filename?: string; size?: number } })._data ?? {};
+}
+
 function described(message: Message, type: string): NonNullable<IncomingEvent["media"]> {
-  const raw = (message as unknown as { _data?: { mimetype?: string; filename?: string } })._data ?? {};
+  const raw = rawData(message);
   return { data: Buffer.alloc(0), fileName: raw.filename ?? "", mime: raw.mimetype || MIME_BY_TYPE[type] || "application/octet-stream" };
+}
+
+// too big or an odd format gets a note instead of a download
+function wantsBytes(message: Message, mime: string): boolean {
+  const size = Number(rawData(message).size ?? 0);
+  return isStoredImage(mime) && !(size > MAX_BYTES);
 }
 
 export async function toEvent(message: Message): Promise<IncomingEvent | null> {
@@ -120,7 +133,7 @@ export async function toEvent(message: Message): Promise<IncomingEvent | null> {
   if (message.hasMedia && !placeholder) {
     const info = described(message, type);
     // images sent as documents still need their bytes
-    media = type === "image" || info.mime.startsWith("image/") ? await image(message) : info;
+    media = wantsBytes(message, info.mime) ? await image(message) : info;
     if (!media) text = `[media unavailable] ${text}`.trim();
   }
   return {
@@ -189,11 +202,10 @@ export async function startClient(companyId: string, hooks: BotHooks, timeoutMs 
     }
   }
 
-  // a stop before chromium is up can't close it yet, so the timer and the end of the start close it again
+  // a stop before chromium is up gets repeated once the start ends
   const started = new Promise<void>((resolve, fail) => {
     const timer = setTimeout(() => {
-      void stop(false);
-      fail(new StartTimeoutError());
+      void stop(false).finally(() => fail(new StartTimeoutError()));
     }, timeoutMs);
     client.initialize().then(
       async () => {

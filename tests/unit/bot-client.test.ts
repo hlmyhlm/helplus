@@ -212,6 +212,23 @@ describe("startClient", () => {
     expect(calls).toEqual(["destroy", "close"]);
   });
 
+  it("only fails the start after the timed out stop is done", async () => {
+    vi.useFakeTimers();
+    initialize.mockReturnValueOnce(new Promise(() => {}));
+    const handle = await startClient("co-a", hooks());
+    const { Client } = await import("whatsapp-web.js");
+    const made = (Client as unknown as { mock: { results: { value: { destroy: () => Promise<void> } }[] } }).mock.results;
+    let release!: () => void;
+    made[made.length - 1].value.destroy = () => new Promise<void>((r) => (release = r));
+    let failed = false;
+    handle.started.catch(() => (failed = true));
+    await vi.advanceTimersByTimeAsync(90_000);
+    expect(failed).toBe(false);
+    release();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(failed).toBe(true);
+  });
+
   it("a stop during the start closes the browser once it exists", async () => {
     let finish!: () => void;
     initialize.mockReturnValueOnce(new Promise<void>((r) => (finish = r)));
@@ -272,6 +289,29 @@ describe("media and quotes", () => {
       ["[media unavailable]", null],
       ["[media unavailable]", null],
     ]);
+  });
+
+  it("doesn't download an image document over 10 MB", async () => {
+    const h = hooks();
+    await startClient("co-a", h);
+    const downloadMedia = vi.fn();
+    const big = { mimetype: "image/png", filename: "big.png", size: 10 * 1024 * 1024 + 1 };
+    await handlers.message(message({ type: "document", hasMedia: true, body: "", downloadMedia, _data: big }));
+    expect(downloadMedia).not.toHaveBeenCalled();
+    const e = h.onMessage.mock.calls[0][0];
+    expect([e.text, e.media.fileName, e.media.data.length]).toEqual(["", "big.png", 0]);
+  });
+
+  it("doesn't download heic, tiff or svg images", async () => {
+    const h = hooks();
+    await startClient("co-a", h);
+    const downloadMedia = vi.fn();
+    for (const mimetype of ["image/heic", "image/tiff", "image/svg+xml"]) {
+      await handlers.message(message({ type: "document", hasMedia: true, downloadMedia, _data: { mimetype, filename: "x" } }));
+    }
+    await handlers.message(message({ type: "image", hasMedia: true, downloadMedia, _data: { mimetype: "image/heic" } }));
+    expect(downloadMedia).not.toHaveBeenCalled();
+    expect(h.onMessage.mock.calls.map(([e]) => e.media.mime)).toEqual(["image/heic", "image/tiff", "image/svg+xml", "image/heic"]);
   });
 
   it("doesn't download other media, only names it", async () => {

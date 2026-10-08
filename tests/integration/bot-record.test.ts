@@ -8,7 +8,7 @@ import { defaultProjectId } from "@/lib/projects/default";
 import { recordInbound, type IncomingEvent } from "@/lib/bot/record";
 import { fileStore, botMediaKey } from "@/lib/storage";
 
-const ids = ["rec-1", "rec-2", "rec-3", "rec-4", "rec-5", "rec-6", "rec-7", "rec-8", "rec-9", "rec-10", "rec-11"].map((s) => `it-3c-${s}`);
+const ids = ["rec-1", "rec-2", "rec-3", "rec-4", "rec-5", "rec-6", "rec-7", "rec-8", "rec-9", "rec-10", "rec-11", "rec-12"].map((s) => `it-3c-${s}`);
 let dir: string;
 const savedDir = process.env.HELPLUS_STORAGE_DIR;
 
@@ -204,6 +204,29 @@ describe("recordInbound", () => {
       expect((await prisma.waChat.findFirstOrThrow()).lastMessageAt).toEqual(late);
       const rows = await prisma.waInbound.findMany({ orderBy: { waMessageId: "asc" } });
       expect(rows.map((r) => r.text)).toEqual(["[voice message]", "[audio]"]);
+    });
+  });
+  it("notes heic, tiff, svg and empty images as documents without storing them", async () => {
+    await runWithCompany(await makeCompany("rec-12"), async () => {
+      const project = await prisma.project.findFirstOrThrow();
+      await prisma.waChat.create({ data: { waId: "120@g.us", projectId: project.id } });
+      const odd = [
+        { data: Buffer.from("x"), fileName: "photo.heic", mime: "image/heic" },
+        { data: Buffer.from("x"), fileName: "scan.tiff", mime: "image/tiff" },
+        { data: Buffer.from("x"), fileName: "logo.svg", mime: "image/svg+xml" },
+        { data: Buffer.alloc(0), fileName: "big.png", mime: "image/png" },
+      ];
+      for (const [n, media] of odd.entries()) {
+        expect(await recordInbound(base({ waMessageId: `m${n}`, text: "", media }), "x")).toBe("saved");
+      }
+      const rows = await prisma.waInbound.findMany({ orderBy: { waMessageId: "asc" } });
+      expect(rows.map((r) => r.text)).toEqual([
+        "[document: photo.heic]",
+        "[document: scan.tiff]",
+        "[document: logo.svg]",
+        "[document: big.png]",
+      ]);
+      expect(rows.every((r) => r.mediaKey === null && r.mediaName === null)).toBe(true);
     });
   });
 });
