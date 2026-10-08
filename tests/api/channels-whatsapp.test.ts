@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/route-auth";
 import { hasPermission, type Permission } from "@/lib/rbac";
@@ -100,6 +100,16 @@ describe("POST /api/channels/whatsapp", () => {
     expect((await POST(post("disconnect"), {} as never)).status).toBe(400);
   });
 
+  it("a null or non-object body is a 400", async () => {
+    current = row("off");
+    const { POST } = await import("@/app/api/channels/whatsapp/route");
+    for (const body of ["null", '"connect"', "not json"]) {
+      const req = new NextRequest("http://localhost:3000/api/channels/whatsapp", { method: "POST", body });
+      expect((await POST(req, {} as never)).status).toBe(400);
+    }
+    expect(current!.status).toBe("off");
+  });
+
   it("supervisors can't change it", async () => {
     asRole("supervisor");
     current = row("off");
@@ -115,5 +125,29 @@ describe("PUT /api/channels/whatsapp", () => {
     const res = await PUT(createRequest("/api/channels/whatsapp", { method: "PUT", body: {} }), {} as never);
     expect(res.status).toBe(405);
     expect((await parseJsonResponse(res)).error).toBe("Use connect, stop or unlink");
+  });
+});
+
+describe("generic /api/channels", () => {
+  it("won't save the whatsapp row", async () => {
+    current = row("connected", { phone: "60111" });
+    const { POST } = await import("@/app/api/channels/route");
+    const res = await POST(
+      createRequest("/api/channels", { method: "POST", body: { type: "whatsapp", isActive: false, config: {} } }),
+      {} as never
+    );
+    expect(res.status).toBe(400);
+    expect((await parseJsonResponse(res)).error).toBe("Use the WhatsApp bot controls");
+    expect(db.channel.upsert).not.toHaveBeenCalled();
+  });
+
+  it("never lists the bot's qr", async () => {
+    db.channel.findMany.mockResolvedValue([row("qr", { qr: "data:image/png;base64,QR", phone: "" })]);
+    asRole("supervisor");
+    const { GET } = await import("@/app/api/channels/route");
+    const list = await parseJsonResponse(await GET(createRequest("/api/channels"), {} as never));
+    const wa = list.find((c: { type: string }) => c.type === "whatsapp");
+    expect(wa.status).toBe("qr");
+    expect(wa.config).toEqual({ phone: "" });
   });
 });

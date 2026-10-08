@@ -5,14 +5,17 @@ import { runWithCompany } from "@/lib/tenant/context";
 import { logger } from "@/lib/logger";
 import { emailBotDown } from "@/lib/notify/bot";
 import { recordInbound } from "./record";
-import { startClient, type BotHandle } from "./client";
+import { startClient, QR_EXPIRED, StartTimeoutError, type BotHandle } from "./client";
 import { readBot, setBot, heartbeat } from "./state";
 
 const BEAT_MS = 15_000;
+const SHUTDOWN_MS = 10_000;
 const DOWN = "WhatsApp disconnected. Connect again from Sources.";
 
 interface Running {
   handle: BotHandle | null;
+  // set until the client has finished starting
+  pending: boolean;
   ready: boolean;
   phone: string;
   beatAt: number;
@@ -22,8 +25,10 @@ interface Running {
 
 const bots = new Map<string, Running>();
 
-function sessionDir(companyId: string): string {
-  return join(".wwebjs_auth", companyId === "default" ? "session" : `session-${companyId}`);
+async function removeSession(companyId: string) {
+  if (!/^[-_\w]+$/.test(companyId)) return;
+  const dir = join(".wwebjs_auth", companyId === "default" ? "session" : `session-${companyId}`);
+  await rm(dir, { recursive: true, force: true }).catch((error) => logger.error(`[bot] couldn't remove ${dir}`, error));
 }
 
 async function close(companyId: string, entry: Running, unlink: boolean) {
@@ -36,11 +41,24 @@ async function lost(companyId: string, entry: Running, reason: string) {
   if (entry.closing) return;
   logger.info(`[bot] ${companyId} went down: ${reason}`);
   void close(companyId, entry, false);
+  if (reason === QR_EXPIRED) {
+    await setBot(["starting", "qr"], "off", { qr: null, error: "QR code expired. Connect again." });
+    return;
+  }
   if (await setBot(["connected", "qr", "starting"], "disconnected", { qr: null, error: DOWN })) await emailBotDown();
 }
 
+async function failed(companyId: string, entry: Running, error: unknown) {
+  if (entry.closing) return;
+  logger.error(`[bot] couldn't start whatsapp for ${companyId}`, error);
+  entry.closing = true;
+  if (bots.get(companyId) === entry) bots.delete(companyId);
+  const message = error instanceof StartTimeoutError ? "WhatsApp took too long to start" : "Couldn't start WhatsApp";
+  if (await setBot(["starting", "qr", "connected"], "disconnected", { qr: null, error: message })) await emailBotDown();
+}
+
 async function start(companyId: string) {
-  const entry: Running = { handle: null, ready: false, phone: "", beatAt: 0, closing: false };
+  const entry: Running = { handle: null, pending: true, ready: false, phone: "", beatAt: 0, closing: false };
   const as = (fn: () => Promise<void>) => runWithCompany(companyId, fn);
   bots.set(companyId, entry);
   try {
@@ -68,16 +86,20 @@ async function start(companyId: string) {
         }),
     });
   } catch (error) {
-    logger.error(`[bot] couldn't start whatsapp for ${companyId}`, error);
-    entry.closing = true;
-    if (bots.get(companyId) === entry) bots.delete(companyId);
-    if (await setBot(["starting", "qr", "connected"], "disconnected", { qr: null, error: "Couldn't start WhatsApp" })) {
-      await emailBotDown();
-    }
+    entry.pending = false;
+    await failed(companyId, entry, error);
     return;
   }
-  // it went down while starting
-  if (entry.closing) await entry.handle.stop(false);
+  // don't hold up the sync while chromium starts
+  void entry.handle.started.then(
+    () => {
+      entry.pending = false;
+    },
+    (error) => {
+      entry.pending = false;
+      return as(() => failed(companyId, entry, error));
+    }
+  );
 }
 
 async function syncOne(companyId: string, now: Date) {
@@ -86,10 +108,11 @@ async function syncOne(companyId: string, now: Date) {
 
   if (state.status === "stopping") {
     if (entry) await close(companyId, entry, state.unlink);
-    else if (state.unlink) await rm(sessionDir(companyId), { recursive: true, force: true }).catch(() => {});
+    if (state.unlink) await removeSession(companyId);
     await setBot(["stopping"], "off", { qr: null, unlink: false, error: "" });
     return;
   }
+  if (entry?.pending) return;
   if (state.status === "off" || state.status === "disconnected") {
     if (entry) await close(companyId, entry, false);
     return;
@@ -118,5 +141,11 @@ export async function syncBots(now: Date): Promise<void> {
 // worker shutdown: close the browsers but keep the sessions and the row status
 export async function stopAllBots(): Promise<void> {
   const all = [...bots.entries()];
-  await Promise.all(all.map(([id, entry]) => close(id, entry, false)));
+  const closing = Promise.all(all.map(([id, entry]) => close(id, entry, false)));
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const giveUp = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, SHUTDOWN_MS);
+  });
+  await Promise.race([closing, giveUp]);
+  clearTimeout(timer);
 }

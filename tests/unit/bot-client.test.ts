@@ -1,16 +1,27 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const handlers: Record<string, (...args: unknown[]) => unknown> = {};
+const browserHandlers: Record<string, () => unknown> = {};
 const calls: string[] = [];
 const initialize = vi.fn();
 const localAuth = vi.fn();
+const options = vi.fn();
 vi.mock("whatsapp-web.js", () => ({
-  Client: vi.fn().mockImplementation(function () {
+  Client: vi.fn().mockImplementation(function (opts: unknown) {
+    options(opts);
     return {
       on: (event: string, fn: (...args: unknown[]) => unknown) => {
         handlers[event] = fn;
       },
       initialize,
+      pupBrowser: {
+        on: (event: string, fn: () => unknown) => {
+          browserHandlers[event] = fn;
+        },
+        close: vi.fn(async () => {
+          calls.push("close");
+        }),
+      },
       info: { wid: { user: "60111111111" } },
       logout: vi.fn(async () => {
         calls.push("logout");
@@ -26,7 +37,7 @@ vi.mock("whatsapp-web.js", () => ({
 }));
 vi.mock("qrcode", () => ({ toDataURL: vi.fn().mockResolvedValue("data:image/png;base64,QR") }));
 
-import { startClient } from "@/lib/bot/client";
+import { startClient, StartTimeoutError, BROWSER_CLOSED } from "@/lib/bot/client";
 
 const hooks = () => ({
   onQr: vi.fn().mockResolvedValue(undefined),
@@ -63,7 +74,13 @@ function message(over: Record<string, unknown> = {}, contact: Contact | Error = 
 beforeEach(() => {
   calls.length = 0;
   localAuth.mockClear();
+  options.mockClear();
+  for (const k of Object.keys(browserHandlers)) delete browserHandlers[k];
   initialize.mockReset().mockResolvedValue(undefined);
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("startClient", () => {
@@ -74,6 +91,14 @@ describe("startClient", () => {
       { dataPath: ".wwebjs_auth", clientId: "co-a" },
       { dataPath: ".wwebjs_auth", clientId: undefined },
     ]);
+  });
+
+  it("gives up on qr after 5 tries and leaves signals to the worker", async () => {
+    await startClient("co-a", hooks());
+    expect(options.mock.calls[0][0]).toMatchObject({
+      qrMaxRetries: 5,
+      puppeteer: { headless: true, handleSIGINT: false, handleSIGTERM: false, handleSIGHUP: false },
+    });
   });
 
   it("passes the qr on as a data url and the phone on ready", async () => {
@@ -114,7 +139,7 @@ describe("startClient", () => {
   it("downloads media as a buffer", async () => {
     const h = hooks();
     await startClient("co-a", h);
-    await handlers.message(message({ hasMedia: true, hasQuotedMsg: false }));
+    await handlers.message(message({ type: "image", hasMedia: true, hasQuotedMsg: false }));
     const e = h.onMessage.mock.calls[0][0];
     expect(e.quotedWaId).toBeNull();
     expect(e.media).toEqual({ data: Buffer.from("img"), fileName: "a.jpg", mime: "image/jpeg" });
@@ -134,7 +159,8 @@ describe("startClient", () => {
   it("skips stickers, reactions, deleted messages and system events", async () => {
     const h = hooks();
     await startClient("co-a", h);
-    for (const type of ["sticker", "reaction", "revoked", "call_log", "e2e_notification", "notification_template"]) {
+    const types = ["sticker", "reaction", "revoked", "call_log", "e2e_notification", "notification_template", "poll_creation"];
+    for (const type of [...types, "groups_v4_invite", "product", "order", "list", "buttons_response", "payment", "unknown"]) {
       await handlers.message(message({ type, hasMedia: type === "sticker" }));
     }
     expect(h.onMessage).not.toHaveBeenCalled();
@@ -161,16 +187,83 @@ describe("startClient", () => {
   it("stop(true) logs out then destroys, stop(false) only destroys", async () => {
     const handle = await startClient("co-a", hooks());
     await handle.stop(true);
-    expect(calls).toEqual(["logout", "destroy"]);
+    expect(calls).toEqual(["logout", "destroy", "close"]);
     calls.length = 0;
     await handle.stop(false);
-    expect(calls).toEqual(["destroy"]);
+    expect(calls).toEqual(["destroy", "close"]);
   });
 
   it("destroys the client when it can't start", async () => {
     initialize.mockRejectedValueOnce(new Error("no browser"));
-    await expect(startClient("co-a", hooks())).rejects.toThrow("no browser");
-    expect(calls).toEqual(["destroy"]);
+    const handle = await startClient("co-a", hooks());
+    await expect(handle.started).rejects.toThrow("no browser");
+    expect(calls).toEqual(["destroy", "close"]);
+  });
+
+  it("gives up after 90 seconds and destroys the client", async () => {
+    vi.useFakeTimers();
+    initialize.mockReturnValueOnce(new Promise(() => {}));
+    const handle = await startClient("co-a", hooks());
+    const started = expect(handle.started).rejects.toBeInstanceOf(StartTimeoutError);
+    await vi.advanceTimersByTimeAsync(89_000);
+    expect(calls).toEqual([]);
+    await vi.advanceTimersByTimeAsync(1_000);
+    await started;
+    expect(calls).toEqual(["destroy", "close"]);
+  });
+
+  it("a stop during the start closes the browser once it exists", async () => {
+    let finish!: () => void;
+    initialize.mockReturnValueOnce(new Promise<void>((r) => (finish = r)));
+    const h = hooks();
+    const handle = await startClient("co-a", h);
+    await handle.stop(false);
+    expect(calls).toEqual(["destroy", "close"]);
+    finish();
+    await handle.started.catch(() => {});
+    expect(calls).toEqual(["destroy", "close", "destroy", "close"]);
+    expect(browserHandlers.disconnected).toBeUndefined();
+  });
+
+  it("reports a chromium crash after it started", async () => {
+    const h = hooks();
+    const handle = await startClient("co-a", h);
+    await handle.started;
+    await browserHandlers.disconnected();
+    expect(h.onDown).toHaveBeenCalledWith(BROWSER_CLOSED);
+  });
+});
+
+describe("media and quotes", () => {
+  it("keeps the message when the quote can't be read", async () => {
+    const h = hooks();
+    await startClient("co-a", h);
+    await handlers.message(message({ getQuotedMessage: async () => Promise.reject(new Error("gone")) }));
+    expect(h.onMessage.mock.calls[0][0]).toMatchObject({ text: "printer rosak", quotedWaId: null });
+  });
+
+  it("keeps an image message whose download failed, with a note", async () => {
+    const h = hooks();
+    await startClient("co-a", h);
+    await handlers.message(message({ type: "image", hasMedia: true, body: "screen", downloadMedia: async () => Promise.reject(new Error("404")) }));
+    await handlers.message(message({ type: "image", hasMedia: true, body: "", downloadMedia: async () => undefined }));
+    expect(h.onMessage.mock.calls.map(([e]) => [e.text, e.media])).toEqual([
+      ["[media unavailable] screen", null],
+      ["[media unavailable]", null],
+    ]);
+  });
+
+  it("doesn't download other media, only names it", async () => {
+    const h = hooks();
+    await startClient("co-a", h);
+    const downloadMedia = vi.fn();
+    await handlers.message(message({ type: "document", hasMedia: true, downloadMedia, _data: { mimetype: "application/pdf", filename: "inv.pdf" } }));
+    await handlers.message(message({ type: "ptt", hasMedia: true, body: "", downloadMedia }));
+    expect(downloadMedia).not.toHaveBeenCalled();
+    expect(h.onMessage.mock.calls.map(([e]) => [e.media.fileName, e.media.mime, e.media.data.length])).toEqual([
+      ["inv.pdf", "application/pdf", 0],
+      ["", "audio/ogg; codecs=opus", 0],
+    ]);
   });
 });
 

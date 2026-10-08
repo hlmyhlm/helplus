@@ -20,7 +20,8 @@ export const GET = withAuth("channels:read", async (_request: NextRequest, auth)
 });
 
 export const POST = withAuth("channels:update", async (request: NextRequest) => {
-  const body = await request.json().catch(() => ({}));
+  const body: unknown = await request.json().catch(() => null);
+  if (!body || typeof body !== "object") return NextResponse.json({ error: "Invalid action" }, { status: 400 });
   const action = (body as { action?: unknown }).action;
 
   if (action === "connect") {

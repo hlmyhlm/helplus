@@ -61,6 +61,24 @@ describe("bot state on the channel row", () => {
     });
   });
 
+  it("shows a legacy disconnected row that never ran the bot as off", async () => {
+    await asA(async () => {
+      await prisma.channel.create({ data: { type: "whatsapp", status: "disconnected" } });
+      expect((await readBot()).status).toBe("off");
+      await prisma.channel.updateMany({ data: { config: { error: "WhatsApp disconnected." } } });
+      expect((await readBot()).status).toBe("disconnected");
+    });
+  });
+
+  it("stopping clears the qr", async () => {
+    await asA(async () => {
+      await requestStart();
+      await setBot(["starting"], "qr", { qr: "data:x" });
+      expect(await requestStop(true)).toBe(true);
+      expect(await readBot()).toMatchObject({ status: "stopping", qr: null, unlink: true });
+    });
+  });
+
   it("heartbeats only while connected", async () => {
     await asA(async () => {
       const now = new Date("2026-10-07T10:00:00Z");

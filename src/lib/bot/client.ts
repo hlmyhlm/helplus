@@ -6,6 +6,7 @@ import type { IncomingEvent } from "./record";
 // the only file that touches whatsapp-web.js, and it only listens
 export interface BotHandle {
   stop(unlink: boolean): Promise<void>;
+  started: Promise<void>;
 }
 
 export interface BotHooks {
@@ -14,6 +15,58 @@ export interface BotHooks {
   onDown(reason: string): Promise<void>;
   onMessage(e: IncomingEvent): Promise<void>;
 }
+
+export const START_TIMEOUT_MS = 90_000;
+export const QR_RETRIES = 5;
+// whatsapp-web.js sends this reason when nobody scans in time
+export const QR_EXPIRED = "Max qrcode retries reached";
+export const BROWSER_CLOSED = "BROWSER_CLOSED";
+
+export class StartTimeoutError extends Error {
+  constructor() {
+    super("whatsapp took too long to start");
+    this.name = "StartTimeoutError";
+  }
+}
+
+// stickers, reactions, deleted messages, system events and shop or poll items never become tickets
+const SKIP = new Set([
+  "sticker",
+  "reaction",
+  "revoked",
+  "call_log",
+  "ciphertext",
+  "debug",
+  "e2e_notification",
+  "gp2",
+  "group_notification",
+  "notification",
+  "notification_template",
+  "broadcast_notification",
+  "protocol",
+  "poll_creation",
+  "groups_v4_invite",
+  "product",
+  "order",
+  "list",
+  "buttons_response",
+  "payment",
+  "unknown",
+]);
+
+// these bodies can hold a base64 thumbnail or raw vcard
+const PLACEHOLDER: Record<string, string> = {
+  location: "[location]",
+  vcard: "[contact card]",
+  multi_vcard: "[contact card]",
+};
+
+// used when the message doesn't say its mime type
+const MIME_BY_TYPE: Record<string, string> = {
+  ptt: "audio/ogg; codecs=opus",
+  audio: "audio/mpeg",
+  video: "video/mp4",
+};
 
 // newer whatsapp gives some senders as @lid, which has no phone number in it
 async function sender(message: Message, raw: string): Promise<{ id: string; name: string }> {
@@ -29,29 +82,29 @@ async function sender(message: Message, raw: string): Promise<{ id: string; name
   }
 }
 
-// stickers, reactions, deleted messages and system events never become tickets
-const SKIP = new Set([
-  "sticker",
-  "reaction",
-  "revoked",
-  "call_log",
-  "ciphertext",
-  "debug",
-  "e2e_notification",
-  "gp2",
-  "group_notification",
-  "notification",
-  "notification_template",
-  "broadcast_notification",
-  "protocol",
-]);
+async function quotedId(message: Message): Promise<string | null> {
+  if (!message.hasQuotedMsg) return null;
+  try {
+    return (await message.getQuotedMessage())?.id?._serialized ?? null;
+  } catch {
+    return null;
+  }
+}
 
-// these bodies can hold a base64 thumbnail or raw vcard
-const PLACEHOLDER: Record<string, string> = {
-  location: "[location]",
-  vcard: "[contact card]",
-  multi_vcard: "[contact card]",
-};
+async function image(message: Message): Promise<IncomingEvent["media"]> {
+  try {
+    const media = await message.downloadMedia();
+    return media ? { data: Buffer.from(media.data, "base64"), fileName: media.filename ?? "", mime: media.mimetype } : null;
+  } catch {
+    return null;
+  }
+}
+
+// only images are downloaded; other media just needs a name and type for the note
+function described(message: Message, type: string): IncomingEvent["media"] {
+  const raw = (message as unknown as { _data?: { mimetype?: string; filename?: string } })._data ?? {};
+  return { data: Buffer.alloc(0), fileName: raw.filename ?? "", mime: raw.mimetype || MIME_BY_TYPE[type] || "application/octet-stream" };
+}
 
 export async function toEvent(message: Message): Promise<IncomingEvent | null> {
   const type = String(message.type ?? "");
@@ -60,9 +113,13 @@ export async function toEvent(message: Message): Promise<IncomingEvent | null> {
   const chatWaId = chat.id._serialized;
   if (chatWaId === "status@broadcast") return null;
   const who = await sender(message, message.author ?? message.from);
-  const quoted = message.hasQuotedMsg ? await message.getQuotedMessage() : null;
   const placeholder = PLACEHOLDER[type];
-  const media = message.hasMedia && !placeholder ? await message.downloadMedia() : null;
+  let text = placeholder ?? message.body ?? "";
+  let media: IncomingEvent["media"] = null;
+  if (message.hasMedia && !placeholder) {
+    media = type === "image" ? await image(message) : described(message, type);
+    if (!media) text = `[media unavailable] ${text}`.trim();
+  }
   return {
     waMessageId: message.id._serialized,
     chatWaId,
@@ -70,19 +127,24 @@ export async function toEvent(message: Message): Promise<IncomingEvent | null> {
     isGroup: chat.isGroup,
     senderId: who.id,
     senderName: who.name,
-    text: placeholder ?? message.body ?? "",
+    text,
     at: new Date(message.timestamp * 1000),
-    quotedWaId: quoted?.id?._serialized ?? null,
-    media: media ? { data: Buffer.from(media.data, "base64"), fileName: media.filename ?? "", mime: media.mimetype } : null,
+    quotedWaId: await quotedId(message),
+    media,
   };
 }
 
-export async function startClient(companyId: string, hooks: BotHooks): Promise<BotHandle> {
+export async function startClient(companyId: string, hooks: BotHooks, timeoutMs = START_TIMEOUT_MS): Promise<BotHandle> {
   const client = new Client({
     // default keeps the old unnamed session folder, so a linked session still works
     authStrategy: new LocalAuth({ dataPath: ".wwebjs_auth", clientId: companyId === "default" ? undefined : companyId }),
+    qrMaxRetries: QR_RETRIES,
     puppeteer: {
       headless: true,
+      // the worker shuts the browsers down itself
+      handleSIGINT: false,
+      handleSIGTERM: false,
+      handleSIGHUP: false,
       args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
     },
   });
@@ -101,28 +163,56 @@ export async function startClient(companyId: string, hooks: BotHooks): Promise<B
     })
   );
 
-  const handle: BotHandle = {
-    async stop(unlink) {
-      if (unlink) {
-        try {
-          await client.logout();
-        } catch (error) {
-          logger.error(`[bot] logout failed for ${companyId}`, error);
-        }
-      }
+  let stopped = false;
+  async function stop(unlink: boolean) {
+    stopped = true;
+    if (unlink) {
       try {
-        await client.destroy();
+        await client.logout();
       } catch (error) {
-        logger.error(`[bot] destroy failed for ${companyId}`, error);
+        logger.error(`[bot] logout failed for ${companyId}`, error);
       }
-    },
-  };
-
-  try {
-    await client.initialize();
-  } catch (error) {
-    await handle.stop(false);
-    throw error;
+    }
+    try {
+      await client.destroy();
+    } catch (error) {
+      logger.error(`[bot] destroy failed for ${companyId}`, error);
+    }
+    // destroy() checks isConnected(), which puppeteer 25 removed, so it leaves chromium running
+    try {
+      await client.pupBrowser?.close();
+    } catch {
+      // already closed
+    }
   }
-  return handle;
+
+  // a stop before chromium is up can't close it yet, so the timer and the end of the start close it again
+  const started = new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      void stop(false);
+      reject(new StartTimeoutError());
+    }, timeoutMs);
+    client.initialize().then(
+      async () => {
+        clearTimeout(timer);
+        if (stopped) {
+          await stop(false);
+          reject(new Error("stopped while starting"));
+          return;
+        }
+        // a crashed chromium sends no whatsapp event
+        client.pupBrowser?.on("disconnected", () => void safely("browser", () => hooks.onDown(BROWSER_CLOSED)));
+        resolve();
+      },
+      async (error: unknown) => {
+        clearTimeout(timer);
+        await stop(false);
+        reject(error);
+      }
+    );
+  });
+  // the runtime handles failures; this stops an unhandled rejection if it never looks
+  started.catch(() => {});
+
+  return { stop, started };
 }

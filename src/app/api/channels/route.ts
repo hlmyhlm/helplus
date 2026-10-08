@@ -17,6 +17,11 @@ export const GET = withAuth(
       const channelMap = new Map(channels.map((ch) => [ch.type, ch]));
       const result = CHANNEL_TYPES.map((type) => {
         const existing = channelMap.get(type);
+        // the bot's qr is only for channels:update, via its own route
+        if (existing?.type === "whatsapp") {
+          const { qr: _qr, ...config } = (existing.config ?? {}) as Record<string, unknown>;
+          return { ...existing, config };
+        }
         if (existing) return existing;
         return {
           id: null,
@@ -52,6 +57,10 @@ export const POST = withAuth(
           { error: "Invalid channel type. Must be one of: " + CHANNEL_TYPES.join(", ") },
           { status: 400 }
         );
+      }
+
+      if (type === "whatsapp") {
+        return NextResponse.json({ error: "Use the WhatsApp bot controls" }, { status: 400 });
       }
 
       const channel = await prisma.channel.upsert({

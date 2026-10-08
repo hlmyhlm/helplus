@@ -2,7 +2,36 @@ import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-const WRITES = /\.(sendMessage|reply|sendSeen|sendStateTyping|sendStateRecording|react|forward|sendMediaMessage|setStatus|createGroup|addParticipants|leave)\s*\(/;
+// every method client.ts may call; whatsapp ones are read-only listeners and getters
+const ALLOWED = new Set([
+  // whatsapp-web.js
+  "on",
+  "initialize",
+  "logout",
+  "destroy",
+  "close",
+  "getChat",
+  "getContact",
+  "getQuotedMessage",
+  "downloadMedia",
+  // our own hooks
+  "onQr",
+  "onReady",
+  "onDown",
+  "onMessage",
+  // helpers
+  "toDataURL",
+  "error",
+  "from",
+  "alloc",
+  "has",
+  "test",
+  "endsWith",
+  "split",
+  "trim",
+  "catch",
+  "then",
+]);
 
 function files(dir: string): string[] {
   return readdirSync(dir).flatMap((f) => {
@@ -11,17 +40,31 @@ function files(dir: string): string[] {
   });
 }
 
+function calls(text: string): string[] {
+  const names = new Set<string>();
+  for (const m of text.matchAll(/\.\s*(\w+)\s*\(|\[\s*["'`](\w+)["'`]\s*\]\s*\(/g)) names.add(m[1] ?? m[2]);
+  return [...names].sort();
+}
+
 describe("whatsapp bot is read-only", () => {
   const all = [...files("src"), ...files("scripts")];
+  const client = readFileSync("src/lib/bot/client.ts", "utf8");
 
   it("imports whatsapp-web.js in one place only", () => {
     const users = all.filter((f) => readFileSync(f, "utf8").includes("whatsapp-web.js"));
     expect(users.map((f) => f.replace(/\\/g, "/"))).toEqual(["src/lib/bot/client.ts"]);
   });
 
-  it("never calls a whatsapp write method", () => {
-    const text = readFileSync("src/lib/bot/client.ts", "utf8");
-    expect(text).not.toMatch(WRITES);
+  it("only calls allowed methods", () => {
+    expect(calls(client).filter((name) => !ALLOWED.has(name))).toEqual([]);
+  });
+
+  it("finds calls written either way", () => {
+    expect(calls(`a.sendMessage(x); b["reply"](y); c ?. sendSeen ()`)).toEqual(["reply", "sendMessage", "sendSeen"]);
+  });
+
+  it("never reaches into the page", () => {
+    expect(client).not.toMatch(/\bevaluate\b|\bpupPage\b/);
   });
 
   it("the old client is gone", () => {

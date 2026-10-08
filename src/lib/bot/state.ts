@@ -29,7 +29,9 @@ export const STALE_MS = 3 * 60_000;
 const STATUSES: BotStatus[] = ["off", "starting", "qr", "connected", "disconnected", "stopping"];
 
 // old rows can say "error" or anything else, which means not running
-function statusOf(raw: string | undefined): BotStatus {
+function statusOf(raw: string | undefined, config: Config): BotStatus {
+  // a legacy "disconnected" row that never ran the bot shouldn't show red
+  if (raw === "disconnected" && !config.phone && !config.error) return "off";
   return STATUSES.includes(raw as BotStatus) ? (raw as BotStatus) : "off";
 }
 
@@ -41,7 +43,7 @@ export async function readBot(): Promise<BotState> {
   const row = await load();
   const config = (row?.config ?? {}) as Config;
   return {
-    status: statusOf(row?.status),
+    status: statusOf(row?.status, config),
     qr: config.qr ?? null,
     seenAt: config.seenAt ? new Date(config.seenAt) : null,
     phone: config.phone ?? "",
@@ -50,18 +52,18 @@ export async function readBot(): Promise<BotState> {
   };
 }
 
-// web and worker both write here, so merge config and only move from a status we expect
-export async function setBot(from: BotStatus[], to: BotStatus, patch: Patch = {}): Promise<boolean> {
+async function trySet(from: BotStatus[], to: BotStatus, patch: Patch): Promise<"done" | "refused" | "raced"> {
   const row = await load();
-  if (!from.includes(statusOf(row?.status))) return false;
-  const config: Config = { ...((row?.config as Config) ?? {}), ...patch };
+  const current = (row?.config ?? {}) as Config;
+  if (!from.includes(statusOf(row?.status, current))) return "refused";
+  const config: Config = { ...current, ...patch };
   if (typeof patch.qr === "string") config.qrAt = new Date().toISOString();
   if (!row) {
     try {
       await prisma.channel.create({ data: { type: "whatsapp", status: to, isActive: to === "connected", config } });
-      return true;
+      return "done";
     } catch (error) {
-      if ((error as { code?: string }).code === "P2002") return false;
+      if ((error as { code?: string }).code === "P2002") return "raced";
       throw error;
     }
   }
@@ -69,7 +71,15 @@ export async function setBot(from: BotStatus[], to: BotStatus, patch: Patch = {}
     where: { id: row.id, status: row.status, updatedAt: row.updatedAt },
     data: { status: to, isActive: to === "connected", config },
   });
-  return count === 1;
+  return count === 1 ? "done" : "raced";
+}
+
+// web and worker both write here, so merge config and only move from a status we expect
+export async function setBot(from: BotStatus[], to: BotStatus, patch: Patch = {}): Promise<boolean> {
+  let result = await trySet(from, to, patch);
+  // a heartbeat can touch the row between our read and write, so try once more
+  if (result === "raced") result = await trySet(from, to, patch);
+  return result === "done";
 }
 
 export function requestStart(): Promise<boolean> {
@@ -77,7 +87,7 @@ export function requestStart(): Promise<boolean> {
 }
 
 export function requestStop(unlink: boolean): Promise<boolean> {
-  return setBot(["starting", "qr", "connected"], "stopping", { unlink });
+  return setBot(["starting", "qr", "connected"], "stopping", { unlink, qr: null });
 }
 
 export async function heartbeat(now: Date): Promise<void> {

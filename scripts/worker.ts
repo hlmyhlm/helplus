@@ -13,6 +13,8 @@ const stop = () => {
 };
 process.on("SIGINT", stop);
 process.on("SIGTERM", stop);
+// a stray promise from a whatsapp client shouldn't kill the worker
+process.on("unhandledRejection", (error) => logger.error("unhandled rejection in worker", error));
 
 async function main() {
   const once = process.argv.includes("--once");
