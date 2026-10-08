@@ -1,16 +1,17 @@
 "use client";
 
 import { Header } from "@/components/layout/header";
+import Link from "next/link";
 import {
   MessageCircle,
   Mail,
   Phone,
-  Wifi,
-  WifiOff,
   Save,
   Loader2,
-  QrCode,
-  Key,
+  Power,
+  Square,
+  Unlink,
+  ChevronRight,
   TestTube,
   PhoneCall,
   CheckCircle,
@@ -18,8 +19,10 @@ import {
   Eye,
   EyeOff,
 } from "lucide-react";
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
+import { hasPermission } from "@/lib/rbac";
+import { botLabel, type Tone } from "./bot-label";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -32,8 +35,6 @@ interface ChannelData {
   config: Record<string, unknown>;
   status: string;
 }
-
-type WhatsAppMode = "web" | "api";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -141,243 +142,237 @@ function FieldInput({
 // WhatsApp Card
 // ---------------------------------------------------------------------------
 
-function WhatsAppCard({
-  channel,
-  onSave,
-  onAction,
-  saving,
-}: {
-  channel: ChannelData;
-  onSave: (type: string, config: Record<string, unknown>, isActive: boolean) => void;
-  onAction: (type: string, action: string) => void;
-  saving: boolean;
-}) {
-  const cfg = channel.config as Record<string, string>;
-  const [isActive, setIsActive] = useState(channel.isActive);
-  const [mode, setMode] = useState<WhatsAppMode>(
-    (cfg.mode as WhatsAppMode) || "web"
-  );
-  const [apiKey, setApiKey] = useState(cfg.apiKey || "");
-  const [phoneNumber, setPhoneNumber] = useState(cfg.phoneNumber || "");
-  const [qrCode, setQrCode] = useState<string | null>(null);
-  const [connecting, setConnecting] = useState(false);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const isConnected = channel.status === "connected";
+interface BotView {
+  status: string;
+  stale: boolean;
+  phone: string;
+  error: string;
+  qr: string | null;
+}
 
-  // Poll WhatsApp status while connecting to get QR code updates
+const TONE_TEXT: Record<Tone, string> = {
+  success: "text-helplus-success",
+  danger: "text-helplus-danger",
+  warning: "text-helplus-warning",
+  muted: "text-helplus-text-light",
+};
+
+const TONE_DOT: Record<Tone, string> = {
+  success: "bg-helplus-success",
+  danger: "bg-helplus-danger",
+  warning: "bg-helplus-warning",
+  muted: "bg-helplus-text-light",
+};
+
+async function errorText(res: Response): Promise<string> {
+  if (res.status === 403) return "You don't have permission to do that.";
+  const body = await res.json().catch(() => null);
+  const e = body?.error;
+  return (typeof e === "string" ? e : e?.message) || "Something went wrong. Try again.";
+}
+
+function WhatsAppCard() {
+  const [bot, setBot] = useState<BotView | null>(null);
+  const [loadError, setLoadError] = useState("");
+  const [picks, setPicks] = useState(0);
+  const [canUpdate, setCanUpdate] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [confirmUnlink, setConfirmUnlink] = useState(false);
+
+  // buttons follow the same permission the api checks
   useEffect(() => {
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-    };
+    fetch("/api/auth")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setCanUpdate(hasPermission(d?.user?.role ?? "", "channels:update")))
+      .catch(() => setCanUpdate(false));
   }, []);
 
-  const handleConnect = async () => {
-    setConnecting(true);
-    setQrCode(null);
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch("/api/channels/whatsapp");
+      if (!res.ok) {
+        setLoadError(await errorText(res));
+        return;
+      }
+      setBot(await res.json());
+      setLoadError("");
+    } catch {
+      setLoadError("Couldn't reach the server.");
+      return;
+    }
+    fetch("/api/bot/picks")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setPicks(Array.isArray(d?.data) ? d.data.length : 0))
+      .catch(() => {});
+  }, []);
+
+  const status = bot?.status ?? "off";
+  const changing = status === "starting" || status === "qr" || status === "stopping";
+
+  // fast while something is changing, slow otherwise
+  useEffect(() => {
+    load();
+    const timer = setInterval(load, changing ? 3000 : 30000);
+    return () => clearInterval(timer);
+  }, [load, changing]);
+
+  async function act(action: "connect" | "stop" | "unlink") {
+    setBusy(true);
+    setError("");
     try {
       const res = await fetch("/api/channels/whatsapp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "connect" }),
+        body: JSON.stringify({ action }),
       });
+      setConfirmUnlink(false);
       if (res.ok) {
-        const data = await res.json();
-        if (data.qr) setQrCode(data.qr);
+        setBot(await res.json());
+      } else {
+        setError(await errorText(res));
+        load();
       }
-      // Start polling for QR code / status updates
-      if (pollRef.current) clearInterval(pollRef.current);
-      pollRef.current = setInterval(async () => {
-        try {
-          const statusRes = await fetch("/api/channels/whatsapp");
-          if (statusRes.ok) {
-            const status = await statusRes.json();
-            if (status.qr) setQrCode(status.qr);
-            if (status.status === "connected") {
-              if (pollRef.current) clearInterval(pollRef.current);
-              setConnecting(false);
-              onAction("whatsapp", "connect");
-            }
-          }
-        } catch { /* ignore polling errors */ }
-      }, 3000);
     } catch {
-      setConnecting(false);
+      setError("Couldn't reach the server. Try again.");
+    } finally {
+      setBusy(false);
     }
-  };
+  }
+
+  const label = bot ? botLabel(bot) : null;
+  const running = status === "starting" || status === "qr" || status === "connected";
+  const btn =
+    "inline-flex items-center gap-1.5 h-8 px-3 text-xs font-medium rounded-lg transition-colors disabled:opacity-50";
 
   return (
     <div className="bg-helplus-surface rounded-xl border border-helplus-border overflow-hidden">
-      {/* Header */}
       <div className="px-5 py-4 border-b border-helplus-border">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-lg bg-green-50 text-green-600">
-              <MessageCircle className="h-5 w-5" />
-            </div>
-            <div>
-              <h3 className="font-semibold text-helplus-text">WhatsApp</h3>
-              <p className="text-xs text-helplus-text-light mt-0.5">
-                Messaging via WhatsApp Web or API
-              </p>
-            </div>
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 rounded-lg bg-helplus-primary-50 text-helplus-link">
+            <MessageCircle className="h-5 w-5" />
           </div>
-          <div className="flex items-center gap-3">
-            <StatusBadge status={channel.status} />
-            <Toggle enabled={isActive} onChange={setIsActive} />
+          <div className="min-w-0">
+            <h3 className="font-semibold text-helplus-text">WhatsApp bot</h3>
+            <p className="text-xs text-helplus-text-light mt-0.5">
+              Reads your groups and turns client messages into tickets. It never sends anything.
+            </p>
           </div>
         </div>
       </div>
 
-      {/* Body */}
       <div className="p-5 space-y-4">
-        {/* Mode selector */}
-        <div>
-          <label className="block text-xs font-medium text-helplus-text-light mb-2">
-            Connection Method
-          </label>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => setMode("web")}
-              className={cn(
-                "flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border transition-colors",
-                mode === "web"
-                  ? "border-green-300 bg-green-50 text-green-700"
-                  : "border-helplus-border bg-helplus-bg text-helplus-text-light hover:bg-helplus-primary-50 hover:text-helplus-text"
-              )}
-            >
-              <QrCode className="h-4 w-4" />
-              WhatsApp Web
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode("api")}
-              className={cn(
-                "flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border transition-colors",
-                mode === "api"
-                  ? "border-green-300 bg-green-50 text-green-700"
-                  : "border-helplus-border bg-helplus-bg text-helplus-text-light hover:bg-helplus-primary-50 hover:text-helplus-text"
-              )}
-            >
-              <Key className="h-4 w-4" />
-              API
-            </button>
-          </div>
-        </div>
-
-        {mode === "web" ? (
-          <div>
-            {isConnected ? (
-              <div className="rounded-lg border border-green-200 bg-green-50 p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <CheckCircle className="h-4 w-4 text-green-600" />
-                  <span className="text-sm font-medium text-green-700">
-                    Session Active
-                  </span>
-                </div>
-                {phoneNumber && (
-                  <p className="text-sm text-green-600">
-                    Phone: {phoneNumber}
-                  </p>
-                )}
-                <button
-                  type="button"
-                  onClick={() => onAction("whatsapp", "disconnect")}
-                  className="mt-3 flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 bg-white border border-red-200 rounded-lg hover:bg-red-50 transition-colors"
-                >
-                  <WifiOff className="h-3.5 w-3.5" />
-                  Disconnect
-                </button>
-              </div>
-            ) : (
-              <div className="rounded-lg border border-helplus-border bg-helplus-bg p-6 flex flex-col items-center">
-                <div className="w-48 h-48 bg-white border-2 border-dashed border-helplus-border rounded-lg flex items-center justify-center mb-3 overflow-hidden">
-                  {qrCode ? (
-                    <img
-                      src={qrCode}
-                      alt="WhatsApp QR Code"
-                      className="w-full h-full object-contain"
-                    />
-                  ) : connecting ? (
-                    <Loader2 className="h-8 w-8 animate-spin text-green-600" />
-                  ) : (
-                    <div className="text-center">
-                      <QrCode className="h-10 w-10 text-helplus-text-light/40 mx-auto mb-1" />
-                      <p className="text-xs text-helplus-text-light">
-                        QR Code
-                      </p>
-                    </div>
-                  )}
-                </div>
-                <p className="text-xs text-helplus-text-light text-center max-w-[220px]">
-                  {qrCode
-                    ? "Scan this QR code with WhatsApp on your phone to connect"
-                    : "Click Connect to generate a QR code"}
-                </p>
-                <button
-                  type="button"
-                  onClick={handleConnect}
-                  disabled={connecting}
-                  className="mt-3 flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
-                >
-                  {connecting ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Wifi className="h-4 w-4" />
-                  )}
-                  {connecting ? "Connecting..." : "Connect"}
-                </button>
-              </div>
-            )}
-          </div>
+        {loadError && !bot ? (
+          <p className="text-sm text-helplus-danger">{loadError}</p>
+        ) : !label ? (
+          <Loader2 className="h-5 w-5 animate-spin text-helplus-text-light" />
         ) : (
-          <div className="space-y-3">
-            <FieldInput
-              label="API Key"
-              value={apiKey}
-              onChange={setApiKey}
-              placeholder="Enter your WhatsApp API key"
-              isSecret
-            />
-            <FieldInput
-              label="Phone Number"
-              value={phoneNumber}
-              onChange={setPhoneNumber}
-              placeholder="+1234567890"
-            />
-            {isConnected && (
-              <div className="rounded-lg border border-green-200 bg-green-50 p-3 flex items-center gap-2">
-                <CheckCircle className="h-4 w-4 text-green-600" />
-                <span className="text-sm text-green-700">
-                  API connected - Phone: {phoneNumber || "N/A"}
-                </span>
-              </div>
-            )}
+          <div className="flex items-start gap-2">
+            <span className={cn("mt-1.5 w-2 h-2 rounded-full flex-shrink-0", TONE_DOT[label.tone])} />
+            <span className={cn("text-sm font-medium break-words", TONE_TEXT[label.tone])}>
+              {label.text}
+            </span>
           </div>
         )}
+
+        {status === "qr" && bot?.qr && (
+          <div className="flex flex-col items-center gap-2">
+            <div className="w-48 h-48 bg-white rounded-lg border border-helplus-border p-2">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={bot.qr} alt="WhatsApp QR code" className="w-full h-full object-contain" />
+            </div>
+            <p className="text-xs text-helplus-text-light text-center">
+              WhatsApp &gt; Linked devices &gt; Link a device
+            </p>
+          </div>
+        )}
+
+        {error && <p className="text-xs text-helplus-danger">{error}</p>}
+
+        {canUpdate && bot && (
+          <div className="flex flex-wrap items-center gap-2">
+            {confirmUnlink ? (
+              <>
+                <p className="w-full text-xs text-helplus-text">
+                  This logs the bot out. You&apos;ll need to scan a new QR code.
+                </p>
+                <p className="w-full text-xs text-helplus-text-light">
+                  Replies already waiting to be placed are kept.
+                </p>
+                <button
+                  onClick={() => act("unlink")}
+                  disabled={busy}
+                  className={`${btn} text-white bg-helplus-danger hover:opacity-90`}
+                >
+                  {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Unlink className="h-3.5 w-3.5" />}
+                  Yes, unlink
+                </button>
+                <button
+                  onClick={() => setConfirmUnlink(false)}
+                  disabled={busy}
+                  className={`${btn} text-helplus-text border border-helplus-border hover:bg-helplus-bg`}
+                >
+                  Cancel
+                </button>
+              </>
+            ) : status === "off" || status === "disconnected" ? (
+              <button
+                onClick={() => act("connect")}
+                disabled={busy}
+                className={`${btn} text-white bg-helplus-primary hover:bg-helplus-primary-dark`}
+              >
+                {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Power className="h-3.5 w-3.5" />}
+                Connect
+              </button>
+            ) : running ? (
+              <>
+                <button
+                  onClick={() => act("stop")}
+                  disabled={busy}
+                  className={`${btn} text-helplus-text border border-helplus-border hover:bg-helplus-bg`}
+                >
+                  {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Square className="h-3.5 w-3.5" />}
+                  Stop
+                </button>
+                <button
+                  onClick={() => {
+                    setConfirmUnlink(true);
+                    setError("");
+                  }}
+                  disabled={busy}
+                  className={`${btn} text-helplus-danger border border-helplus-border hover:bg-helplus-bg`}
+                >
+                  <Unlink className="h-3.5 w-3.5" />
+                  Unlink number
+                </button>
+              </>
+            ) : null}
+          </div>
+        )}
+
+        <div className="rounded-lg bg-helplus-bg p-3">
+          <p className="text-xs font-semibold text-helplus-text mb-1">Before you connect</p>
+          <ul className="text-xs text-helplus-text-light space-y-0.5 list-disc pl-4">
+            <li>Use a separate number just for the bot.</li>
+            <li>Never make the bot the only group admin.</li>
+            <li>Tell each group the bot is there.</li>
+          </ul>
+        </div>
       </div>
 
-      {/* Footer */}
       <div className="px-5 py-3 border-t border-helplus-border bg-helplus-bg/50">
-        <button
-          type="button"
-          disabled={saving}
-          onClick={() =>
-            onSave(
-              "whatsapp",
-              { mode, apiKey, phoneNumber },
-              isActive
-            )
-          }
-          className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-helplus-primary rounded-lg hover:bg-helplus-primary-dark disabled:opacity-50 transition-colors"
+        <Link
+          href="/channels/whatsapp"
+          className="inline-flex items-center gap-2 text-sm font-medium text-helplus-link hover:underline"
         >
-          {saving ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Save className="h-4 w-4" />
+          Groups and replies
+          {picks > 0 && (
+            <span className="px-1.5 py-0.5 text-xs rounded-full bg-helplus-primary-50 text-helplus-link">
+              {picks}
+            </span>
           )}
-          Save
-        </button>
+          <ChevronRight className="h-4 w-4" />
+        </Link>
       </div>
     </div>
   );
@@ -882,12 +877,7 @@ export default function ChannelsPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-7xl">
-            <WhatsAppCard
-              channel={getChannel("whatsapp")}
-              onSave={handleSave}
-              onAction={handleAction}
-              saving={saving}
-            />
+            <WhatsAppCard />
             <EmailCard
               channel={getChannel("email")}
               onSave={handleSave}
