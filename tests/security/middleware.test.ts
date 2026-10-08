@@ -186,7 +186,7 @@ describe("Middleware", () => {
 
       // 6th request should be blocked
       const request = createMiddlewareRequest("/api/auth", {
-          method: "POST",
+        method: "POST",
         headers: { "x-forwarded-for": "10.0.0.1" },
       });
       const response = middleware(request);
@@ -209,14 +209,14 @@ describe("Middleware", () => {
 
       // IP B should still be allowed
       const request = createMiddlewareRequest("/api/auth", {
-          method: "POST",
+        method: "POST",
         headers: { "x-forwarded-for": "192.168.1.2" },
       });
       const response = middleware(request);
 
       expect(response.status).not.toBe(429);
     });
-  
+
     it("never limits GET /api/auth", async () => {
       const { middleware } = await import("@/middleware");
 

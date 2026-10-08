@@ -34,12 +34,13 @@ const ALLOWED = new Set([
   "trim",
   "catch",
   "then",
+  "finally",
 ]);
 
 function files(dir: string): string[] {
   return readdirSync(dir).flatMap((f) => {
     const p = join(dir, f);
-    return statSync(p).isDirectory() ? files(p) : /\.(ts|tsx)$/.test(p) ? [p] : [];
+    return statSync(p).isDirectory() ? files(p) : /\.(ts|tsx|js|mjs|cjs)$/.test(p) ? [p] : [];
   });
 }
 
@@ -77,6 +78,10 @@ describe("whatsapp bot is read-only", () => {
   it("imports whatsapp-web.js in one place only", () => {
     const users = all.filter((f) => readFileSync(f, "utf8").includes("whatsapp-web.js"));
     expect(users.map((f) => f.replace(/\\/g, "/"))).toEqual(["src/lib/bot/client.ts"]);
+  });
+
+  it("also scans plain js scripts", () => {
+    expect(all.some((f) => f.endsWith(".mjs"))).toBe(true);
   });
 
   it("only calls allowed methods", () => {
