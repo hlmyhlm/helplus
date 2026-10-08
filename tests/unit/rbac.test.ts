@@ -102,4 +102,19 @@ describe("RBAC System", () => {
     expect(hasPermission("staff", "projects:manage")).toBe(false);
     expect(hasPermission("admin", "projects:manage")).toBe(true);
   });
+
+  it("only admins and owners manage the email log", () => {
+    expect(hasPermission("supervisor", "emails:manage")).toBe(false);
+    expect(hasPermission("admin", "emails:manage")).toBe(true);
+  });
+
+  it("viewers never see screenshot originals", () => {
+    expect(hasPermission("viewer", "attachments:original")).toBe(false);
+    expect(hasPermission("staff", "attachments:original")).toBe(true);
+  });
+
+  it("supervisors run imports, staff don't", () => {
+    expect(hasPermission("staff", "imports:run")).toBe(false);
+    expect(hasPermission("supervisor", "imports:run")).toBe(true);
+  });
 });

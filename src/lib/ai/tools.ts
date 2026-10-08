@@ -2,6 +2,8 @@ import { ToolDefinition } from "./types";
 import { prisma } from "@/lib/prisma";
 import { getSettings } from "@/lib/settings";
 import { openTicket } from "@/lib/tickets/service";
+import { saveTicket } from "@/lib/tickets/update";
+import { canMove, statusChange, isTicketStatus } from "@/lib/tickets/status";
 import nodemailer from "nodemailer";
 
 export const helplusTools: ToolDefinition[] = [
@@ -234,10 +236,13 @@ async function assignToPerson(args: Record<string, unknown>): Promise<string> {
     });
   }
 
-  await prisma.ticket.update({
-    where: { id: ticketId },
-    data: { assignedToId: member.id, status: "working" },
-  });
+  const current = await prisma.ticket.findUnique({ where: { id: ticketId } });
+  if (!current) {
+    return JSON.stringify({ success: false, message: "Ticket not found" });
+  }
+  const data: Record<string, unknown> = { assignedToId: member.id };
+  if (isTicketStatus(current.status) && canMove(current.status, "working")) Object.assign(data, statusChange(current, "working"));
+  await saveTicket(current, data);
 
   return JSON.stringify({
     success: true,

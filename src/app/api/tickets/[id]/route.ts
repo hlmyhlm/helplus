@@ -6,8 +6,11 @@ import { updateTicketSchema, validateBody } from "@/lib/validations";
 import { allowedProjectIds, canSeeProject } from "@/lib/tickets/access";
 import { loadTicketFor } from "@/lib/tickets/load";
 import { statusChange, InvalidTransitionError } from "@/lib/tickets/status";
+import { saveTicket, loadSlaContext } from "@/lib/tickets/update";
 import { STAFF_ROLES } from "@/lib/rbac";
 import { projectProblem } from "@/lib/projects/usable";
+import { notifyTicket } from "@/lib/notify/notify";
+import { removeAttachmentFiles } from "@/lib/attachments/files";
 
 type Ctx = { params: Promise<{ id: string }> };
 const notFound = () => NextResponse.json({ error: "Ticket not found" }, { status: 404 });
@@ -28,6 +31,21 @@ export const GET = withAuth("tickets:read", async (_request: NextRequest, auth, 
           customer: { select: { id: true, name: true, phone: true, email: true } },
         },
       },
+      attachments: {
+        orderBy: { createdAt: "asc" },
+        select: {
+          id: true,
+          messageId: true,
+          fileName: true,
+          status: true,
+          icCount: true,
+          width: true,
+          height: true,
+          checkNote: true,
+          originalDeletedAt: true,
+          createdAt: true,
+        },
+      },
     },
   });
   return NextResponse.json(ticket);
@@ -43,8 +61,9 @@ export const PATCH = withAuth("tickets:update", async (request: NextRequest, aut
     if (!validation.success) return NextResponse.json({ error: validation.error }, { status: 400 });
     const { status, assigneeId, projectId, ...rest } = validation.data;
 
+    const now = new Date();
     const data: Record<string, unknown> = { ...rest };
-    if (status) Object.assign(data, statusChange(ticket, status));
+    if (status) Object.assign(data, statusChange(ticket, status, now));
 
     if (assigneeId !== undefined) {
       if (assigneeId !== null) {
@@ -73,13 +92,22 @@ export const PATCH = withAuth("tickets:update", async (request: NextRequest, aut
       }
     }
 
-    const updated = await prisma.ticket.update({ where: { id }, data });
-    // the thread is shared, so its other tickets move too
-    if (projectId !== undefined && ticket.conversationId) {
-      await prisma.ticket.updateMany({
-        where: { conversationId: ticket.conversationId, id: { not: id } },
-        data: { projectId },
-      });
+    const conversationId = ticket.conversationId;
+    if (projectId === undefined || projectId === ticket.projectId || !conversationId) {
+      return NextResponse.json(await saveTicket(ticket, data, { now, actorId: auth.userId }));
+    }
+
+    // the thread is shared, so its other tickets move too, all in one go
+    const ctx = await loadSlaContext();
+    const updated = await prisma.$transaction(async (tx) => {
+      const saved = await saveTicket(ticket, data, { now, ctx, db: tx, notify: false });
+      const open = await tx.ticket.findMany({ where: { conversationId, id: { not: id }, status: { not: "closed" } } });
+      for (const sibling of open) await saveTicket(sibling, { projectId }, { db: tx, ctx, now, notify: false });
+      await tx.ticket.updateMany({ where: { conversationId, id: { not: id }, status: "closed" }, data: { projectId } });
+      return saved;
+    });
+    if (data.status === "reopened" && ticket.status !== "reopened") {
+      await notifyTicket("reopened", updated, { actorId: auth.userId });
     }
     return NextResponse.json(updated);
   } catch (error) {
@@ -94,6 +122,7 @@ export const PATCH = withAuth("tickets:update", async (request: NextRequest, aut
 export const DELETE = withAuth("tickets:delete", async (_request: NextRequest, auth, { params }: Ctx) => {
   const { id } = await params;
   if (!(await loadTicketFor(auth, id))) return notFound();
+  await removeAttachmentFiles({ ticketId: id });
   await prisma.ticket.delete({ where: { id } });
   return NextResponse.json({ success: true });
 });

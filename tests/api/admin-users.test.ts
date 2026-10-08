@@ -209,4 +209,41 @@ describe("POST /api/admin/users", () => {
     expect(response.status).toBe(409);
     expect(await parseJsonResponse(response)).toEqual({ error: "Username already exists" });
   });
+
+  it("stores a lowercased email and notifyNew", async () => {
+    authAs("admin");
+    mockPrisma.admin.findUnique.mockResolvedValue(null);
+    mockPrisma.admin.create.mockResolvedValue(
+      staffUser({ email: "staff@acme.test", notifyNew: true })
+    );
+
+    const { POST } = await import("@/app/api/admin/users/route");
+    const request = createRequest("/api/admin/users", {
+      method: "POST",
+      body: { username: "staffer2", password: "secure123", email: "Staff@Acme.test", notifyNew: true },
+    });
+    const response = await POST(request);
+    const data = await parseJsonResponse(response);
+
+    expect(response.status).toBe(201);
+    expect(mockPrisma.admin.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ email: "staff@acme.test", notifyNew: true }) })
+    );
+    expect(data.email).toBe("staff@acme.test");
+  });
+
+  it("rejects a malformed email with 400", async () => {
+    authAs("admin");
+    mockPrisma.admin.findUnique.mockResolvedValue(null);
+
+    const { POST } = await import("@/app/api/admin/users/route");
+    const request = createRequest("/api/admin/users", {
+      method: "POST",
+      body: { username: "staffer3", password: "secure123", email: "not-an-email" },
+    });
+    const response = await POST(request);
+
+    expect(response.status).toBe(400);
+    expect(mockPrisma.admin.create).not.toHaveBeenCalled();
+  });
 });

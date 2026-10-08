@@ -7,6 +7,7 @@ import {
   groupFor,
   activeHref,
   moreActive,
+  visibleItems,
 } from "@/components/layout/nav-items";
 
 const item = (name: string) => mainNav.find((i) => i.name === name)!;
@@ -24,7 +25,7 @@ describe("isActive", () => {
   });
 
   it("keeps settings active on the old system pages", () => {
-    for (const p of ["/settings", "/team", "/sla", "/webhooks", "/admin", "/activity", "/api-docs"]) {
+    for (const p of ["/settings", "/privacy", "/team", "/sla", "/webhooks", "/admin", "/activity", "/api-docs"]) {
       expect(isActive(p, item("Settings"))).toBe(true);
     }
   });
@@ -66,5 +67,39 @@ describe("phone nav", () => {
 describe("clients group", () => {
   it("finds the clients group for a customer page", () => {
     expect(groupFor("/customers")?.name).toBe("Clients");
+  });
+});
+
+describe("sources group", () => {
+  const sources = () => sectionGroups.find((g) => g.name === "Sources")!;
+
+  it("holds channels and imports", () => {
+    expect(sources().items.map((i) => i.href)).toEqual(["/channels", "/imports"]);
+    expect(groupFor("/imports")?.name).toBe("Sources");
+    expect(groupFor("/imports/abc")?.name).toBe("Sources");
+  });
+
+  it("keeps the sources item on channels and lights it on imports", () => {
+    expect(item("Sources").href).toBe("/channels");
+    expect(isActive("/channels", item("Sources"))).toBe(true);
+    expect(isActive("/imports/abc", item("Sources"))).toBe(true);
+    expect(moreActive("/imports")).toBe(true);
+  });
+
+  it("hides imports from roles without imports:run", () => {
+    const yes = visibleItems(sources(), () => true);
+    const no = visibleItems(sources(), (p) => p !== "imports:run");
+    expect(yes.map((i) => i.name)).toEqual(["Channels", "Imports"]);
+    expect(no.map((i) => i.name)).toEqual(["Channels"]);
+  });
+});
+
+describe("library drafts", () => {
+  it("puts waiting approval right after articles", () => {
+    const library = sectionGroups.find((g) => g.name === "Library")!;
+    expect(library.items.map((i) => i.name).slice(0, 2)).toEqual(["Articles", "Waiting approval"]);
+    expect(library.items[1]).toMatchObject({ href: "/knowledge/drafts", permission: "knowledge:read" });
+    expect(activeHref(library, "/knowledge/drafts")).toBe("/knowledge/drafts");
+    expect(isActive("/knowledge/drafts", item("Library"))).toBe(true);
   });
 });

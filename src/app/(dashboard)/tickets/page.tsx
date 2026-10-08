@@ -11,10 +11,13 @@ import { QuickAddDialog } from "@/components/tickets/quick-add-dialog";
 import { OPEN_STATUSES, STATUS_LABELS, type TicketStatus } from "@/lib/tickets/status";
 import { useCompany } from "@/lib/hooks/use-company";
 
-const CHIPS: { key: string; label: string; status: string; assignee?: string }[] = [
+const CHIPS: { key: string; label: string; status: string; assignee?: string; sla?: "near" | "breached"; attention?: string }[] = [
   { key: "open", label: "Open", status: "open" },
   { key: "mine", label: "Mine", status: "open", assignee: "me" },
   { key: "unassigned", label: "Unassigned", status: "open", assignee: "unassigned" },
+  { key: "breached", label: "Overdue", status: "open", sla: "breached" },
+  { key: "near", label: "Due soon", status: "open", sla: "near" },
+  { key: "screens", label: "Screens to check", status: "open", attention: "screens" },
   { key: "ai", label: STATUS_LABELS.ai_suggested, status: "ai_suggested" },
   { key: "reopened", label: STATUS_LABELS.reopened, status: "reopened" },
   { key: "closed", label: STATUS_LABELS.closed, status: "closed" },
@@ -44,12 +47,18 @@ function TicketsPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const projectId = searchParams.get("projectId") ?? "";
-  const { projectLabel } = useCompany();
+  const { projectLabel, canCheckScreens } = useCompany();
   const chipLabel = projectLabel === "Projects" ? "Project" : "Client";
-  const [chip, setChip] = useState("open");
+  // links like ?status=all open on that chip
+  const [chip, setChip] = useState(() => {
+    const s = searchParams.get("status");
+    return CHIPS.some((c) => c.key === s) ? s! : "open";
+  });
   const [q, setQ] = useState("");
   const [rows, setRows] = useState<TicketRow[]>([]);
   const [counts, setCounts] = useState<Partial<Record<TicketStatus, number>>>({});
+  const [slaCounts, setSlaCounts] = useState<{ near: number; breached: number }>({ near: 0, breached: 0 });
+  const [screensToCheck, setScreensToCheck] = useState(0);
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -65,6 +74,8 @@ function TicketsPageInner() {
     const c = CHIPS.find((x) => x.key === chip)!;
     const params = new URLSearchParams({ status: c.status, page: String(page), limit: "25" });
     if (c.assignee) params.set("assignee", c.assignee);
+    if (c.sla) params.set("sla", c.sla);
+    if (c.attention) params.set("attention", c.attention);
     if (q.trim()) params.set("q", q.trim());
     if (projectId) params.set("projectId", projectId);
     try {
@@ -76,6 +87,8 @@ function TicketsPageInner() {
         setRows(unwrapList<TicketRow>(json));
         setPages(listMeta(json)?.totalPages || 1);
         setCounts(json.counts ?? {});
+        setSlaCounts(json.slaCounts ?? { near: 0, breached: 0 });
+        setScreensToCheck(json.screensToCheck ?? 0);
       } else {
         setLoadError("Couldn't load tickets.");
       }
@@ -125,7 +138,21 @@ function TicketsPageInner() {
 
   const openCount = OPEN_STATUSES.reduce((n, s) => n + (counts[s] ?? 0), 0);
   const chipCount = (key: string) =>
-    key === "open" ? openCount : key === "ai" ? counts.ai_suggested : key === "reopened" ? counts.reopened : key === "closed" ? counts.closed : undefined;
+    key === "open"
+      ? openCount
+      : key === "breached"
+        ? slaCounts.breached
+        : key === "near"
+          ? slaCounts.near
+          : key === "screens"
+            ? screensToCheck
+            : key === "ai"
+              ? counts.ai_suggested
+              : key === "reopened"
+                ? counts.reopened
+                : key === "closed"
+                  ? counts.closed
+                  : undefined;
 
   return (
     <>
@@ -160,7 +187,7 @@ function TicketsPageInner() {
             placeholder="Search ticket #, title, client…"
             className="flex-1 min-w-[180px] max-w-sm h-9 rounded-md border border-helplus-border bg-helplus-surface px-3 text-sm text-helplus-text"
           />
-          {CHIPS.map((c) => (
+          {CHIPS.filter((c) => c.key !== "screens" || canCheckScreens).map((c) => (
             <button
               key={c.key}
               onClick={() => {
@@ -195,7 +222,11 @@ function TicketsPageInner() {
           </div>
         )}
       </div>
-      <QuickAddDialog open={adding} onClose={() => setAdding(false)} onCreated={(id) => router.push(`/tickets/${id}`)} />
+      <QuickAddDialog
+        open={adding}
+        onClose={() => setAdding(false)}
+        onCreated={(id, uploadError) => router.push(`/tickets/${id}${uploadError ? `?uploadError=${encodeURIComponent(uploadError)}` : ""}`)}
+      />
     </>
   );
 }

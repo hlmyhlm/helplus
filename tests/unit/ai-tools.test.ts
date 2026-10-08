@@ -30,6 +30,9 @@ describe("AI Tools", () => {
         }
       }
     }
+    mockPrisma.sLARule.findMany.mockResolvedValue([]);
+    mockPrisma.businessHours.findUnique.mockResolvedValue(null);
+    mockPrisma.holiday.findMany.mockResolvedValue([]);
   });
 
   describe("create_ticket", () => {
@@ -123,6 +126,20 @@ describe("AI Tools", () => {
         name: "Jane",
         department: { name: "Billing" },
       });
+      mockPrisma.ticket.findUnique.mockResolvedValue({
+        id: "ticket-1",
+        status: "new",
+        firstReplyAt: null,
+        reopenCount: 0,
+        priority: "medium",
+        projectId: "p1",
+        category: "",
+        source: "whatsapp",
+        createdAt: new Date(),
+        closedAt: null,
+        slaPausedAt: null,
+        slaPausedMins: 0,
+      });
       mockPrisma.ticket.update.mockResolvedValue({});
 
       const result = JSON.parse(
@@ -152,6 +169,25 @@ describe("AI Tools", () => {
 
       expect(result.success).toBe(false);
       expect(result.message).toContain("No available team member");
+    }));
+
+    it("should return failure when the ticket doesn't exist", inCompany(async () => {
+      mockPrisma.teamMember.findFirst.mockResolvedValue({
+        id: "member-1",
+        name: "Jane",
+        department: { name: "Billing" },
+      });
+      mockPrisma.ticket.findUnique.mockResolvedValue(null);
+
+      const result = JSON.parse(
+        await executeToolCall("assign_to_person", {
+          ticketId: "ghost",
+          expertise: "billing",
+        })
+      );
+
+      expect(result).toEqual({ success: false, message: "Ticket not found" });
+      expect(mockPrisma.ticket.update).not.toHaveBeenCalled();
     }));
   });
 

@@ -16,5 +16,9 @@ export const GET = withAuth(undefined, async (_request: NextRequest, auth: AuthC
     slug: company?.slug ?? "",
     projectLabel: settings.projectLabel,
     canManageProjects: hasPermission(auth.role, "projects:manage"),
+    canCheckScreens: hasPermission(auth.role, "attachments:original"),
+    canUpdateTickets: hasPermission(auth.role, "tickets:update"),
+    canImport: hasPermission(auth.role, "imports:run"),
+    autoCloseDays: settings.autoCloseDays,
   });
 });

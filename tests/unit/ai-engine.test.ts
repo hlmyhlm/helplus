@@ -24,6 +24,8 @@ const mockPrisma = prisma as unknown as Record<string, Record<string, ReturnType
 describe("AI Engine", () => {
   beforeEach(async () => {
     vi.restoreAllMocks();
+    // ticket.update's call history leaks across tests otherwise
+    mockPrisma.ticket.update.mockClear();
     mockOpenAICreateFn.mockReset();
 
     // Default settings
@@ -69,6 +71,11 @@ describe("AI Engine", () => {
     // ticketForIncomingMessage finds an open ticket and just touches it
     mockPrisma.ticket.findFirst.mockResolvedValue({ id: "t1" });
     mockPrisma.ticket.update.mockResolvedValue({ id: "t1" });
+
+    // saveTicket's sla lookup, only hit when a status actually changes
+    mockPrisma.sLARule.findMany.mockResolvedValue([]);
+    mockPrisma.businessHours.findUnique.mockResolvedValue(null);
+    mockPrisma.holiday.findMany.mockResolvedValue([]);
   });
 
   it("should return fallback when AI API key is not configured", inCompany(async () => {
@@ -237,6 +244,16 @@ describe("AI Engine", () => {
     expect(systemMessage.content).toContain("30-day returns allowed");
   }));
 
+  it("only reads approved, active knowledge", inCompany(async () => {
+    mockOpenAICreateFn.mockResolvedValue({ choices: [{ finish_reason: "stop", message: { content: "ok" } }] });
+
+    const { chat } = await import("@/lib/ai/engine");
+    await chat("conv-1", "hi");
+
+    const where = mockPrisma.knowledgeEntry.findMany.mock.calls.at(-1)?.[0].where;
+    expect(where).toEqual({ isActive: true, status: "approved" });
+  }));
+
   it("should handle tool calls and recurse", inCompany(async () => {
     // First call returns tool_calls
     mockOpenAICreateFn
@@ -296,5 +313,66 @@ describe("AI Engine", () => {
     const response = await chat("conv-1", "Hello");
 
     expect(response).toContain("could not generate a response");
+  }));
+
+  it("marks a new ticket ai_suggested after a successful reply", inCompany(async () => {
+    mockPrisma.ticket.findFirst.mockResolvedValue({ id: "t1", status: "new", firstReplyAt: null, reopenCount: 0 });
+    mockPrisma.ticket.update.mockResolvedValue({ id: "t1", status: "new", firstReplyAt: null, reopenCount: 0 });
+    mockOpenAICreateFn.mockResolvedValue({
+      choices: [{ finish_reason: "stop", message: { content: "Here's the answer." } }],
+    });
+
+    const { chat } = await import("@/lib/ai/engine");
+    await chat("conv-1", "Hello");
+
+    expect(mockPrisma.ticket.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "t1" },
+        data: expect.objectContaining({ status: "ai_suggested" }),
+      })
+    );
+  }));
+
+  it("doesn't mark a ticket ai_suggested when the AI call fails", inCompany(async () => {
+    mockPrisma.ticket.findFirst.mockResolvedValue({ id: "t1", status: "new", firstReplyAt: null, reopenCount: 0 });
+    mockPrisma.ticket.update.mockResolvedValue({ id: "t1", status: "new", firstReplyAt: null, reopenCount: 0 });
+    mockOpenAICreateFn.mockRejectedValue(new Error("boom"));
+
+    const { chat } = await import("@/lib/ai/engine");
+    await chat("conv-1", "Hello");
+
+    expect(mockPrisma.ticket.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: "ai_suggested" }) })
+    );
+  }));
+
+  it("doesn't mark a ticket ai_suggested when the reply content is empty", inCompany(async () => {
+    mockPrisma.ticket.findFirst.mockResolvedValue({ id: "t1", status: "new", firstReplyAt: null, reopenCount: 0 });
+    mockPrisma.ticket.update.mockResolvedValue({ id: "t1", status: "new", firstReplyAt: null, reopenCount: 0 });
+    mockOpenAICreateFn.mockResolvedValue({
+      choices: [{ finish_reason: "stop", message: { content: "" } }],
+    });
+
+    const { chat } = await import("@/lib/ai/engine");
+    await chat("conv-1", "Hello");
+
+    expect(mockPrisma.ticket.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: "ai_suggested" }) })
+    );
+  }));
+
+  it("doesn't mark a working ticket ai_suggested", inCompany(async () => {
+    mockPrisma.ticket.findFirst.mockResolvedValue({ id: "t1", status: "working", firstReplyAt: null, reopenCount: 0 });
+    mockPrisma.ticket.update.mockResolvedValue({ id: "t1", status: "working", firstReplyAt: null, reopenCount: 0 });
+    mockOpenAICreateFn.mockResolvedValue({
+      choices: [{ finish_reason: "stop", message: { content: "Here's the answer." } }],
+    });
+
+    const { chat } = await import("@/lib/ai/engine");
+    await chat("conv-1", "Hello");
+
+    expect(mockPrisma.ticket.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: "ai_suggested" }) })
+    );
   }));
 });

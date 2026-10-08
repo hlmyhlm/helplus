@@ -26,3 +26,14 @@ export function projectWhere(ids: string[] | null): Record<string, unknown> {
 export function conversationWhere(ids: string[] | null): Record<string, unknown> {
   return ids === null ? {} : { tickets: { some: { projectId: { in: ids } } } };
 }
+
+// a person shows if they belong to an allowed project or have a ticket in one
+export function customerWhere(ids: string[] | null): Record<string, unknown> {
+  if (ids === null) return {};
+  return {
+    OR: [
+      { projectId: { in: ids } },
+      { conversations: { some: { tickets: { some: { projectId: { in: ids } } } } } },
+    ],
+  };
+}

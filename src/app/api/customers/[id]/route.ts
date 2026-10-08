@@ -2,16 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { withAuth } from "@/lib/tenant/with-auth";
-import { allowedProjectIds, conversationWhere } from "@/lib/tickets/access";
+import { allowedProjectIds, conversationWhere, customerWhere } from "@/lib/tickets/access";
 
 export const GET = withAuth(
   "customers:read",
   async (_request: NextRequest, auth, { params }: { params: Promise<{ id: string }> }) => {
     try {
       const { id } = await params;
+      const allowed = await allowedProjectIds(auth);
 
-      const customer = await prisma.customer.findUnique({
-        where: { id },
+      const customer = await prisma.customer.findFirst({
+        where: { id, ...customerWhere(allowed) },
         include: {
           notes: {
             orderBy: { createdAt: "desc" },
@@ -43,7 +44,7 @@ export const GET = withAuth(
       let conversations: unknown[] = [];
       if (contactFilters.length > 0) {
         conversations = await prisma.conversation.findMany({
-          where: { OR: contactFilters, ...conversationWhere(await allowedProjectIds(auth)) },
+          where: { OR: contactFilters, ...conversationWhere(allowed) },
           orderBy: { updatedAt: "desc" },
           include: {
             _count: { select: { messages: true } },
@@ -65,13 +66,13 @@ export const GET = withAuth(
 
 export const PUT = withAuth(
   "customers:update",
-  async (request: NextRequest, _auth, { params }: { params: Promise<{ id: string }> }) => {
+  async (request: NextRequest, auth, { params }: { params: Promise<{ id: string }> }) => {
     try {
       const { id } = await params;
       const body = await request.json();
       const { name, email, phone, whatsapp, tags, isBlocked, metadata } = body;
 
-      const existing = await prisma.customer.findUnique({ where: { id } });
+      const existing = await prisma.customer.findFirst({ where: { id, ...customerWhere(await allowedProjectIds(auth)) } });
       if (!existing) {
         return NextResponse.json(
           { error: "Customer not found" },
@@ -112,11 +113,11 @@ export const PUT = withAuth(
 
 export const DELETE = withAuth(
   "customers:delete",
-  async (_request: NextRequest, _auth, { params }: { params: Promise<{ id: string }> }) => {
+  async (_request: NextRequest, auth, { params }: { params: Promise<{ id: string }> }) => {
     try {
       const { id } = await params;
 
-      const existing = await prisma.customer.findUnique({ where: { id } });
+      const existing = await prisma.customer.findFirst({ where: { id, ...customerWhere(await allowedProjectIds(auth)) } });
       if (!existing) {
         return NextResponse.json(
           { error: "Customer not found" },

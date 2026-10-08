@@ -1,13 +1,18 @@
 "use client";
 
-import { use, useCallback, useEffect, useState } from "react";
+import { use, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ChevronLeft } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { ChevronLeft, Paperclip } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { formatRelativeTime } from "@/lib/utils";
 import { unwrapList } from "@/lib/api-client";
 import { StatusDot, sourceLabel } from "@/components/tickets/status-dot";
+import { SlaBadge, closesOn } from "@/components/tickets/sla-badge";
+import { Screenshots } from "@/components/tickets/screenshots";
+import type { AttachmentRow } from "@/lib/attachments/row";
 import { STATUS_LABELS, TICKET_STATUSES, canMove, isTicketStatus } from "@/lib/tickets/status";
+import { useCompany } from "@/lib/hooks/use-company";
 
 interface Msg {
   id: string;
@@ -30,9 +35,19 @@ interface Ticket {
   category: string;
   priority: string;
   createdAt: string;
+  answeredAt: string | null;
+  closeWarnedAt: string | null;
+  firstReplyAt: string | null;
+  closedAt: string | null;
+  slaPausedAt: string | null;
+  firstReplyWarnAt: string | null;
+  firstReplyDueAt: string | null;
+  resolveWarnAt: string | null;
+  resolveDueAt: string | null;
   project: { id: string; name: string };
   assignee: { id: string; name: string } | null;
   conversation: { customerName: string; customerContact: string; messages: Msg[]; notes: Note[] } | null;
+  attachments: AttachmentRow[];
 }
 interface Person {
   id: string;
@@ -44,9 +59,15 @@ const WHO: Record<string, string> = { customer: "Client", agent: "Support", admi
 
 export default function TicketDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const { autoCloseDays, canCheckScreens, canUpdateTickets } = useCompany();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [ticket, setTicket] = useState<Ticket | null>(null);
+  const [uploadError, setUploadError] = useState("");
+  const ticketRef = useRef<Ticket | null>(null);
   const [missing, setMissing] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
+  const [staleError, setStaleError] = useState(false);
   const [staff, setStaff] = useState<Person[]>([]);
   const [reply, setReply] = useState("");
   const [note, setNote] = useState("");
@@ -57,7 +78,9 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
   const [savingNote, setSavingNote] = useState(false);
 
   const load = useCallback(async () => {
-    setLoadFailed(false);
+    // a ticket already on screen means this is a reload, not the first load
+    const hadTicket = ticketRef.current !== null;
+    if (!hadTicket) setLoadFailed(false);
     try {
       const res = await fetch(`/api/tickets/${id}`);
       if (res.status === 404) {
@@ -65,14 +88,28 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
         return;
       }
       if (!res.ok) {
-        setLoadFailed(true);
+        if (hadTicket) setStaleError(true);
+        else setLoadFailed(true);
         return;
       }
       setTicket(await res.json());
+      setStaleError(false);
     } catch {
-      setLoadFailed(true);
+      if (hadTicket) setStaleError(true);
+      else setLoadFailed(true);
     }
   }, [id]);
+
+  useEffect(() => {
+    ticketRef.current = ticket;
+  }, [ticket]);
+
+  // shown once, from the quick add dialog's upload failing
+  useEffect(() => {
+    if (!searchParams.get("uploadError")) return;
+    setUploadError("Some screenshots couldn't be uploaded. Try adding them again.");
+    router.replace(`/tickets/${id}`);
+  }, [searchParams, router, id]);
 
   useEffect(() => {
     load();
@@ -185,6 +222,12 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
   const assigneeOptions =
     ticket.assignee && !staff.some((p) => p.id === ticket.assignee!.id) ? [...staff, ticket.assignee] : staff;
 
+  const fmt = (iso: string) =>
+    new Date(iso).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" });
+  const hasSla = ticket.firstReplyDueAt || ticket.resolveDueAt;
+  const closeDate = ticket.status === "answered" && autoCloseDays > 0 ? closesOn(ticket.answeredAt, autoCloseDays, ticket.closeWarnedAt) : null;
+  const closesTomorrow = closeDate ? closeDate.getTime() - Date.now() < 24 * 60 * 60 * 1000 : false;
+
   return (
     <>
       <Header
@@ -202,20 +245,47 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
             <h1 className="lg:hidden text-base font-semibold text-helplus-text break-words">
               #{ticket.number} {ticket.title}
             </h1>
-            {ticket.conversation?.messages.map((m) => (
-              <div key={m.id} className="flex gap-3">
-                <div className="h-7 w-7 shrink-0 rounded-full bg-helplus-primary-50 text-helplus-link text-[11px] font-semibold grid place-items-center">
-                  {(WHO[m.role] ?? m.role).slice(0, 2).toUpperCase()}
-                </div>
-                <div className="flex-1">
-                  <div className="text-xs text-helplus-text-light">
-                    <span className="font-semibold text-helplus-text">{m.role === "customer" ? ticket.conversation?.customerName : WHO[m.role] ?? m.role}</span>{" "}
-                    · {formatRelativeTime(m.createdAt)}
-                  </div>
-                  <div className="text-sm text-helplus-text whitespace-pre-wrap">{m.content}</div>
-                </div>
+            {staleError && (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm text-helplus-danger">Couldn&apos;t refresh. Showing what was loaded before.</span>
+                <button
+                  onClick={() => load()}
+                  className="h-8 px-3 rounded-md border border-helplus-border text-xs text-helplus-text"
+                >
+                  Retry
+                </button>
               </div>
-            ))}
+            )}
+            {ticket.conversation?.messages.map((m) => {
+              const attCount = ticket.attachments.filter((a) => a.messageId === m.id).length;
+              return (
+                <div key={m.id} className="flex gap-3">
+                  <div className="h-7 w-7 shrink-0 rounded-full bg-helplus-primary-50 text-helplus-link text-[11px] font-semibold grid place-items-center">
+                    {(WHO[m.role] ?? m.role).slice(0, 2).toUpperCase()}
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-1 text-xs text-helplus-text-light">
+                      <span className="font-semibold text-helplus-text">{m.role === "customer" ? ticket.conversation?.customerName : WHO[m.role] ?? m.role}</span>
+                      <span>· {formatRelativeTime(m.createdAt)}</span>
+                      {attCount > 0 && (
+                        <span className="inline-flex items-center gap-0.5">
+                          <Paperclip className="h-3.5 w-3.5 text-helplus-text-light" /> {attCount}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-sm text-helplus-text whitespace-pre-wrap">{m.content}</div>
+                  </div>
+                </div>
+              );
+            })}
+            {uploadError && <p className="text-sm text-helplus-danger">{uploadError}</p>}
+            <Screenshots
+              ticketId={ticket.id}
+              attachments={ticket.attachments}
+              canCheck={canCheckScreens}
+              canUpload={canUpdateTickets}
+              onChanged={load}
+            />
             {ticket.status !== "closed" && (
               <div className="space-y-2">
                 <textarea
@@ -266,6 +336,25 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
                   </option>
                 ))}
               </select>
+              <div className="space-y-1 pt-2 border-t border-helplus-border">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-helplus-text-light">SLA</span>
+                  <SlaBadge ticket={ticket} showPaused />
+                </div>
+                {!hasSla && !closeDate && <p className="text-xs text-helplus-text-light">No SLA rule</p>}
+                {ticket.firstReplyDueAt && !ticket.firstReplyAt && (
+                  <p className="text-xs text-helplus-text">First reply by {fmt(ticket.firstReplyDueAt)}</p>
+                )}
+                {ticket.resolveDueAt && ticket.status !== "closed" && (
+                  <p className="text-xs text-helplus-text">Solve by {fmt(ticket.resolveDueAt)}</p>
+                )}
+                {closeDate &&
+                  (closesTomorrow ? (
+                    <p className="text-xs text-helplus-warning">Closes tomorrow</p>
+                  ) : (
+                    <p className="text-xs text-helplus-text">Closes {fmt(closeDate.toISOString())} if the client doesn&apos;t reply</p>
+                  ))}
+              </div>
               <label className="block text-xs text-helplus-text-light">Handled by</label>
               {staff.length === 0 ? (
                 <div className={box}>{ticket.assignee?.name ?? "Unassigned"}</div>

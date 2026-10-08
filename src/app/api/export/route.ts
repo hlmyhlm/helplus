@@ -140,11 +140,11 @@ function customersToCSV(customers: Array<{
 
 function knowledgeToCSV(entries: Array<{
   id: string; title: string; content: string; priority: number;
-  isActive: boolean; category: { name: string };
+  isActive: boolean; status: string; category: { name: string };
 }>): string {
-  const headers = ["ID", "Category", "Title", "Content", "Priority", "Active"];
+  const headers = ["ID", "Category", "Title", "Content", "Priority", "Active", "Status"];
   const rows = entries.map((e) => [
-    e.id, e.category.name, e.title, e.content.substring(0, 500), e.priority.toString(), e.isActive ? "Yes" : "No",
+    e.id, e.category.name, e.title, e.content.substring(0, 500), e.priority.toString(), e.isActive ? "Yes" : "No", e.status,
   ]);
   return [headers, ...rows].map((row) => row.map(escapeCSV).join(",")).join("\n");
 }

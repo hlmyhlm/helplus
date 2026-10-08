@@ -102,6 +102,15 @@ export const PERMISSIONS = {
   "projects:read": ["viewer", "staff", "supervisor", "admin", "owner"],
   "projects:manage": ["admin", "owner"],
 
+  // Email log
+  "emails:manage": ["admin", "owner"],
+
+  // Screenshot originals and IC checks
+  "attachments:original": ["staff", "supervisor", "admin", "owner"],
+
+  // WhatsApp and CSV imports
+  "imports:run": ["supervisor", "admin", "owner"],
+
   // Company (owner only)
   "company:manage": ["owner"],
 } as const;

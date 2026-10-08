@@ -67,8 +67,13 @@ export const GET = withAuth(
 
 export const POST = withAuth(
   "conversations:create",
-  async (request: NextRequest, _auth) => {
+  async (request: NextRequest, auth) => {
     try {
+      // limited users can't create a thread outside their projects
+      if ((await allowedProjectIds(auth)) !== null) {
+        return NextResponse.json({ error: "Use quick add on the Tickets page" }, { status: 403 });
+      }
+
       const body = await request.json();
       const { channel, customerName, customerContact, status } = body;
 

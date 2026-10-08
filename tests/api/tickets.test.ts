@@ -15,13 +15,16 @@ const asRole = (role: string) =>
   } as never);
 
 beforeEach(() => {
-  for (const m of ["ticket", "projectAccess", "project", "conversation", "message", "ticketCounter"]) {
+  for (const m of ["ticket", "projectAccess", "project", "conversation", "message", "ticketCounter", "sLARule", "businessHours", "holiday"]) {
     for (const fn of Object.values(db[m])) fn.mockReset();
   }
   asRole("admin");
   db.ticket.findMany.mockResolvedValue([{ id: "t1", number: 1, status: "new" }]);
   db.ticket.count.mockResolvedValue(1);
   db.ticket.groupBy.mockResolvedValue([{ status: "new", _count: { _all: 1 } }]);
+  db.sLARule.findMany.mockResolvedValue([]);
+  db.businessHours.findUnique.mockResolvedValue(null);
+  db.holiday.findMany.mockResolvedValue([]);
 });
 
 describe("GET /api/tickets", () => {
@@ -55,6 +58,62 @@ describe("GET /api/tickets", () => {
     const { GET } = await import("@/app/api/tickets/route");
     await GET(createRequest("/api/tickets?assignee=me"), {} as never);
     expect(JSON.stringify(db.ticket.findMany.mock.calls[0][0].where)).toContain('"assigneeId":"u1"');
+  });
+
+  it("sla=breached adds the sla where", async () => {
+    const { GET } = await import("@/app/api/tickets/route");
+    await GET(createRequest("/api/tickets?sla=breached"), {} as never);
+    expect(JSON.stringify(db.ticket.findMany.mock.calls[0][0].where)).toContain('"slaPausedAt":null');
+  });
+
+  it("returns slaCounts next to counts", async () => {
+    db.ticket.count.mockImplementation(async ({ where }: { where?: unknown } = {}) => {
+      const s = JSON.stringify(where ?? {});
+      if (s.includes("firstReplyWarnAt")) return 2;
+      if (s.includes("firstReplyDueAt")) return 3;
+      return 1;
+    });
+    const { GET } = await import("@/app/api/tickets/route");
+    const res = await GET(createRequest("/api/tickets"), {} as never);
+    const body = await parseJsonResponse(res);
+    expect(body.slaCounts).toEqual({ near: 2, breached: 3 });
+  });
+
+  it("attention=screens adds the needs-check filter", async () => {
+    const { GET } = await import("@/app/api/tickets/route");
+    await GET(createRequest("/api/tickets", { searchParams: { attention: "screens" } }), {} as never);
+    const where = db.ticket.findMany.mock.calls[0][0].where;
+    expect(JSON.stringify(where)).toContain('"attachments":{"some":{"status":"needs_check"}}');
+  });
+
+  it("returns screensToCheck next to slaCounts", async () => {
+    db.ticket.count.mockImplementation(async ({ where }: { where?: unknown } = {}) => {
+      const s = JSON.stringify(where ?? {});
+      if (s.includes("needs_check")) return 4;
+      return 1;
+    });
+    const { GET } = await import("@/app/api/tickets/route");
+    const res = await GET(createRequest("/api/tickets"), {} as never);
+    const body = await parseJsonResponse(res);
+    expect(body.screensToCheck).toBe(4);
+  });
+
+  it("a viewer gets screensToCheck: 0", async () => {
+    asRole("viewer");
+    db.projectAccess.findMany.mockResolvedValue([]);
+    const { GET } = await import("@/app/api/tickets/route");
+    const res = await GET(createRequest("/api/tickets"), {} as never);
+    const body = await parseJsonResponse(res);
+    expect(body.screensToCheck).toBe(0);
+  });
+
+  it("ignores attention=screens for a role without attachments:original", async () => {
+    asRole("viewer");
+    db.projectAccess.findMany.mockResolvedValue([]);
+    const { GET } = await import("@/app/api/tickets/route");
+    await GET(createRequest("/api/tickets", { searchParams: { attention: "screens" } }), {} as never);
+    const where = db.ticket.findMany.mock.calls[0][0].where;
+    expect(JSON.stringify(where)).not.toContain("needs_check");
   });
 });
 

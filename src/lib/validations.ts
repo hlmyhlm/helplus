@@ -192,6 +192,8 @@ export const updateSettingsSchema = z.object({
   // telegram only allows these characters in secret_token. "***" is the masked value coming back
   telegramWebhookSecret: z.string().max(256).regex(/^([A-Za-z0-9_-]*|\*\*\*)$/).optional(),
   projectLabel: z.enum(["Clients", "Projects"]).optional(),
+  autoCloseDays: z.number().int().min(0).max(60).optional(),
+  originalRetentionDays: z.number().int().min(1).max(3650).optional(),
 }).strict();
 
 // Canned Responses
@@ -204,15 +206,25 @@ export const createCannedResponseSchema = z.object({
 });
 
 // SLA
-export const createSLARuleSchema = z.object({
-  name: z.string().min(1, "Name is required").max(200),
+// no defaults here, zod 4 would fill them in on partial updates too
+const slaRuleBase = z.object({
+  name: z.string().trim().min(1, "Name is required").max(200),
   description: z.string().max(1000).optional(),
-  channel: z.string().max(50).optional(),
-  priority: z.enum(["low", "medium", "high", "urgent"]).optional(),
+  projectId: z.string().max(100).nullable().optional(),
+  priority: z.enum(["all", "low", "medium", "high", "urgent"]),
+  category: z.string().trim().max(100),
+  source: z.string().trim().max(50),
   firstResponseMins: z.number().int().min(1).max(10080),
   resolutionMins: z.number().int().min(1).max(43200),
-  isActive: z.boolean().default(true),
+  isActive: z.boolean(),
 });
+export const createSLARuleSchema = slaRuleBase.extend({
+  priority: slaRuleBase.shape.priority.default("all"),
+  category: slaRuleBase.shape.category.default("all"),
+  source: slaRuleBase.shape.source.default("all"),
+  isActive: slaRuleBase.shape.isActive.default(true),
+});
+export const updateSLARuleSchema = slaRuleBase.partial();
 
 // Admin Users
 export const createAdminSchema = z.object({
@@ -221,6 +233,9 @@ export const createAdminSchema = z.object({
   name: z.string().max(200).optional(),
   role: z.enum(["viewer", "staff", "supervisor", "admin", "owner"]).default("staff"),
 });
+
+// shared by both admin user routes, which read the raw body rather than this schema
+export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // API Keys
 export const createApiKeySchema = z.object({

@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
+import { removeAttachmentFiles } from "@/lib/attachments/files";
 
 /**
  * GDPR Compliance Module
@@ -121,6 +122,8 @@ export async function deleteCustomerData(
   let deletedRecords = 0;
 
   if (hardDelete) {
+    // screenshots go before the conversations that own them
+    await removeAttachmentFiles({ ticket: { conversation: { customerId } } });
     // Full deletion - cascading
     for (const conv of customer.conversations) {
       await prisma.message.deleteMany({ where: { conversationId: conv.id } });
@@ -134,6 +137,11 @@ export async function deleteCustomerData(
     await prisma.customer.delete({ where: { id: customerId } });
     deletedRecords += customer.conversations.length + 2;
   } else {
+    // anonymized screenshots must go completely, not just lose their PII
+    const attachmentWhere = { ticket: { conversation: { customerId } } };
+    await removeAttachmentFiles(attachmentWhere);
+    await prisma.attachment.deleteMany({ where: attachmentWhere });
+
     // Anonymization - preserve structure but remove PII
     for (const conv of customer.conversations) {
       await prisma.message.updateMany({

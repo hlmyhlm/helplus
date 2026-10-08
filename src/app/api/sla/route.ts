@@ -3,21 +3,28 @@ import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { parsePagination, paginatedResponse } from "@/lib/pagination";
 import { withAuth } from "@/lib/tenant/with-auth";
+import { createSLARuleSchema, validateBody } from "@/lib/validations";
+import { allowedProjectIds } from "@/lib/tickets/access";
 
 export const GET = withAuth(
   "sla:read",
-  async (request: NextRequest, _auth) => {
+  async (request: NextRequest, auth) => {
     try {
       const { searchParams } = new URL(request.url);
       const { page, limit, skip, take } = parsePagination(searchParams);
+      // project names are client names, limited users only see their own
+      const ids = await allowedProjectIds(auth);
+      const where = ids === null ? {} : { OR: [{ projectId: null }, { projectId: { in: ids } }] };
 
       const [rules, total] = await Promise.all([
         prisma.sLARule.findMany({
+          where,
           orderBy: { createdAt: "desc" },
+          include: { project: { select: { id: true, name: true } } },
           skip,
           take,
         }),
-        prisma.sLARule.count(),
+        prisma.sLARule.count({ where }),
       ]);
 
       return NextResponse.json(paginatedResponse(rules, total, page, limit));
@@ -35,25 +42,27 @@ export const POST = withAuth(
   "sla:create",
   async (request: NextRequest, _auth) => {
     try {
-      const body = await request.json();
-      const { name, description, channel, priority, firstResponseMins, resolutionMins, isActive } = body;
+      const parsed = validateBody(createSLARuleSchema, await request.json());
+      if (!parsed.success) {
+        return NextResponse.json({ error: parsed.error }, { status: 400 });
+      }
+      const d = parsed.data;
 
-      if (!name || typeof name !== "string" || name.trim().length === 0) {
-        return NextResponse.json(
-          { error: "Rule name is required" },
-          { status: 400 }
-        );
+      if (d.projectId && !(await prisma.project.findFirst({ where: { id: d.projectId } }))) {
+        return NextResponse.json({ error: "Project not found" }, { status: 400 });
       }
 
       const rule = await prisma.sLARule.create({
         data: {
-          name: name.trim(),
-          description: description?.trim() || "",
-          channel: channel || "all",
-          priority: priority || "all",
-          firstResponseMins: firstResponseMins ?? 30,
-          resolutionMins: resolutionMins ?? 480,
-          isActive: isActive ?? true,
+          name: d.name,
+          description: d.description?.trim() || "",
+          projectId: d.projectId || null,
+          priority: d.priority,
+          category: d.category || "all",
+          source: d.source || "all",
+          firstResponseMins: d.firstResponseMins,
+          resolutionMins: d.resolutionMins,
+          isActive: d.isActive,
         },
       });
 

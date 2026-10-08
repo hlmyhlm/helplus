@@ -1,5 +1,11 @@
-import { describe, it, expect } from "vitest";
-import { redactPII, detectPII } from "@/lib/gdpr";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { prisma } from "@/lib/prisma";
+import { redactPII, detectPII, deleteCustomerData } from "@/lib/gdpr";
+import { removeAttachmentFiles } from "@/lib/attachments/files";
+
+vi.mock("@/lib/attachments/files", () => ({ removeAttachmentFiles: vi.fn().mockResolvedValue(0) }));
+
+const db = prisma as unknown as Record<string, Record<string, ReturnType<typeof vi.fn>>>;
 
 describe("GDPR Module", () => {
   describe("redactPII", () => {
@@ -54,5 +60,29 @@ describe("GDPR Module", () => {
       const result = detectPII("Just a normal message");
       expect(result.found).toBe(false);
     });
+  });
+});
+
+describe("deleteCustomerData", () => {
+  beforeEach(() => {
+    for (const m of ["customer", "conversation", "message", "ticket", "customerNote", "attachment"]) {
+      for (const fn of Object.values(db[m])) fn.mockReset();
+    }
+    vi.mocked(removeAttachmentFiles).mockClear();
+    db.customer.findUnique.mockResolvedValue({ id: "cu1", conversations: [{ id: "conv1" }] });
+    db.customer.delete.mockResolvedValue({});
+  });
+
+  it("anonymize removes the attachment rows, not just their PII", async () => {
+    const res = await deleteCustomerData("cu1");
+    expect(res.success).toBe(true);
+    const where = { ticket: { conversation: { customerId: "cu1" } } };
+    expect(removeAttachmentFiles).toHaveBeenCalledWith(where);
+    expect(db.attachment.deleteMany).toHaveBeenCalledWith({ where });
+  });
+
+  it("hard delete removes attachment files before the conversations go", async () => {
+    await deleteCustomerData("cu1", true);
+    expect(removeAttachmentFiles).toHaveBeenCalledWith({ ticket: { conversation: { customerId: "cu1" } } });
   });
 });

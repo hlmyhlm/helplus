@@ -16,6 +16,7 @@ import {
   Send,
   Mail,
   Phone,
+  FileUp,
   MessageCircle,
   Contact,
   Clock,
@@ -94,12 +95,14 @@ const channelIcons: Record<string, React.ElementType> = {
   whatsapp: MessageCircle,
   email: Mail,
   phone: Phone,
+  import: FileUp,
 };
 
 const channelColors: Record<string, string> = {
   whatsapp: "text-green-600 bg-green-50",
   email: "text-blue-600 bg-blue-50",
   phone: "text-purple-600 bg-purple-50",
+  import: "text-helplus-text-light bg-gray-50",
 };
 
 // ---------- Main Page ----------

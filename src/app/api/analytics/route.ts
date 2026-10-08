@@ -71,11 +71,9 @@ export const GET = withAuth(
         _count: { id: true },
       }),
 
-      // Top categories by entry count
+      // Top categories by approved entry count, sorted below
       prisma.category.findMany({
-        select: { name: true, _count: { select: { entries: true } } },
-        orderBy: { entries: { _count: "desc" } },
-        take: 8,
+        select: { name: true, _count: { select: { entries: { where: { status: "approved" } } } } },
       }),
 
       // Team members with their resolved tickets in period
@@ -174,10 +172,13 @@ export const GET = withAuth(
         : 0;
 
     // -- Top categories --
-    const topCategories = categories.map((c) => ({
-      category: c.name,
-      hitCount: c._count.entries,
-    }));
+    const topCategories = [...categories]
+      .sort((a, b) => b._count.entries - a._count.entries)
+      .slice(0, 8)
+      .map((c) => ({
+        category: c.name,
+        hitCount: c._count.entries,
+      }));
 
     // -- Team performance --
     const teamPerformance = teamMembers

@@ -1,7 +1,7 @@
 // foreign keys between company tables. every write checks these point at rows of the same company.
 // tenant-links.test.ts fails if this drifts from schema.prisma.
 export const LINKS: Record<string, Record<string, string>> = {
-  KnowledgeEntry: { categoryId: "Category" },
+  KnowledgeEntry: { categoryId: "Category", projectId: "Project", sourceTicketId: "Ticket" },
   TeamMember: { departmentId: "Department" },
   Conversation: { customerId: "Customer" },
   Message: { conversationId: "Conversation" },
@@ -11,6 +11,7 @@ export const LINKS: Record<string, Record<string, string>> = {
     assignedToId: "TeamMember",
     projectId: "Project",
     assigneeId: "Admin",
+    slaRuleId: "SLARule",
   },
   ConversationTag: { conversationId: "Conversation", tagId: "Tag" },
   WebhookDelivery: { webhookId: "Webhook" },
@@ -18,13 +19,17 @@ export const LINKS: Record<string, Record<string, string>> = {
   InternalNote: { conversationId: "Conversation" },
   ProjectAccess: { projectId: "Project", adminId: "Admin" },
   Customer: { projectId: "Project" },
+  SLARule: { projectId: "Project" },
+  EmailOutbox: { ticketId: "Ticket" },
+  Attachment: { ticketId: "Ticket", messageId: "Message", checkedById: "Admin" },
+  ImportJob: { projectId: "Project" },
 };
 
 // relation fields between company tables (not `company`), model -> field -> target model.
 // nested writes through these skip the LINKS check, so the scoped client refuses them.
 export const RELATIONS: Record<string, Record<string, string>> = {
   Category: { entries: "KnowledgeEntry" },
-  KnowledgeEntry: { category: "Category" },
+  KnowledgeEntry: { category: "Category", project: "Project", sourceTicket: "Ticket" },
   Department: { members: "TeamMember", tickets: "Ticket" },
   TeamMember: { department: "Department", tickets: "Ticket" },
   Conversation: {
@@ -34,13 +39,17 @@ export const RELATIONS: Record<string, Record<string, string>> = {
     tags: "ConversationTag",
     notes: "InternalNote",
   },
-  Message: { conversation: "Conversation" },
+  Message: { conversation: "Conversation", attachments: "Attachment" },
   Ticket: {
     conversation: "Conversation",
     department: "Department",
     assignedTo: "TeamMember",
     project: "Project",
     assignee: "Admin",
+    slaRule: "SLARule",
+    emails: "EmailOutbox",
+    attachments: "Attachment",
+    knowledgeDrafts: "KnowledgeEntry",
   },
   Tag: { conversations: "ConversationTag" },
   ConversationTag: { conversation: "Conversation", tag: "Tag" },
@@ -49,9 +58,20 @@ export const RELATIONS: Record<string, Record<string, string>> = {
   Customer: { notes: "CustomerNote", conversations: "Conversation", project: "Project" },
   CustomerNote: { customer: "Customer" },
   InternalNote: { conversation: "Conversation" },
-  Admin: { assignedTickets: "Ticket", projectAccess: "ProjectAccess" },
-  Project: { tickets: "Ticket", customers: "Customer", access: "ProjectAccess" },
+  Admin: { assignedTickets: "Ticket", projectAccess: "ProjectAccess", attachments: "Attachment" },
+  Project: {
+    tickets: "Ticket",
+    customers: "Customer",
+    access: "ProjectAccess",
+    slaRules: "SLARule",
+    importJobs: "ImportJob",
+    knowledgeEntries: "KnowledgeEntry",
+  },
   ProjectAccess: { project: "Project", admin: "Admin" },
+  SLARule: { project: "Project", tickets: "Ticket" },
+  EmailOutbox: { ticket: "Ticket" },
+  Attachment: { ticket: "Ticket", message: "Message", checkedBy: "Admin" },
+  ImportJob: { project: "Project" },
 };
 
 // the only nested creates allowed. each nested row gets the current company stamped on it.

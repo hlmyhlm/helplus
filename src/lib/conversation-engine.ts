@@ -214,47 +214,6 @@ export async function snoozeConversation(
 }
 
 /**
- * Auto-escalate conversations that breach SLA.
- */
-export async function checkSLABreaches(): Promise<number> {
-  const slaRules = await prisma.sLARule.findMany({
-    where: { isActive: true },
-  });
-
-  if (slaRules.length === 0) return 0;
-
-  let escalated = 0;
-
-  for (const rule of slaRules) {
-    const cutoff = new Date(Date.now() - rule.firstResponseMins * 60 * 1000);
-
-    const breached = await prisma.conversation.findMany({
-      where: {
-        status: "active",
-        createdAt: { lte: cutoff },
-        ...(rule.channel !== "all" ? { channel: rule.channel } : {}),
-        messages: { none: { role: "assistant" } },
-      },
-      take: 50,
-    });
-
-    for (const conv of breached) {
-      await prisma.conversation.update({
-        where: { id: conv.id },
-        data: { status: "escalated" },
-      });
-      escalated++;
-    }
-  }
-
-  if (escalated > 0) {
-    logger.warn(`SLA breach: ${escalated} conversations auto-escalated`);
-  }
-
-  return escalated;
-}
-
-/**
  * Execute a macro (multiple actions at once).
  */
 export async function executeMacro(

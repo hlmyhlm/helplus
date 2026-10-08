@@ -30,7 +30,7 @@ export const PUT = withAuth(
         },
         include: {
           _count: {
-            select: { entries: true },
+            select: { entries: { where: { status: "approved" } } },
           },
         },
       });

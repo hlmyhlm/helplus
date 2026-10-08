@@ -16,6 +16,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Quick add, ticket detail with replies and internal notes, and a Clients/Projects screen. Staff and viewers only see the projects they are given.
 - The old Conversations page now opens Tickets. Deleting a conversation deletes its tickets.
 - The realtime stream is limited to supervisors, admins and owners for now.
+- SLA rules per company with project, priority, category and source overrides. Due times follow business hours and holidays and pause while a ticket waits on the client.
+- Answered tickets close by themselves after 3 days by default (Settings > Closing tickets). Clients with an email get a warning a day before.
+- Link-only email alerts for new, reopened, near-breach and overdue tickets, with retries and an email log.
+- Screenshots on tickets: IC numbers are covered automatically, unclear images wait for a staff check, originals are encrypted, staff-only and deleted 90 days after close (Settings > Privacy & IC). WhatsApp images arrive as screenshots on the ticket.
+- Imports: WhatsApp chat exports (.txt or .zip with images) and old-system CSV become tickets, with IC numbers hidden. Re-imports skip what's already in. Answers wait in Library > Waiting approval before the AI can use them.
+
+### Imports
+
+- **Permission:** only supervisors, admins and owners can run imports.
+- **Storage:** uploads are kept encrypted under `storage/` (`c/<company>/imports/`) until the import finishes. Unstarted uploads are deleted after 7 days, failed ones after 14 days.
+- **Limits:** 50 MB per file, 5000 issues or 20000 CSV rows per file. Videos, voice notes and documents are skipped. The worker checks images for ICs.
+- **Known limits:**
+  - Sender names are as saved on the exporting phone, so the same chat exported from another phone may not dedupe.
+  - Times are read as UTC+8.
+  - A client's late "thanks" can start a new issue.
+  - A staff message up to 72 hours after an unanswered question is taken as its answer.
+  - WhatsApp chat parsing was only tested on made-up samples, not real Android or iPhone exports. Check the preview counts before starting an import, and report any chat that comes in wrong.
+- **Imported tickets:** they get no SLA times and send no emails. CSV rows always come in closed. A WhatsApp issue with a staff reply comes in closed. One without a reply comes in as New if its last message is within 14 days of the newest message in the export. Otherwise it's closed with the note "No reply in the imported chat".
+- **Library:** once approved, an imported answer is used by the AI for the whole company until Library entries can be limited to one project.
+- **Worker:** imports only move forward while the worker runs.
 
 ### Upgrade notes
 
@@ -25,6 +45,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - With more than one company on a server, add `?company=<slug>` to the Twilio and Telegram webhook URLs.
 - Run `npx prisma migrate deploy`. The tickets migration gives every conversation without a ticket its own ticket, numbers all tickets, maps the old statuses (open to New, in progress to Staff working, resolved to Closed) and puts everything in a "General" project. Back up first.
 - Existing staff and viewer accounts get access to "General" only. Give them other projects under Clients.
+- Run the worker next to the app: `npm run worker`. Without it, nothing closes by itself and no emails go out.
+- Run one worker per database.
+- Add an email address to each user who should get alerts (Users & roles).
+- SLA times apply to tickets created after the upgrade, and to older tickets once their priority, project, category or source changes.
+- After the upgrade, old Answered tickets get the warning first and close a day later.
+- Uploads need a Content-Length header. Keep request buffering on in your proxy and allow bodies of about 52 MB (e.g. nginx `client_max_body_size 52m`).
+- The worker also retries stuck screenshots and deletes old originals. Without it, originals are kept forever.
+- Back up `HELPLUS_SECRET_KEY` with `storage/`. Originals can't be opened without it.
+- `sharp` has native binaries. Run `npm ci` on the server itself.
+- Screenshots are stored under `storage/` in the app folder (set `HELPLUS_STORAGE_DIR` to change it). Back it up with the database.
+- The first screenshot downloads OCR language data (about 10 MB) into `.cache/tesseract`. The server needs internet access once, or copy that folder in.
+- Imports run in the worker. Keep `npm run worker` running.
+- Import uploads are limited to 50 MB. Export big chats without media or in parts.
 
 ## [0.2.2] - 2026-04-08
 

@@ -96,6 +96,12 @@ function createMockPrismaClient() {
     "project",
     "projectAccess",
     "ticketCounter",
+    "holiday",
+    "emailOutbox",
+    "attachment",
+    "importJob",
+    "chatSender",
+    "importMapping",
   ];
 
   const client: Record<string, unknown> = {

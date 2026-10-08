@@ -82,7 +82,7 @@ export async function searchKnowledgeBase(
   limit = 5
 ): Promise<SearchResult[]> {
   const entries = await prisma.knowledgeEntry.findMany({
-    where: { isActive: true },
+    where: { isActive: true, status: "approved" },
     include: { category: { select: { name: true } } },
   });
 

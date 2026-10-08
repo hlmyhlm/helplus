@@ -3,6 +3,11 @@ import { maskIC } from "@/lib/privacy/ic-mask";
 import { defaultProjectId } from "@/lib/projects/default";
 import { nextTicketNumber } from "./number";
 import { OPEN_STATUSES } from "./status";
+import { loadSlaContext, saveTicket } from "./update";
+import { statusChange } from "./status";
+import { pickRule } from "@/lib/sla/rules";
+import { slaTimes } from "@/lib/sla/clock";
+import { notifyTicket } from "@/lib/notify/notify";
 
 export function titleFrom(text: string): string {
   const line = text.split("\n").find((l) => l.trim())?.trim() ?? "";
@@ -24,19 +29,28 @@ export interface OpenTicketInput {
 export async function openTicket(input: OpenTicketInput) {
   const description = maskIC(input.description).text;
   const title = maskIC(input.title?.trim() || titleFrom(description)).text;
-  return prisma.ticket.create({
+  const now = new Date();
+  const match = {
+    projectId: input.projectId || (await defaultProjectId()),
+    priority: input.priority ?? "medium",
+    category: input.category ?? "",
+    source: input.source,
+  };
+  const ctx = await loadSlaContext();
+  const ticket = await prisma.ticket.create({
     data: {
       number: await nextTicketNumber(),
       title,
       description,
-      source: input.source,
-      projectId: input.projectId || (await defaultProjectId()),
-      priority: input.priority ?? "medium",
-      category: input.category ?? "",
+      ...match,
       status: "new",
       conversationId: input.conversationId,
+      createdAt: now,
+      ...slaTimes(now, 0, pickRule(ctx.rules, match), ctx.cal),
     },
   });
+  await notifyTicket("new_ticket", ticket);
+  return ticket;
 }
 
 export interface CreateTicketInput {
@@ -78,6 +92,10 @@ export async function ticketForIncomingMessage(conversationId: string, text: str
     orderBy: { createdAt: "desc" },
   });
   if (open) {
+    // the client wrote back, so it needs staff again
+    if (open.status === "answered" || open.status === "ai_suggested") {
+      return saveTicket(open, statusChange(open, "working"));
+    }
     return prisma.ticket.update({ where: { id: open.id }, data: { updatedAt: new Date() } });
   }
   const conversation = await prisma.conversation.findUnique({
@@ -92,15 +110,18 @@ export async function ticketForIncomingMessage(conversationId: string, text: str
   });
 }
 
-// keep the thread in the project it was already in
+// keep the thread in the project it was already in, unless that project is archived
 async function followUpProjectId(conversationId: string, customerId: string | null): Promise<string | undefined> {
   const last = await prisma.ticket.findFirst({
     where: { conversationId },
     orderBy: { createdAt: "desc" },
-    select: { projectId: true },
+    select: { projectId: true, project: { select: { archived: true } } },
   });
-  if (last) return last.projectId;
+  if (last && !last.project.archived) return last.projectId;
   if (!customerId) return undefined;
-  const customer = await prisma.customer.findUnique({ where: { id: customerId }, select: { projectId: true } });
-  return customer?.projectId ?? undefined;
+  const customer = await prisma.customer.findUnique({
+    where: { id: customerId },
+    select: { projectId: true, project: { select: { archived: true } } },
+  });
+  return customer?.projectId && !customer.project?.archived ? customer.projectId : undefined;
 }

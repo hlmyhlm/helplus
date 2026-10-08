@@ -57,6 +57,7 @@ const CHANNEL_COLORS: Record<string, string> = {
   phone: "#C4956A",
   web: "#8B5CF6",
   chat: "#A8D0E6",
+  import: "#98A2B3",
 };
 
 // ==================== SKELETON ====================

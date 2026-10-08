@@ -30,6 +30,8 @@ interface AdminUser {
   username: string;
   name: string;
   role: string;
+  email: string;
+  notifyNew: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -98,6 +100,8 @@ export default function AdminPage() {
     username: "",
     password: "",
     role: "staff",
+    email: "",
+    notifyNew: false,
   });
   const [savingUser, setSavingUser] = useState(false);
   const [userError, setUserError] = useState("");
@@ -178,10 +182,12 @@ export default function AdminPage() {
         username: user.username,
         password: "",
         role: user.role,
+        email: user.email || "",
+        notifyNew: user.notifyNew,
       });
     } else {
       setEditingUser(null);
-      setUserForm({ name: "", username: "", password: "", role: "staff" });
+      setUserForm({ name: "", username: "", password: "", role: "staff", email: "", notifyNew: false });
     }
     setShowPassword(false);
     setShowUserModal(true);
@@ -205,9 +211,11 @@ export default function AdminPage() {
         : "/api/admin/users";
       const method = editingUser ? "PUT" : "POST";
 
-      const payload: Record<string, string> = {
+      const payload: Record<string, string | boolean> = {
         name: userForm.name.trim(),
         role: userForm.role,
+        email: userForm.email.trim(),
+        notifyNew: userForm.notifyNew,
       };
       if (!editingUser) {
         payload.username = userForm.username.trim();
@@ -440,9 +448,14 @@ export default function AdminPage() {
                             <div className="flex items-center justify-center w-8 h-8 rounded-full bg-helplus-primary-50 text-helplus-link text-sm font-semibold">
                               {user.name.charAt(0).toUpperCase()}
                             </div>
-                            <span className="text-sm font-medium text-helplus-text">
-                              {user.name}
-                            </span>
+                            <div>
+                              <div className="text-sm font-medium text-helplus-text">
+                                {user.name}
+                              </div>
+                              {user.email && (
+                                <div className="text-xs text-helplus-text-light">{user.email}</div>
+                              )}
+                            </div>
                           </div>
                         </td>
                         <td className="px-5 py-3 text-sm text-helplus-text-light">
@@ -713,6 +726,31 @@ export default function AdminPage() {
                   <option value="viewer">Viewer - Read only</option>
                 </select>
               </div>
+
+              <div>
+                <label className="block text-xs font-medium text-helplus-text mb-1.5">
+                  Email
+                </label>
+                <input
+                  type="email"
+                  value={userForm.email}
+                  onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
+                  placeholder="name@example.com"
+                  className="w-full px-3 py-2 text-sm border border-helplus-border rounded-lg focus:outline-none focus:ring-2 focus:ring-helplus-primary/30 focus:border-helplus-primary bg-helplus-surface text-helplus-text"
+                />
+                <p className="mt-1 text-xs text-helplus-text-light">
+                  For ticket alerts. Leave empty for none.
+                </p>
+              </div>
+
+              <label className="flex items-center gap-2 text-sm text-helplus-text">
+                <input
+                  type="checkbox"
+                  checked={userForm.notifyNew}
+                  onChange={(e) => setUserForm({ ...userForm, notifyNew: e.target.checked })}
+                />
+                Email me about new tickets
+              </label>
             </div>
 
             <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-helplus-border">

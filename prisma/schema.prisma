@@ -44,20 +44,29 @@ model Company {
   projects          Project[]
   projectAccess     ProjectAccess[]
   ticketCounters    TicketCounter[]
+  holidays          Holiday[]
+  emailOutbox       EmailOutbox[]
+  attachments       Attachment[]
+  importJobs        ImportJob[]
+  chatSenders       ChatSender[]
+  importMappings    ImportMapping[]
 }
 
 model Project {
-  id        String          @id @default(uuid())
-  companyId String          @default("")
-  company   Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  name      String
-  isDefault Boolean         @default(false)
-  archived  Boolean         @default(false)
-  tickets   Ticket[]
-  customers Customer[]
-  access    ProjectAccess[]
-  createdAt DateTime        @default(now())
-  updatedAt DateTime        @updatedAt
+  id               String           @id @default(uuid())
+  companyId        String           @default("")
+  company          Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name             String
+  isDefault        Boolean          @default(false)
+  archived         Boolean          @default(false)
+  tickets          Ticket[]
+  customers        Customer[]
+  access           ProjectAccess[]
+  slaRules         SLARule[]
+  importJobs       ImportJob[]
+  knowledgeEntries KnowledgeEntry[]
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
 
   @@unique([companyId, name])
   @@index([companyId])
@@ -127,6 +136,8 @@ model Settings {
   telegramBotToken      String   @default("")
   telegramWebhookSecret String   @default("")
   projectLabel          String   @default("Clients")
+  autoCloseDays         Int      @default(3)
+  originalRetentionDays Int      @default(90)
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 }
@@ -141,11 +152,14 @@ model Admin {
   password  String
   name      String   @default("Admin")
   role      String   @default("admin")
+  email     String   @default("")
+  notifyNew Boolean  @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   assignedTickets Ticket[]
   projectAccess   ProjectAccess[]
+  attachments     Attachment[]    @relation("AttachmentCheckedBy")
 
   @@index([companyId])
 }
@@ -169,22 +183,28 @@ model Category {
 }
 
 model KnowledgeEntry {
-  id         String   @id @default(uuid())
-  companyId  String   @default("")
-  company    Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  categoryId String
-  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
-  title      String
-  content    String
-  priority   Int      @default(0)
-  isActive   Boolean  @default(true)
-  version    Int      @default(1)
-  metadata   Json     @default("{}")
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id             String   @id @default(uuid())
+  companyId      String   @default("")
+  company        Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  categoryId     String
+  category       Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  title          String
+  content        String
+  priority       Int      @default(0)
+  isActive       Boolean  @default(true)
+  version        Int      @default(1)
+  metadata       Json     @default("{}")
+  projectId      String?
+  project        Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  status         String   @default("approved") // draft, approved
+  sourceTicketId String?
+  sourceTicket   Ticket?  @relation(fields: [sourceTicketId], references: [id], onDelete: SetNull)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   @@index([categoryId])
   @@index([companyId])
+  @@index([projectId, status])
 }
 
 // ==================== TEAM ====================
@@ -267,7 +287,10 @@ model Message {
   mediaUrl       String?
   toolCalls      Json?
   createdAt      DateTime     @default(now())
+  attachments    Attachment[]
+  importKey      String?
 
+  @@unique([companyId, importKey])
   @@index([conversationId])
   @@index([conversationId, createdAt])
   @@index([companyId])
@@ -276,42 +299,60 @@ model Message {
 // ==================== TICKETS ====================
 
 model Ticket {
-  id             String        @id @default(uuid())
-  companyId      String        @default("")
-  company        Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  conversationId String?
-  conversation   Conversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  departmentId   String?
-  department     Department?   @relation(fields: [departmentId], references: [id], onDelete: SetNull)
-  assignedToId   String?
-  assignedTo     TeamMember?   @relation(fields: [assignedToId], references: [id], onDelete: SetNull)
-  title          String
-  description    String
-  status         String        @default("new")
-  priority       String        @default("medium")
-  resolution     String        @default("")
-  number         Int
-  projectId      String
-  project        Project       @relation(fields: [projectId], references: [id])
-  assigneeId     String?
-  assignee       Admin?        @relation(fields: [assigneeId], references: [id], onDelete: SetNull)
-  source         String        @default("quick_add")
-  category       String        @default("")
-  firstReplyAt   DateTime?
-  answeredAt     DateTime?
-  closedAt       DateTime?
-  reopenCount    Int           @default(0)
-  aiMatch        Int?
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  id               String           @id @default(uuid())
+  companyId        String           @default("")
+  company          Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  conversationId   String?
+  conversation     Conversation?    @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  departmentId     String?
+  department       Department?      @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  assignedToId     String?
+  assignedTo       TeamMember?      @relation(fields: [assignedToId], references: [id], onDelete: SetNull)
+  title            String
+  description      String
+  status           String           @default("new")
+  priority         String           @default("medium")
+  resolution       String           @default("")
+  number           Int
+  projectId        String
+  project          Project          @relation(fields: [projectId], references: [id])
+  assigneeId       String?
+  assignee         Admin?           @relation(fields: [assigneeId], references: [id], onDelete: SetNull)
+  source           String           @default("quick_add")
+  category         String           @default("")
+  firstReplyAt     DateTime?
+  answeredAt       DateTime?
+  closedAt         DateTime?
+  reopenCount      Int              @default(0)
+  aiMatch          Int?
+  slaRuleId        String?
+  slaRule          SLARule?         @relation(fields: [slaRuleId], references: [id], onDelete: SetNull)
+  firstReplyWarnAt DateTime?
+  firstReplyDueAt  DateTime?
+  resolveWarnAt    DateTime?
+  resolveDueAt     DateTime?
+  slaPausedAt      DateTime?
+  slaPausedMins    Int              @default(0)
+  slaWarnedAt      DateTime?
+  slaBreachedAt    DateTime?
+  closeWarnedAt    DateTime?
+  emails           EmailOutbox[]
+  attachments      Attachment[]
+  knowledgeDrafts  KnowledgeEntry[]
+  importKey        String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
 
   @@unique([companyId, number])
+  @@unique([companyId, importKey])
   @@index([status])
   @@index([departmentId])
   @@index([assignedToId])
   @@index([projectId])
   @@index([assigneeId])
   @@index([companyId])
+  @@index([slaRuleId])
+  @@index([resolveDueAt])
 }
 
 // ==================== TAGS ====================
@@ -466,7 +507,11 @@ model SLARule {
   company           Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
   name              String
   description       String   @default("")
-  channel           String   @default("all") // all, whatsapp, email, phone
+  source            String   @default("all") // all or a ticket source, e.g. whatsapp
+  projectId         String?
+  project           Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  category          String   @default("all")
+  tickets           Ticket[]
   priority          String   @default("all") // all, low, medium, high, urgent
   firstResponseMins Int      @default(30)
   resolutionMins    Int      @default(480)
@@ -475,6 +520,7 @@ model SLARule {
   updatedAt         DateTime @updatedAt
 
   @@index([companyId])
+  @@index([projectId])
 }
 
 // ==================== CANNED RESPONSES ====================
@@ -577,6 +623,39 @@ model BusinessHours {
   offlineMessage String  @default("We are currently offline. We will get back to you during business hours.")
 }
 
+model Holiday {
+  id        String   @id @default(uuid())
+  companyId String   @default("")
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  date      String // YYYY-MM-DD in the company time zone
+  name      String   @default("")
+  createdAt DateTime @default(now())
+
+  @@unique([companyId, date])
+  @@index([companyId])
+}
+
+model EmailOutbox {
+  id            String    @id @default(uuid())
+  companyId     String    @default("")
+  company       Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  to            String
+  subject       String
+  body          String
+  kind          String
+  ticketId      String?
+  ticket        Ticket?   @relation(fields: [ticketId], references: [id], onDelete: SetNull)
+  status        String    @default("pending") // pending, sending, sent, failed
+  attempts      Int       @default(0)
+  lastError     String    @default("")
+  nextAttemptAt DateTime  @default(now())
+  sentAt        DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@index([companyId, status, nextAttemptAt])
+  @@index([ticketId])
+}
+
 // ==================== API KEYS ====================
 
 model ApiKey {
@@ -647,4 +726,82 @@ model Flow {
   updatedAt    DateTime @updatedAt
 
   @@index([companyId])
+}
+
+model Attachment {
+  id                String    @id @default(uuid())
+  companyId         String    @default("")
+  company           Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  ticketId          String
+  ticket            Ticket    @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  messageId         String?
+  message           Message?  @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  fileName          String    @default("screenshot.png")
+  status            String    @default("pending") // pending, clean, masked, needs_check
+  originalKey       String?
+  maskedKey         String?
+  width             Int       @default(0)
+  height            Int       @default(0)
+  icCount           Int       @default(0)
+  ocrConfidence     Int?
+  autoBoxes         Json      @default("[]")
+  manualBoxes       Json      @default("[]")
+  checkNote         String    @default("")
+  checkedById       String?
+  checkedBy         Admin?    @relation("AttachmentCheckedBy", fields: [checkedById], references: [id], onDelete: SetNull)
+  checkedAt         DateTime?
+  originalDeletedAt DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([companyId, status])
+  @@index([ticketId])
+  @@index([messageId])
+}
+
+// ==================== IMPORTS ====================
+
+model ImportJob {
+  id          String    @id @default(uuid())
+  companyId   String    @default("")
+  company     Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  projectId   String
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  kind        String // whatsapp, csv
+  status      String    @default("uploaded") // uploaded, queued, running, done, failed
+  fileKey     String?
+  fileName    String    @default("")
+  options     Json      @default("{}")
+  preview     Json      @default("{}")
+  progress    Json      @default("{}")
+  stats       Json      @default("{}")
+  badRows     Json      @default("[]")
+  error       String    @default("")
+  createdById String?
+  createdAt   DateTime  @default(now())
+  startedAt   DateTime?
+  finishedAt  DateTime?
+
+  @@index([companyId, status])
+}
+
+model ChatSender {
+  id        String  @id @default(uuid())
+  companyId String  @default("")
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name      String
+  isStaff   Boolean @default(false)
+
+  @@unique([companyId, name])
+}
+
+model ImportMapping {
+  id        String   @id @default(uuid())
+  companyId String   @default("")
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  headers   String
+  mapping   Json     @default("{}")
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyId, headers])
 }

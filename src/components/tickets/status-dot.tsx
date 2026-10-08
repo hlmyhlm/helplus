@@ -12,6 +12,7 @@ const TONES: Record<string, string> = {
 const SOURCES: Record<string, string> = {
   whatsapp: "WhatsApp",
   whatsapp_group: "WhatsApp group",
+  whatsapp_export: "WhatsApp export",
   staff_whatsapp: "Staff WhatsApp",
   web_form: "Web form",
   email: "Email",

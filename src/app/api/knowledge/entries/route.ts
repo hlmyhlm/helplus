@@ -12,7 +12,8 @@ export const GET = withAuth(
       const { page, limit, skip, take } = parsePagination(searchParams);
       const categoryId = searchParams.get("categoryId");
 
-      const where = categoryId ? { categoryId } : {};
+      // drafts live in Waiting approval, not here
+      const where = { status: "approved", ...(categoryId ? { categoryId } : {}) };
 
       const [entries, total] = await Promise.all([
         prisma.knowledgeEntry.findMany({

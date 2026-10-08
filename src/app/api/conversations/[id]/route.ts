@@ -5,6 +5,7 @@ import { withAuth } from "@/lib/tenant/with-auth";
 import { emitConversationUpdate } from "@/lib/realtime";
 import { allowedProjectIds, conversationWhere } from "@/lib/tickets/access";
 import { loadConversationFor } from "@/lib/tickets/load";
+import { removeAttachmentFiles } from "@/lib/attachments/files";
 
 export const GET = withAuth(
   "conversations:read",
@@ -160,6 +161,7 @@ export const DELETE = withAuth(
         );
       }
 
+      await removeAttachmentFiles({ ticket: { conversationId: id } });
       await prisma.conversation.delete({ where: { id } });
 
       return NextResponse.json({ success: true });

@@ -5,6 +5,7 @@ import { logger } from "@/lib/logger";
 import { parsePagination, paginatedResponse } from "@/lib/pagination";
 import { withAuth } from "@/lib/tenant/with-auth";
 import { STAFF_ROLES } from "@/lib/rbac";
+import { EMAIL_RE } from "@/lib/validations";
 
 // usernames are unique across all companies, so say the same thing whoever owns the name
 const USERNAME_TAKEN = { error: "Username already exists" };
@@ -23,6 +24,8 @@ export const GET = withAuth(
             username: true,
             name: true,
             role: true,
+            email: true,
+            notifyNew: true,
             createdAt: true,
             updatedAt: true,
           },
@@ -49,7 +52,7 @@ export const POST = withAuth(
   async (request: NextRequest, auth) => {
     try {
       const body = await request.json();
-      const { username, password, name, role } = body;
+      const { username, password, name, role, email, notifyNew } = body;
 
       if (!username || typeof username !== "string" || username.trim().length === 0) {
         return NextResponse.json(
@@ -63,6 +66,11 @@ export const POST = withAuth(
           { error: "Password must be at least 6 characters" },
           { status: 400 }
         );
+      }
+
+      const normalizedEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
+      if (normalizedEmail && !EMAIL_RE.test(normalizedEmail)) {
+        return NextResponse.json({ error: "Invalid email address" }, { status: 400 });
       }
 
       const existing = await systemPrisma.admin.findUnique({
@@ -84,12 +92,16 @@ export const POST = withAuth(
           password: hashed,
           name: name?.trim() || username.trim(),
           role: userRole,
+          email: normalizedEmail,
+          notifyNew: !!notifyNew,
         },
         select: {
           id: true,
           username: true,
           name: true,
           role: true,
+          email: true,
+          notifyNew: true,
           createdAt: true,
           updatedAt: true,
         },

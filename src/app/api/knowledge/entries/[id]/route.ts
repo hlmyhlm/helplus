@@ -11,7 +11,8 @@ export const PUT = withAuth(
       const body = await request.json();
       const { title, content, priority, isActive, categoryId } = body;
 
-      const existing = await prisma.knowledgeEntry.findUnique({ where: { id } });
+      // drafts are only switched on by approving them
+      const existing = await prisma.knowledgeEntry.findFirst({ where: { id, status: "approved" } });
       if (!existing) {
         return NextResponse.json(
           { error: "Entry not found" },

@@ -46,3 +46,20 @@ describe("ticket figures for staff limited to p1", () => {
     expect(db.teamMember.findMany.mock.calls[0][0].select.tickets.where).toMatchObject(ticketScope);
   });
 });
+
+describe("analytics top categories", () => {
+  it("counts approved entries only and keeps the top 8 by that count", async () => {
+    db.category.findMany.mockResolvedValue(
+      Array.from({ length: 10 }, (_, i) => ({ name: `c${i}`, _count: { entries: i } }))
+    );
+    const { GET } = await import("@/app/api/analytics/route");
+    const body = await (await GET(createRequest("/api/analytics"))).json();
+
+    const args = db.category.findMany.mock.calls[0][0];
+    expect(args.select._count).toEqual({ select: { entries: { where: { status: "approved" } } } });
+    expect(args.take).toBeUndefined();
+    expect(body.topCategories.map((c: { category: string }) => c.category)).toEqual(
+      ["c9", "c8", "c7", "c6", "c5", "c4", "c3", "c2"]
+    );
+  });
+});
