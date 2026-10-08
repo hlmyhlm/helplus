@@ -18,7 +18,8 @@
     "db:migrate": "npx prisma migrate dev",
     "db:push": "npx prisma db push",
     "db:studio": "npx prisma studio",
-    "worker": "tsx --env-file=.env scripts/worker.ts"
+    "worker": "tsx --env-file=.env scripts/worker.ts",
+    "worker:prod": "tsx scripts/worker.ts"
   },
   "prisma": {
     "seed": "npx tsx prisma/seed.ts"

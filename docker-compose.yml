@@ -41,7 +41,6 @@ services:
       start_period: 30s
       retries: 3
     volumes:
-      - whatsapp_auth:/app/.wwebjs_auth
       - storage_data:/app/storage
     deploy:
       resources:
@@ -51,9 +50,15 @@ services:
   worker:
     build: .
     restart: unless-stopped
-    command: ["npm", "run", "worker"]
+    command: ["npm", "run", "worker:prod"]
+    # gives the whatsapp client time to close chromium
+    stop_grace_period: 30s
+    # the image's healthcheck is for the web app
+    healthcheck:
+      disable: true
     environment:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/helplus?schema=public
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
       NODE_ENV: production
     env_file:
       - .env

@@ -123,13 +123,33 @@ secrets:
 migration:
   enabled: true
 
-# -- Persistent storage for WhatsApp sessions
+# -- Persistent storage for WhatsApp sessions (worker only)
 persistence:
   enabled: true
   size: 1Gi
   storageClass: ""
   accessModes:
     - ReadWriteOnce
+
+# -- Shared files (bot images, screenshots), mounted on the app and the worker
+storage:
+  persistence:
+    size: 5Gi
+    storageClass: ""
+    # with ReadWriteOnce the app and the worker must run on the same node (or move files to S3 later)
+    accessModes:
+      - ReadWriteMany
+
+# -- Background worker: jobs and the WhatsApp bot. Keep it at one replica
+worker:
+  enabled: true
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1536Mi
 
 # -- Node scheduling
 nodeSelector: {}

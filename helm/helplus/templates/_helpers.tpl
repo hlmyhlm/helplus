@@ -80,3 +80,11 @@ Secret name - use existing or generate
 {{- include "helplus.fullname" . }}
 {{- end }}
 {{- end }}
+
+{{/*
+Worker selector labels, kept apart so the web service never routes to it
+*/}}
+{{- define "helplus.workerSelectorLabels" -}}
+app.kubernetes.io/name: {{ include "helplus.name" . }}-worker
+app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}

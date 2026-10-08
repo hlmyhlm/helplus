@@ -54,9 +54,13 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/prisma ./prisma
-COPY --from=builder /app/src/generated ./src/generated
+# the worker runs from source with tsx
+COPY --from=builder /app/src ./src
+COPY --from=builder /app/scripts ./scripts
+COPY --from=builder /app/tsconfig.json ./
 COPY --from=builder /app/next.config.ts ./
 
+RUN mkdir -p /app/storage /app/.wwebjs_auth /app/.wwebjs_cache /app/.cache
 RUN chown -R nextjs:nodejs /app
 
 USER nextjs
