@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { withAuth } from "@/lib/tenant/with-auth";
 import { hasPermission } from "@/lib/rbac";
-import { allowedProjectIds } from "@/lib/tickets/access";
+import { allowedProjectIds, projectWhere } from "@/lib/tickets/access";
 import { placeReply } from "@/lib/bot/intake";
 import { chatWhere } from "@/lib/bot/scope";
 
@@ -25,6 +25,10 @@ export const POST = withAuth("channels:read", async (request: NextRequest, auth,
     const ids = await allowedProjectIds(auth);
     const row = await prisma.waInbound.findFirst({ where: { id, chat: chatWhere(ids) }, select: { id: true } });
     if (!row) return NextResponse.json({ error: "Reply not found" }, { status: 404 });
+    if (ticketId) {
+      const ticket = await prisma.ticket.findFirst({ where: { id: ticketId, ...projectWhere(ids) }, select: { id: true } });
+      if (!ticket) return NextResponse.json({ error: "Ticket not found" }, { status: 404 });
+    }
 
     const result = await placeReply(id, ticketId, auth.userId);
     if (result === "gone") {

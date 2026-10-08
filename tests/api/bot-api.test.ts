@@ -251,6 +251,27 @@ describe("POST /api/bot/picks/:id", () => {
 
   beforeEach(() => {
     db.waInbound.findFirst.mockResolvedValue({ id: "w1" });
+    db.ticket.findFirst.mockResolvedValue({ id: "t1" });
+  });
+
+  it("404s on a ticket outside the caller's projects", async () => {
+    // a limited role that somehow has both permissions still only reaches its own projects
+    vi.mocked(requireAuth).mockResolvedValue({ userId: "u1", role: "staff", username: "u", name: "U", authMethod: "cookie", companyId: "test-company" } as never);
+    db.projectAccess.findMany.mockResolvedValue([{ projectId: "p1" }]);
+    db.ticket.findFirst.mockResolvedValue(null);
+    const { POST } = await import("@/app/api/bot/picks/[id]/route");
+    const res = await POST(post("t2"), ctx("w1"));
+    expect(res.status).toBe(404);
+    expect(db.ticket.findFirst.mock.calls[0][0].where).toEqual({ id: "t2", projectId: { in: ["p1"] } });
+    expect(placeReply).not.toHaveBeenCalled();
+  });
+
+  it("404s on a ticket that isn't there", async () => {
+    db.ticket.findFirst.mockResolvedValue(null);
+    const { POST } = await import("@/app/api/bot/picks/[id]/route");
+    const res = await POST(post("t9"), ctx("w1"));
+    expect(res.status).toBe(404);
+    expect(placeReply).not.toHaveBeenCalled();
   });
 
   it("404s when the pick isn't there", async () => {
